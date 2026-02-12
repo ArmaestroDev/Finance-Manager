@@ -11,7 +11,7 @@
 2. Create a new repository on GitHub.
 3. Push your code:
    ```bash
-   git remote add origin https://github.com/YOUR_USERNAME/repo-name.git
+   git remote add origin https://github.com/ArmaestroDev/Finanz-Manager.git
    git push -u origin main
    ```
    > **Note**: Your `.pem` file is strictly ignored by `.gitignore` and will NOT be uploaded. This is correct.

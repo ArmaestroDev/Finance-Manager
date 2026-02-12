@@ -41,8 +41,8 @@ Designed for privacy and performance, it runs seamlessly on **iOS**, **Android**
 1.  **Clone the repository**:
 
     ```bash
-    git clone https://github.com/yourusername/finance-manager.git
-    cd finance-manager
+    git clone https://github.com/ArmaestroDev/Finanz-Manager.git
+    cd Finanz-Manager
     ```
 
 2.  **Install dependencies**:
