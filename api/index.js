@@ -130,7 +130,7 @@ app.post("/api/auth", async (req, res) => {
       },
       state: `state_${Date.now()}`,
       redirect_url: REDIRECT_URL,
-      psu_type: "personal", // Explicitly request personal accounts
+      // psu_type: "personal", // removing to allow bank to decide
     };
 
     console.log("Auth request body:", JSON.stringify(body, null, 2));
@@ -152,32 +152,17 @@ app.post("/api/sessions", async (req, res) => {
 
     // Check if accounts are returned; if not, try fetching the session again explicitly
     if (!data.accounts || data.accounts.length === 0) {
-      console.warn(
-        "⚠️ Session created but 0 accounts returned. Attempting refetch via GET /sessions/id...",
-      );
       try {
         const refetchData = await apiRequest(
           "GET",
           `/sessions/${data.session_id}`,
         );
         if (refetchData.accounts && refetchData.accounts.length > 0) {
-          console.log(
-            "✅ Refetch successful! Accounts found:",
-            refetchData.accounts.length,
-          );
           data = refetchData;
-        } else {
-          console.warn("❌ Refetch also returned 0 accounts.");
-          console.log(
-            "Full session data:",
-            JSON.stringify(refetchData, null, 2),
-          );
         }
       } catch (fetchErr) {
-        console.error("❌ Refetch failed:", fetchErr);
+        console.error("Refetch failed:", fetchErr);
       }
-    } else {
-      console.log("Session created. Accounts found:", data.accounts.length);
     }
 
     res.json(data);
