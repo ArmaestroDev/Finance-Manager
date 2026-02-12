@@ -2,92 +2,21 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Modal,
-  RefreshControl,
-  SectionList,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  Platform,
+    ActivityIndicator,
+    Modal,
+    RefreshControl,
+    SectionList,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import {
-  useAccounts,
-// ... (imports)
-
-// ...
-
-// ... inside AccountsScreen component ...
-
-  // Update SectionList header or container to include Refresh button
-  // Modify the renderSectionHeader function OR add a header outside the list?
-  // Actually, adding it as a header outside the SectionList is easier but might push list down.
-  // Let's add it to the Main Header (title area).
-
-  return (
-    <View style={[styles.container, { backgroundColor }]}>
-      {/* ... (Modals omitted) ... */}
-
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={[styles.title, { color: textColor }]}>
-            {i18n.accounts_title}
-          </Text>
-          <Text style={[styles.subtitle, { color: textColor, opacity: 0.6 }]}>
-            {i18n.accounts_subtitle}
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={() => refreshAccounts()}
-          disabled={isRefreshing}
-          style={[styles.refreshButton, { backgroundColor: tintColor + "20" }]}
-        >
-           {isRefreshing ? (
-              <ActivityIndicator size="small" color={tintColor} />
-            ) : (
-              <Ionicons name="refresh" size={24} color={tintColor} />
-            )}
-        </TouchableOpacity>
-      </View>
-
-      <SectionList
-        // ... props ...
-        ListHeaderComponent={SummaryHeader}
-        refreshControl={
-           // Keep refresh control for native feel where supported
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={tintColor}
-          />
-        }
-        // ... props ...
-      />
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  // ... container etc ...
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 4,
-  },
-  refreshButton: {
-    padding: 8,
-    borderRadius: 20,
-  },
-  // ... existing styles ...
-});
-import {
-  useAccounts,
-  type AccountCategory,
-  type ManualAccount,
-  type UnifiedAccount,
+    useAccounts,
+    type AccountCategory,
+    type ManualAccount,
+    type UnifiedAccount,
 } from "../../context/AccountsContext";
 import { useSettings } from "../../context/SettingsContext";
 import { useThemeColor } from "../../hooks/use-theme-color";
@@ -484,12 +413,27 @@ export default function AccountsScreen() {
         </View>
       </Modal>
 
-      <Text style={[styles.title, { color: textColor }]}>
-        {i18n.accounts_title}
-      </Text>
-      <Text style={[styles.subtitle, { color: textColor, opacity: 0.6 }]}>
-        {i18n.accounts_subtitle}
-      </Text>
+      <View style={styles.headerRow}>
+        <View>
+          <Text style={[styles.title, { color: textColor }]}>
+            {i18n.accounts_title}
+          </Text>
+          <Text style={[styles.subtitle, { color: textColor, opacity: 0.6 }]}>
+            {i18n.accounts_subtitle}
+          </Text>
+        </View>
+        <TouchableOpacity
+          onPress={() => refreshAccounts()}
+          disabled={isRefreshing}
+          style={[styles.refreshButton, { backgroundColor: tintColor + "20" }]}
+        >
+          {isRefreshing ? (
+            <ActivityIndicator size="small" color={tintColor} />
+          ) : (
+            <Ionicons name="refresh" size={24} color={tintColor} />
+          )}
+        </TouchableOpacity>
+      </View>
 
       <SectionList
         sections={sections}
@@ -542,6 +486,16 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 24,
     paddingTop: 60,
+  },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 4,
+  },
+  refreshButton: {
+    padding: 8,
+    borderRadius: 20,
   },
   centered: {
     justifyContent: "center",
