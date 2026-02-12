@@ -8,7 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "server": "node server/index.js",
+    "server": "node api/index.js",
     "build": "expo export -p web"
   },
   "dependencies": {
