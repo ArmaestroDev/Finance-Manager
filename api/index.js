@@ -130,7 +130,7 @@ app.post("/api/auth", async (req, res) => {
       },
       state: `state_${Date.now()}`,
       redirect_url: REDIRECT_URL,
-      // psu_type: "personal", // Removing filter to see if this fixes the empty account list
+      psu_type: "personal", // Explicitly request personal accounts
     };
 
     console.log("Auth request body:", JSON.stringify(body, null, 2));
@@ -148,20 +148,38 @@ app.post("/api/sessions", async (req, res) => {
   try {
     const { code } = req.body;
     console.log("Exchanging code for session...");
-    const data = await apiRequest("POST", "/sessions", { code });
-    console.log(
-      "Session created. Accounts found:",
-      data.accounts ? data.accounts.length : 0,
-    );
-    // Log the first account to see structure if it exists
-    if (data.accounts && data.accounts.length > 0) {
-      console.log("Sample account:", JSON.stringify(data.accounts[0], null, 2));
-    } else {
-      console.log(
-        "Full session data (no accounts?):",
-        JSON.stringify(data, null, 2),
+    let data = await apiRequest("POST", "/sessions", { code });
+
+    // Check if accounts are returned; if not, try fetching the session again explicitly
+    if (!data.accounts || data.accounts.length === 0) {
+      console.warn(
+        "⚠️ Session created but 0 accounts returned. Attempting refetch via GET /sessions/id...",
       );
+      try {
+        const refetchData = await apiRequest(
+          "GET",
+          `/sessions/${data.session_id}`,
+        );
+        if (refetchData.accounts && refetchData.accounts.length > 0) {
+          console.log(
+            "✅ Refetch successful! Accounts found:",
+            refetchData.accounts.length,
+          );
+          data = refetchData;
+        } else {
+          console.warn("❌ Refetch also returned 0 accounts.");
+          console.log(
+            "Full session data:",
+            JSON.stringify(refetchData, null, 2),
+          );
+        }
+      } catch (fetchErr) {
+        console.error("❌ Refetch failed:", fetchErr);
+      }
+    } else {
+      console.log("Session created. Accounts found:", data.accounts.length);
     }
+
     res.json(data);
   } catch (err) {
     console.error("Error creating session:", JSON.stringify(err, null, 2));
