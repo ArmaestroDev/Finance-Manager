@@ -116,6 +116,8 @@ app.get("/api/aspsps", async (req, res) => {
 app.post("/api/auth", async (req, res) => {
   try {
     const { aspspName, aspspCountry } = req.body;
+    console.log("Starting auth for:", aspspName, aspspCountry);
+
     const body = {
       access: {
         valid_until: new Date(
@@ -130,10 +132,13 @@ app.post("/api/auth", async (req, res) => {
       redirect_url: REDIRECT_URL,
       psu_type: "personal", // Explicitly request personal accounts
     };
+
+    console.log("Auth request body:", JSON.stringify(body, null, 2));
+
     const data = await apiRequest("POST", "/auth", body);
     res.json(data);
   } catch (err) {
-    console.error("Error starting auth:", err);
+    console.error("Error starting auth:", JSON.stringify(err, null, 2));
     res.status(err.status || 500).json(err.data || { error: "Internal error" });
   }
 });
@@ -142,10 +147,24 @@ app.post("/api/auth", async (req, res) => {
 app.post("/api/sessions", async (req, res) => {
   try {
     const { code } = req.body;
+    console.log("Exchanging code for session...");
     const data = await apiRequest("POST", "/sessions", { code });
+    console.log(
+      "Session created. Accounts found:",
+      data.accounts ? data.accounts.length : 0,
+    );
+    // Log the first account to see structure if it exists
+    if (data.accounts && data.accounts.length > 0) {
+      console.log("Sample account:", JSON.stringify(data.accounts[0], null, 2));
+    } else {
+      console.log(
+        "Full session data (no accounts?):",
+        JSON.stringify(data, null, 2),
+      );
+    }
     res.json(data);
   } catch (err) {
-    console.error("Error creating session:", err);
+    console.error("Error creating session:", JSON.stringify(err, null, 2));
     res.status(err.status || 500).json(err.data || { error: "Internal error" });
   }
 });
