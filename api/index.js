@@ -130,7 +130,7 @@ app.post("/api/auth", async (req, res) => {
       },
       state: `state_${Date.now()}`,
       redirect_url: REDIRECT_URL,
-      psu_type: "personal", // Explicitly request personal accounts
+      // psu_type: "personal", // Removing filter to see if this fixes the empty account list
     };
 
     console.log("Auth request body:", JSON.stringify(body, null, 2));

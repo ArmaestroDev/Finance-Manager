@@ -144,6 +144,13 @@ export default function ConnectionsScreen() {
       const updated = [...sessions, stored];
       setSessions(updated);
       await AsyncStorage.setItem(SESSIONS_KEY, JSON.stringify(updated));
+      if (sessionData.accounts.length === 0) {
+        Alert.alert(
+          "Debug Info",
+          "0 Accounts found. Raw Data: " + JSON.stringify(sessionData),
+        );
+      }
+
       Alert.alert(
         "Success!",
         `Connected ${sessionData.accounts.length} account(s) from ${sessionData.aspsp.name}`,
