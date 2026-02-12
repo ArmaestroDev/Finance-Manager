@@ -1,50 +1,110 @@
-# Welcome to your Expo app 👋
+# Finance Manager
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+**Finance Manager** is a modern, cross-platform personal finance application built with **React Native (Expo)**. It provides a unified view of your financial health by aggregating data from your bank accounts via Open Banking APIs, tracking manual assets, and calculating your total net worth in real-time.
 
-## Get started
+Designed for privacy and performance, it runs seamlessly on **iOS**, **Android**, and **Web**, with a serverless backend optimized for **Vercel**.
 
-1. Install dependencies
+---
 
-   ```bash
-   npm install
-   ```
+## 🚀 Key Features
 
-2. Start the app
+- **Unified Dashboard**: Get a snapshot of your Total Net Worth, broken down by asset class (Giro, Savings, Stocks, Cash).
+- **Bank Integration**: Securely connect to thousands of banks across Europe using the **Enable Banking API**.
+- **Smart Sync**: Real-time balance updates with a manual refresh option to bypass caching layers.
+- **Manual Accounts**: Track physical cash, precious metals, or off-grid assets manually.
+- **Cross-Platform**:
+  - **Mobile**: Native performance on iOS and Android.
+  - **Web**: Fully responsive web app with special handling for Safari/iPad popup blockers.
+- **Privacy First**:
+  - **Zero-Persistence Backend**: The server acts only as a secure proxy for API keys.
+  - **Local Storage**: Session keys and cached balances are stored securely on your device.
+- **Customization**: Automatic Dark/Light mode support and English/German localization.
 
-   ```bash
-   npx expo start
-   ```
+## 🛠️ Technology Stack
 
-In the output, you'll find options to open the app in a
+- **Frontend**: React Native, Expo, Expo Router, TypeScript.
+- **Backend**: Node.js, Express (deployed as Vercel Serverless Functions).
+- **API**: Enable Banking (Open Banking/PSD2).
+- **Styling**: Native StyleSheet with systematic theming.
+- **Storage**: `AsyncStorage` for local persistence.
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## ⚡ Getting Started
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### Prerequisites
 
-## Get a fresh project
+- [Node.js](https://nodejs.org/) (LTS recommended)
+- [npm](https://www.npmjs.com/) or `yarn`
+- [Expo Go](https://expo.dev/client) app (for mobile testing)
 
-When you're ready, run:
+### Installation
 
-```bash
-npm run reset-project
+1.  **Clone the repository**:
+
+    ```bash
+    git clone https://github.com/yourusername/finance-manager.git
+    cd finance-manager
+    ```
+
+2.  **Install dependencies**:
+
+    ```bash
+    npm install
+    ```
+
+3.  **Configure Environment**:
+    Create a `.env` file in the root directory (mapped from `.env.example` if available) or set these variables in your deployment environment:
+    - `ENABLE_BANKING_App_ID`: Your Application ID.
+    - `ENABLE_BANKING_PRIVATE_KEY`: Your private key content (PEM format).
+    - `REDIRECT_URL`: The URL where the bank redirects back to (e.g., `https://your-app.vercel.app`).
+
+### Running Locally
+
+- **Start the frontend**:
+
+  ```bash
+  npm start
+  ```
+
+  - Press `w` for Web.
+  - Press `i` for iOS Simulator.
+  - Press `a` for Android Emulator.
+  - Scan the QR code with **Expo Go** for physical devices.
+
+- **Start the backend (dev mode)**:
+  ```bash
+  npm run server
+  ```
+
+## 🌍 Deployment
+
+This project is optimized for deployment on **Vercel** (Frontend + Backend).
+
+For detailed, step-by-step deployment instructions, please refer to [DEPLOY.md](./DEPLOY.md).
+
+### Quick Vercel Setup
+
+1.  Push your code to **GitHub**.
+2.  Import the project into **Vercel**.
+3.  Set the **Framework Preset** to `Other` (or leave default if auto-detected).
+4.  Add your Environment Variables (`ENABLE_BANKING_...`) in the Vercel Dashboard.
+5.  Deploy!
+
+## 📂 Project Structure
+
+```
+finance-manager/
+├── api/                  # Backend Serverless Functions (Express)
+├── app/                  # Frontend Screens (Expo Router)
+│   ├── (tabs)/           # Main Tab Navigation (Home, Accounts, etc.)
+│   └── account/          # Account Details Screens
+├── assets/               # Images and Icons
+├── components/           # Reusable UI Components
+├── context/              # Global State (Accounts, Settings)
+├── hooks/                # Custom React Hooks
+├── services/             # API Client (Enable Banking)
+└── vercel.json           # Vercel Routing Configuration
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## 📄 License
 
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+This project is open-source and available under the **MIT License**.
