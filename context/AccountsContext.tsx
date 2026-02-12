@@ -139,6 +139,9 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
             loading: true,
             iban: account.account_id?.iban,
           });
+          console.log(
+            `Checking balance for: ${account.name || "Unknown"} (ID: ${account.uid})`,
+          );
         }
       }
 

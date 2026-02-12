@@ -8,6 +8,7 @@ import {
     FlatList,
     Linking,
     Modal,
+    Platform,
     StyleSheet,
     Text,
     TextInput,
@@ -50,6 +51,7 @@ export default function ConnectionsScreen() {
   const [connecting, setConnecting] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [showManualInput, setShowManualInput] = useState(false);
+  const [authUrl, setAuthUrl] = useState<string | null>(null);
 
   // Bank Selection State
   const [banks, setBanks] = useState<ASPSP[]>([]);
@@ -79,6 +81,7 @@ export default function ConnectionsScreen() {
             parsed.searchParams.get("error_description") || error,
           );
           setConnecting(false);
+          setAuthUrl(null);
           return;
         }
 
@@ -130,6 +133,7 @@ export default function ConnectionsScreen() {
     try {
       setConnecting(true);
       setShowManualInput(false);
+      setAuthUrl(null);
       // Close modal if open
       setBankModalVisible(false);
 
@@ -178,8 +182,16 @@ export default function ConnectionsScreen() {
     setBankModalVisible(false);
     try {
       setConnecting(true);
+      setAuthUrl(null);
       const authData = await startAuth(bank.name, bank.country);
-      await WebBrowser.openBrowserAsync(authData.url);
+
+      if (Platform.OS === "web") {
+        // Web: Set URL and let user click to open (avoids popup blocker)
+        setAuthUrl(authData.url);
+      } else {
+        // Native: Open immediately
+        await WebBrowser.openBrowserAsync(authData.url);
+      }
     } catch (err: any) {
       Alert.alert("Error", err.message || "Failed to start bank connection");
       setConnecting(false);
@@ -318,10 +330,55 @@ export default function ConnectionsScreen() {
 
       {connecting && !showManualInput ? (
         <View style={styles.connectingContainer}>
-          <ActivityIndicator size="large" color={tintColor} />
-          <Text style={[styles.connectingText, { color: textColor }]}>
-            {i18n.connecting}
-          </Text>
+          {authUrl && Platform.OS === "web" ? (
+            <View style={{ alignItems: "center", gap: 16 }}>
+              <Text
+                style={[
+                  styles.connectingText,
+                  { color: textColor, textAlign: "center" },
+                ]}
+              >
+                {i18n.ready_to_connect || "Ready to connect!"}
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.connectButton,
+                  {
+                    backgroundColor: tintColor,
+                    marginTop: 0,
+                    paddingHorizontal: 24,
+                  },
+                ]}
+                onPress={() => WebBrowser.openBrowserAsync(authUrl)}
+              >
+                <Text
+                  style={[styles.connectButtonText, { color: backgroundColor }]}
+                >
+                  {i18n.open_bank_login || "Open Bank Login"}
+                </Text>
+              </TouchableOpacity>
+              <Text
+                style={{
+                  color: textColor,
+                  opacity: 0.6,
+                  fontSize: 12,
+                  textAlign: "center",
+                  maxWidth: 250,
+                }}
+              >
+                (Pop-up blockers may prevent automatic opening. Click the button
+                above to proceed.)
+              </Text>
+            </View>
+          ) : (
+            <>
+              <ActivityIndicator size="large" color={tintColor} />
+              <Text style={[styles.connectingText, { color: textColor }]}>
+                {i18n.connecting}
+              </Text>
+            </>
+          )}
+
           <TouchableOpacity
             onPress={() => setShowManualInput(true)}
             style={{ marginTop: 20 }}
