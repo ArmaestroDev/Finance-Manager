@@ -11,6 +11,9 @@ Designed for privacy and performance, it runs seamlessly on **iOS**, **Android**
 - **Unified Dashboard**: Get a snapshot of your Total Net Worth, broken down by asset class (Giro, Savings, Stocks, Cash).
 - **Bank Integration**: Securely connect to thousands of banks across Europe using the **Enable Banking API**.
 - **Smart Sync**: Real-time balance updates with a manual refresh option to bypass caching layers.
+- **Smart Categorization**:
+  - **Auto-Categorization**: Uses **Google Gemini AI** to automatically suggest categories for your transactions.
+  - **Manual Control**: Easily recategorize transactions with a smart, searchable interface.
 - **Manual Accounts**: Track physical cash, precious metals, or off-grid assets manually.
 - **Cross-Platform**:
   - **Mobile**: Native performance on iOS and Android.
@@ -23,6 +26,7 @@ Designed for privacy and performance, it runs seamlessly on **iOS**, **Android**
 ## 🛠️ Technology Stack
 
 - **Frontend**: React Native, Expo, Expo Router, TypeScript.
+- **AI**: Google Gemini (via `google-generative-ai`).
 - **Backend**: Node.js, Express (deployed as Vercel Serverless Functions).
 - **API**: Enable Banking (Open Banking/PSD2).
 - **Styling**: Native StyleSheet with systematic theming.
@@ -53,9 +57,10 @@ Designed for privacy and performance, it runs seamlessly on **iOS**, **Android**
 
 3.  **Configure Environment**:
     Create a `.env` file in the root directory (mapped from `.env.example` if available) or set these variables in your deployment environment:
-    - `ENABLE_BANKING_App_ID`: Your Application ID.
+    - `ENABLE_BANKING_APP_ID`: Your Enable Banking App ID.
     - `ENABLE_BANKING_PRIVATE_KEY`: Your private key content (PEM format).
     - `REDIRECT_URL`: The URL where the bank redirects back to (e.g., `https://your-app.vercel.app`).
+    - `EXPO_PUBLIC_GEMINI_API_KEY`: Your Google Gemini API Key (for AI categorization).
 
 ### Running Locally
 
