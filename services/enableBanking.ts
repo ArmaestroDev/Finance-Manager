@@ -1,4 +1,10 @@
-const API_BASE = "http://localhost:3001/api";
+// In production (Vercel), the backend is at /api relative to the frontend.
+// In local dev, we might be running on a device or simulator where we need the full URL.
+// Since this is a web deployment, we can use relative paths.
+const API_BASE =
+  typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "/api"
+    : "http://localhost:3001/api";
 
 export interface AccountId {
   iban?: string;
