@@ -14,6 +14,10 @@ export const Strings = {
     total_liabilities: "Total Liabilities",
     balances_hidden: "Balances hidden via Settings",
     pull_to_refresh: "Pull to refresh",
+    statistics_title: "Statistics",
+    income_label: "Income",
+    expenses_label: "Expenses",
+    uncategorized: "Uncategorized",
 
     // Accounts
     accounts_title: "Accounts",
@@ -108,6 +112,8 @@ export const Strings = {
     connected_account_count: "{count} account(s) connected",
     connected_date: "Connected {date}",
     no_connections: "No bank accounts connected yet",
+    ready_to_connect: "Ready to connect!",
+    open_bank_login: "Open Bank Login",
 
     // Account Details
     transactions_title: "Transactions",
@@ -167,6 +173,10 @@ export const Strings = {
     total_liabilities: "Gesamtverbindlichkeiten",
     balances_hidden: "Guthaben ausgeblendet (Einstellungen)",
     pull_to_refresh: "Ziehen zum Aktualisieren",
+    statistics_title: "Statistiken",
+    income_label: "Einkommen",
+    expenses_label: "Ausgaben",
+    uncategorized: "Unkategorisiert",
 
     // Accounts
     accounts_title: "Konten",
@@ -261,6 +271,8 @@ export const Strings = {
     connected_account_count: "{count} Konto/Konten verbunden",
     connected_date: "Verbunden am {date}",
     no_connections: "Noch keine Bankkonten verbunden",
+    ready_to_connect: "Bereit zum Verbinden!",
+    open_bank_login: "Bank-Login öffnen",
 
     // Account Details
     transactions_title: "Transaktionen",

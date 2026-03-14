@@ -139,7 +139,9 @@ app.post("/api/auth", async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error("Error starting auth:", JSON.stringify(err, null, 2));
-    res.status(err.status || 500).json(err.data || { error: "Internal error" });
+    res
+      .status(err.status || 500)
+      .json(err.data || { error: "Internal error", details: err });
   }
 });
 
