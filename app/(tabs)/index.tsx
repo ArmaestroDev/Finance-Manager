@@ -1,13 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
+    Modal,
     RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from "react-native";
@@ -51,9 +53,6 @@ const getTransactionAmount = (tx: Transaction) => {
   return amount;
 };
 
-// ── Date presets ──
-type PresetKey = "30" | "90" | "year" | "all";
-
 export default function HomeScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
@@ -64,36 +63,22 @@ export default function HomeScreen() {
     useAccounts();
   const { categories, transactionCategoryMap } = useCategories();
 
-  // ── Date filter state ──
-  const [activePreset, setActivePreset] = useState<PresetKey>("30");
-  const [filterDateFrom, setFilterDateFrom] = useState<string>("");
-  const [filterDateTo, setFilterDateTo] = useState<string>("");
+  // ── Date filter state (default: 1st of this month → today) ──
+  const [filterDateFrom, setFilterDateFrom] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(1);
+    return toUiDate(d);
+  });
+  const [filterDateTo, setFilterDateTo] = useState<string>(() =>
+    toUiDate(new Date()),
+  );
+  const [isDateModalVisible, setDateModalVisible] = useState(false);
+  const [tempFrom, setTempFrom] = useState("");
+  const [tempTo, setTempTo] = useState("");
 
   // ── Stats state ──
   const [statsLoading, setStatsLoading] = useState(false);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
-
-  // ── Initialise dates (default: last 30 days) ──
-  useEffect(() => {
-    applyPreset("30");
-  }, []);
-
-  const applyPreset = useCallback((preset: PresetKey) => {
-    setActivePreset(preset);
-    const to = new Date();
-    const from = new Date();
-
-    if (preset === "year") {
-      from.setMonth(0, 1);
-    } else if (preset === "all") {
-      from.setFullYear(2000, 0, 1);
-    } else {
-      from.setDate(from.getDate() - parseInt(preset, 10));
-    }
-
-    setFilterDateFrom(toUiDate(from));
-    setFilterDateTo(toUiDate(to));
-  }, []);
 
   // ── Load transactions across all accounts ──
   useEffect(() => {
@@ -252,12 +237,17 @@ export default function HomeScreen() {
     }).format(amount);
   };
 
-  const presets: { key: PresetKey; label: string }[] = [
-    { key: "30", label: i18n.filter_30 },
-    { key: "90", label: i18n.filter_90 },
-    { key: "year", label: i18n.filter_year },
-    { key: "all", label: i18n.filter_all },
-  ];
+  const openDateModal = () => {
+    setTempFrom(filterDateFrom);
+    setTempTo(filterDateTo);
+    setDateModalVisible(true);
+  };
+
+  const applyDateFilter = () => {
+    setFilterDateFrom(tempFrom);
+    setFilterDateTo(tempTo);
+    setDateModalVisible(false);
+  };
 
   return (
     <View style={[styles.container, { backgroundColor }]}>
@@ -308,41 +298,86 @@ export default function HomeScreen() {
           </View>
         )}
 
+        {/* Date Filter Modal */}
+        <Modal
+          visible={isDateModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDateModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor }]}>
+              <Text style={[styles.modalTitle, { color: textColor }]}>
+                {i18n.statistics_title}
+              </Text>
+
+              <View style={{ gap: 12, marginBottom: 16 }}>
+                <View>
+                  <Text
+                    style={{ color: textColor, marginBottom: 4, fontSize: 12 }}
+                  >
+                    From (DD-MM-YYYY)
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.dateInput,
+                      { color: textColor, borderColor: tintColor },
+                    ]}
+                    value={tempFrom}
+                    onChangeText={setTempFrom}
+                    placeholder="DD-MM-YYYY"
+                    placeholderTextColor={textColor + "50"}
+                  />
+                </View>
+                <View>
+                  <Text
+                    style={{ color: textColor, marginBottom: 4, fontSize: 12 }}
+                  >
+                    To (DD-MM-YYYY)
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.dateInput,
+                      { color: textColor, borderColor: tintColor },
+                    ]}
+                    value={tempTo}
+                    onChangeText={setTempTo}
+                    placeholder="DD-MM-YYYY"
+                    placeholderTextColor={textColor + "50"}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  onPress={() => setDateModalVisible(false)}
+                  style={styles.modalButton}
+                >
+                  <Text style={{ color: textColor }}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={applyDateFilter}
+                  style={[styles.modalButton, { backgroundColor: tintColor }]}
+                >
+                  <Text style={{ color: backgroundColor, fontWeight: "600" }}>
+                    Apply
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         {/* ── Statistics Section ── */}
         <View style={styles.statsSection}>
-          <Text style={[styles.statsTitle, { color: textColor }]}>
-            {i18n.statistics_title}
-          </Text>
-
-          {/* Date Preset Buttons */}
-          <View style={styles.presetRow}>
-            {presets.map((p) => (
-              <TouchableOpacity
-                key={p.key}
-                style={[
-                  styles.presetButton,
-                  {
-                    backgroundColor:
-                      activePreset === p.key ? tintColor : tintColor + "15",
-                  },
-                ]}
-                onPress={() => applyPreset(p.key)}
-              >
-                <Text
-                  style={[
-                    styles.presetText,
-                    {
-                      color:
-                        activePreset === p.key ? backgroundColor : textColor,
-                    },
-                  ]}
-                >
-                  {p.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
+          <View style={styles.statsHeader}>
+            <Text style={[styles.statsTitle, { color: textColor }]}>
+              {i18n.statistics_title}
+            </Text>
+            <TouchableOpacity onPress={openDateModal}>
+              <Ionicons name="calendar-outline" size={22} color={textColor} />
+            </TouchableOpacity>
+          </View>{" "}
           {/* Stats Card */}
           <View
             style={[styles.statsCard, { backgroundColor: tintColor + "0A" }]}
@@ -566,25 +601,15 @@ const styles = StyleSheet.create({
   statsSection: {
     marginTop: 8,
   },
+  statsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
   statsTitle: {
     fontSize: 22,
     fontWeight: "700",
-    marginBottom: 12,
-  },
-  presetRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-  },
-  presetButton: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  presetText: {
-    fontSize: 13,
-    fontWeight: "600",
   },
   statsCard: {
     borderRadius: 16,
@@ -682,5 +707,47 @@ const styles = StyleSheet.create({
   legendAmount: {
     fontSize: 14,
     fontWeight: "600",
+  },
+
+  // ── Modal ──
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalContent: {
+    width: "100%",
+    maxWidth: 380,
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 16,
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+  },
+  modalButtons: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+  },
+  modalButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    alignItems: "center",
   },
 });
