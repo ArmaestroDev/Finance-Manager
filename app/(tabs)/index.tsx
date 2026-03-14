@@ -41,6 +41,16 @@ const getStableTxId = (tx: Transaction) => {
   );
 };
 
+const getTransactionAmount = (tx: Transaction) => {
+  let amount = parseFloat(tx.transaction_amount.amount);
+  if (tx.credit_debit_indicator === "DBIT" && amount > 0) {
+    amount = -amount;
+  } else if (tx.credit_debit_indicator === "CRDT" && amount < 0) {
+    amount = -amount;
+  }
+  return amount;
+};
+
 // ── Date presets ──
 type PresetKey = "30" | "90" | "year" | "all";
 
@@ -158,7 +168,7 @@ export default function HomeScreen() {
       const catAmounts: Record<string, number> = {};
 
       allTransactions.forEach((tx) => {
-        const amount = parseFloat(tx.transaction_amount.amount);
+        const amount = getTransactionAmount(tx);
         if (isNaN(amount)) return;
 
         if (amount >= 0) {

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -808,6 +808,21 @@ Example output format:
     }
     return amount;
   };
+
+  // ── Compute income/expenses for this account ──
+  const { accountIncome, accountExpenses } = useMemo(() => {
+    let inc = 0;
+    let exp = 0;
+    transactions.forEach((tx) => {
+      const amount = getTransactionAmount(tx);
+      if (amount >= 0) {
+        inc += amount;
+      } else {
+        exp += Math.abs(amount);
+      }
+    });
+    return { accountIncome: inc, accountExpenses: exp };
+  }, [transactions]);
 
   const openDetailModal = (tx: Transaction) => {
     setDetailTx(tx);
@@ -1894,6 +1909,80 @@ Example output format:
                       style={{ opacity: 0.7 }}
                     />
                   </TouchableOpacity>
+                </View>
+
+                {/* Income / Expenses Summary */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-around",
+                    marginTop: 12,
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    borderRadius: 12,
+                    backgroundColor: tintColor + "0A",
+                  }}
+                >
+                  <View style={{ alignItems: "center" }}>
+                    <Text
+                      style={{
+                        color: textColor,
+                        opacity: 0.6,
+                        fontSize: 12,
+                        fontWeight: "500",
+                      }}
+                    >
+                      {i18n.income_label}
+                    </Text>
+                    <Text
+                      style={{
+                        color: "#2ecc71",
+                        fontSize: 18,
+                        fontWeight: "700",
+                        marginTop: 2,
+                      }}
+                    >
+                      {isBalanceHidden
+                        ? "*****"
+                        : new Intl.NumberFormat("de-DE", {
+                            style: "currency",
+                            currency: "EUR",
+                          }).format(accountIncome)}
+                    </Text>
+                  </View>
+                  <View
+                    style={{
+                      width: 1,
+                      backgroundColor: textColor + "15",
+                    }}
+                  />
+                  <View style={{ alignItems: "center" }}>
+                    <Text
+                      style={{
+                        color: textColor,
+                        opacity: 0.6,
+                        fontSize: 12,
+                        fontWeight: "500",
+                      }}
+                    >
+                      {i18n.expenses_label}
+                    </Text>
+                    <Text
+                      style={{
+                        color: "#FF6B6B",
+                        fontSize: 18,
+                        fontWeight: "700",
+                        marginTop: 2,
+                      }}
+                    >
+                      {isBalanceHidden
+                        ? "*****"
+                        : new Intl.NumberFormat("de-DE", {
+                            style: "currency",
+                            currency: "EUR",
+                          }).format(accountExpenses)}
+                    </Text>
+                  </View>
                 </View>
               </View>
             ) : null
