@@ -93,6 +93,8 @@ export default function HomeScreen() {
       const apiTo = toApiDate(filterDateTo);
       let combined: Transaction[] = [];
 
+      console.log("[STATS] Loading transactions for", accounts.length, "accounts, date range:", apiFrom, "to", apiTo);
+
       for (const acc of accounts) {
         let key: string;
         if (acc.type === "manual") {
@@ -105,17 +107,26 @@ export default function HomeScreen() {
           const data = await AsyncStorage.getItem(key);
           if (data) {
             const txs: Transaction[] = JSON.parse(data);
+            console.log(`[STATS] Account ${acc.id} (${acc.type}): ${txs.length} total txs found in storage`);
+            // Log first few transactions to see their structure
+            if (txs.length > 0) {
+              console.log("[STATS] Sample tx:", JSON.stringify(txs[0], null, 2));
+            }
             const filtered = txs.filter((t) => {
               const date = t.booking_date || t.value_date || "";
               return (!apiFrom || date >= apiFrom) && (!apiTo || date <= apiTo);
             });
+            console.log(`[STATS] After date filter: ${filtered.length} txs`);
             combined = [...combined, ...filtered];
+          } else {
+            console.log(`[STATS] Account ${acc.id} (${acc.type}): NO data in AsyncStorage for key "${key}"`);
           }
-        } catch {
-          // skip account on error
+        } catch (e) {
+          console.log(`[STATS] Error loading account ${acc.id}:`, e);
         }
       }
 
+      console.log("[STATS] Total combined transactions:", combined.length);
       setAllTransactions(combined);
     } finally {
       setStatsLoading(false);
@@ -152,9 +163,15 @@ export default function HomeScreen() {
       let expenses = 0;
       const catAmounts: Record<string, number> = {};
 
+      let debugCount = 0;
       allTransactions.forEach((tx) => {
         const amount = getTransactionAmount(tx);
         if (isNaN(amount)) return;
+
+        if (debugCount < 5) {
+          console.log(`[STATS COMPUTE] tx: indicator=${tx.credit_debit_indicator}, rawAmount=${tx.transaction_amount.amount}, computedAmount=${amount}, creditor=${tx.creditor?.name}, debtor=${tx.debtor?.name}`);
+          debugCount++;
+        }
 
         if (amount >= 0) {
           income += amount;
@@ -170,6 +187,8 @@ export default function HomeScreen() {
           }
         }
       });
+
+      console.log(`[STATS COMPUTE] Total income=${income}, expenses=${expenses}, txCount=${allTransactions.length}, categories assigned=${Object.keys(catAmounts).length}`);
 
       // Build breakdown list
       const breakdown: {
