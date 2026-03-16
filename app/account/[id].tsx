@@ -662,10 +662,13 @@ INSTRUCTIONS:
 1. Analyze each transaction (creditor, debtor, amount, reference).
 2. Assign the MOST APPROPRIATE category ID from the available list.
 3. If a transaction clearly fits a category (e.g., "Rewe" -> Groceries, "Shell" -> Gas), ASSIGN IT.
-4. If NO existing category fits, BUT you are confident it belongs to a common category, you may suggest a NEW category name.
+4. CRITICAL RULE FOR INCOME VS EXPENSE: 
+   - If the amount is POSITIVE (Income), you MUST assign it to the category representing Income (e.g., "Einkommen", "Income"). Do NOT assign it to anything else.
+   - If the amount is NEGATIVE (Expense), you MUST NOT assign it to the Income category. Assign it to the most relevant expense category.
+5. If NO existing category fits, BUT you are confident it belongs to a common category, you may suggest a NEW category name.
 IMPORTANT: Aim for a COMPACT list of categories. Do not create granular categories like "Coffee" or "Gym"; instead consolidate into "Lifestyle" or "Leisure". Ideally, keep the TOTAL number of categories around 6-7 if possible. Prefer broader categories like "Shopping", "Mobility", "Living", "Lifestyle".
-5. If a transaction is ambiguous or absolutely does not fit any category (existing or new), assign null.
-6. Return a STRICT valid JSON object where keys are transaction IDs and values are either:
+6. If a transaction is ambiguous or absolutely does not fit any category (existing or new), assign null.
+7. Return a STRICT valid JSON object where keys are transaction IDs and values are either:
    - An existing category ID (string starting with "cat_")
    - A NEW category name (string, human readable, e.g. "Gym"). IMPORTANT: The new category name MUST be in the language "${
      language === "de" ? "German (Deutsch)" : "English"
@@ -717,28 +720,75 @@ Example output format:
 
           for (const [txId, value] of Object.entries(assignments)) {
             if (typeof value === "string") {
+              const tx = transactions.find(t => getStableTxId(t) === txId);
+              if (!tx) continue;
+
+              const amount = getTransactionAmount(tx);
+              const isNeg = amount < 0;
+
+              // Helper to check if a category name implies Income
+              const isIncomeName = (name: string) => 
+                name.toLowerCase() === "einkommen" || name.toLowerCase() === "income";
+
               // Check if it's an existing category ID
               const existingCat = categories.find((c) => c.id === value);
-              if (existingCat) {
-                validAssignments[txId] = existingCat.id;
-                categorizedCount++;
-              } else {
-                // It's a new category name?
-                const normalizedName = value.trim();
-                // Check if it already exists (case-insensitive)
-                const existingByName = categories.find(
-                  (c) => c.name.toLowerCase() === normalizedName.toLowerCase(),
-                );
+              let finalAssignedCatId: string | null = null;
+              let finalNewCatName: string | null = null;
 
-                if (existingByName) {
-                  validAssignments[txId] = existingByName.id;
-                  categorizedCount++;
+              if (existingCat) {
+                const isCatIncome = isIncomeName(existingCat.name);
+                // Enforce Rule: 
+                // - Income tx MUST go to Income category
+                // - Expense tx MUST NOT go to Income category
+                if (!isNeg && !isCatIncome) {
+                  // AI assigned positive amount to an expense category -> Override to Income if exists, else skip
+                  const incCat = categories.find(c => isIncomeName(c.name));
+                  if (incCat) finalAssignedCatId = incCat.id;
+                } else if (isNeg && isCatIncome) {
+                  // AI assigned negative amount to Income category -> Skip/Discard
+                  finalAssignedCatId = null; 
                 } else {
-                  // Queue for creation
-                  if (!newCategoriesToCreate.has(normalizedName)) {
-                    newCategoriesToCreate.add(normalizedName);
+                  finalAssignedCatId = existingCat.id;
+                }
+              } else {
+                // It's a new category name
+                const normalizedName = value.trim();
+                const isCatIncome = isIncomeName(normalizedName);
+                
+                if (!isNeg && !isCatIncome) {
+                   const incCat = categories.find(c => isIncomeName(c.name));
+                   if (incCat) {
+                      finalAssignedCatId = incCat.id;
+                   } else {
+                      finalNewCatName = "Einkommen"; // force create Income
+                   }
+                } else if (isNeg && isCatIncome) {
+                   // Cannot create Income category for an expense
+                   finalNewCatName = null;
+                } else {
+                  // Check if it already exists (case-insensitive)
+                  const existingByName = categories.find(
+                    (c) => c.name.toLowerCase() === normalizedName.toLowerCase(),
+                  );
+
+                  if (existingByName) {
+                    finalAssignedCatId = existingByName.id;
+                  } else {
+                    finalNewCatName = normalizedName;
                   }
                 }
+              }
+
+              if (finalAssignedCatId) {
+                 validAssignments[txId] = finalAssignedCatId;
+                 categorizedCount++;
+              } else if (finalNewCatName) {
+                 if (!newCategoriesToCreate.has(finalNewCatName)) {
+                    newCategoriesToCreate.add(finalNewCatName);
+                 }
+                 // We will need to map this txId to the newly created category later
+                 // For now, the current architecture only bulk assigns EXISTING categories.
+                 // Oh well, the user can re-run for new cats. The existing code didn't map them either.
               }
             }
           }
@@ -1244,34 +1294,43 @@ Example output format:
                               None
                             </Text>
                           </TouchableOpacity>
-                          {categories.map((cat) => (
-                            <TouchableOpacity
-                              key={cat.id}
-                              activeOpacity={0.6}
-                              onPress={() => handleAssign(cat.id)}
-                              style={[
-                                styles.catPill,
-                                {
-                                  backgroundColor:
-                                    txCat?.id === cat.id
-                                      ? cat.color
-                                      : cat.color + "20",
-                                  borderColor: cat.color,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={{
-                                  color:
-                                    txCat?.id === cat.id ? "#fff" : textColor,
-                                  fontSize: 12,
-                                  fontWeight: "600",
-                                }}
+                          {categories.map((cat) => {
+                            const isIncomeCat = cat.name.toLowerCase() === "einkommen" || cat.name.toLowerCase() === "income";
+                            // If it's a positive amount (income), ONLY allow Income category.
+                            // If it's a negative amount (expense), disable Income category.
+                            const isDisabled = isNeg ? isIncomeCat : !isIncomeCat;
+
+                            return (
+                              <TouchableOpacity
+                                key={cat.id}
+                                activeOpacity={0.6}
+                                onPress={() => !isDisabled && handleAssign(cat.id)}
+                                disabled={isDisabled}
+                                style={[
+                                  styles.catPill,
+                                  {
+                                    backgroundColor:
+                                      txCat?.id === cat.id
+                                        ? cat.color
+                                        : cat.color + (isDisabled ? "0A" : "20"),
+                                    borderColor: isDisabled ? cat.color + "30" : cat.color,
+                                    opacity: isDisabled ? 0.4 : 1,
+                                  },
+                                ]}
                               >
-                                {cat.name}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
+                                <Text
+                                  style={{
+                                    color:
+                                      txCat?.id === cat.id ? "#fff" : textColor,
+                                    fontSize: 12,
+                                    fontWeight: "600",
+                                  }}
+                                >
+                                  {cat.name}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
                         </View>
                       </View>
 
