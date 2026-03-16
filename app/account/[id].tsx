@@ -205,9 +205,7 @@ export default function AccountDetailScreen() {
             // But actually, we should probably filter what we show based on the UI date filters.
             const filteredCached = cachedTxs.filter((t) => {
               const date = t.booking_date || t.value_date || "";
-              // Only filter by start date to allow future/pending transactions to show
-              // matching API behavior which seems to include them despite date_to
-              return !apiFrom || date >= apiFrom;
+              return (!apiFrom || date >= apiFrom) && (!apiTo || date <= apiTo);
             });
 
             if (filteredCached.length > 0) {
@@ -297,16 +295,17 @@ export default function AccountDetailScreen() {
           return dateB.localeCompare(dateA);
         });
 
-        // CACHE THE RESULT
+        // CACHE THE FULL RESULT FIRST
         if (txs.length > 0) {
           const cacheKey = `${CONNECTED_TRANSACTIONS_PREFIX}${id}`;
-          // We should probably merge with existing cache if we are only fetching a slice?
-          // The user requirement is "last known transactions".
-          // If we overwrite with just the filtered range, we lose other ranges.
-          // However, implementing full sync/merge logic is complex.
-          // For now, let's cache what we just fetched (likely the default view).
           await AsyncStorage.setItem(cacheKey, JSON.stringify(txs));
         }
+
+        // Apply strict date filtering so UI totals match exact range
+        txs = txs.filter((t) => {
+          const date = t.booking_date || t.value_date || "";
+          return (!apiFrom || date >= apiFrom) && (!apiTo || date <= apiTo);
+        });
 
         // Update Global Balance with valid data
         if (txs.length > 0) {
@@ -801,11 +800,19 @@ Example output format:
 
   const getTransactionAmount = (item: Transaction) => {
     let amount = parseFloat(item.transaction_amount.amount);
-    if (item.credit_debit_indicator === "DBIT" && amount > 0) {
-      amount = -amount;
-    } else if (item.credit_debit_indicator === "CRDT" && amount < 0) {
-      amount = -amount;
+
+    if (item.credit_debit_indicator === "DBIT") {
+      return amount > 0 ? -amount : amount;
     }
+    if (item.credit_debit_indicator === "CRDT") {
+      return amount < 0 ? -amount : amount;
+    }
+
+    // Fallback: If no indicator but there is a creditor (and no debtor), it's a payment we made
+    if (amount > 0 && item.creditor?.name && !item.debtor?.name) {
+      return -amount;
+    }
+    
     return amount;
   };
 
