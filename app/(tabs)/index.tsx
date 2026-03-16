@@ -18,7 +18,7 @@ import { useAccounts } from "../../context/AccountsContext";
 import { useCategories } from "../../context/CategoriesContext";
 import { useSettings } from "../../context/SettingsContext";
 import { useThemeColor } from "../../hooks/use-theme-color";
-import type { Transaction } from "../../services/enableBanking";
+import { getTransactions, type Transaction } from "../../services/enableBanking";
 
 const CONNECTED_TRANSACTIONS_PREFIX = "connected_transactions_";
 
@@ -94,6 +94,18 @@ export default function HomeScreen() {
     loadAllTransactions();
   }, [filterDateFrom, filterDateTo, accounts]);
 
+  const openDateModal = () => {
+    setTempFrom(filterDateFrom);
+    setTempTo(filterDateTo);
+    setDateModalVisible(true);
+  };
+
+  const applyDateFilter = () => {
+    setFilterDateFrom(tempFrom);
+    setFilterDateTo(tempTo);
+    setDateModalVisible(false);
+  };
+
   const loadAllTransactions = async () => {
     setStatsLoading(true);
     try {
@@ -104,33 +116,88 @@ export default function HomeScreen() {
       console.log("[STATS] Loading transactions for", accounts.length, "accounts, date range:", apiFrom, "to", apiTo);
 
       for (const acc of accounts) {
-        let key: string;
         if (acc.type === "manual") {
-          key = `manual_transactions_${acc.id}`;
-        } else {
-          key = `${CONNECTED_TRANSACTIONS_PREFIX}${acc.id}`;
-        }
-
-        try {
-          const data = await AsyncStorage.getItem(key);
-          if (data) {
-            const txs: Transaction[] = JSON.parse(data);
-            console.log(`[STATS] Account ${acc.id} (${acc.type}): ${txs.length} total txs found in storage`);
-            // Log first few transactions to see their structure
-            if (txs.length > 0) {
-              console.log("[STATS] Sample tx:", JSON.stringify(txs[0], null, 2));
+          const key = `manual_transactions_${acc.id}`;
+          try {
+            const data = await AsyncStorage.getItem(key);
+            if (data) {
+              let txs: Transaction[] = JSON.parse(data);
+              const filtered = txs.filter((t) => {
+                const date = t.booking_date || t.value_date || "";
+                return (!apiFrom || date >= apiFrom) && (!apiTo || date <= apiTo);
+              });
+              combined = [...combined, ...filtered];
             }
+          } catch (e) {
+            console.log(`[STATS] Error loading manual account ${acc.id}:`, e);
+          }
+        } else {
+          // Connected account: fetch from API
+          try {
+            const data = await getTransactions(acc.id, apiFrom, apiTo);
+            let txs: Transaction[] = [];
+            if (Array.isArray(data.transactions)) {
+              txs = data.transactions;
+            } else {
+              txs = [
+                ...(data.transactions.booked || []),
+                ...(data.transactions.pending || []),
+              ];
+            }
+
+            // Handle Pagination (up to 3 pages for home screen stats)
+            if (data.continuation_key) {
+              let nextKey: string | undefined = data.continuation_key;
+              let pages = 0;
+              while (nextKey && pages < 3) {
+                try {
+                  const nextData = await getTransactions(acc.id, apiFrom, apiTo, nextKey);
+                  let nextTxs: Transaction[] = [];
+                  if (Array.isArray(nextData.transactions)) {
+                    nextTxs = nextData.transactions;
+                  } else {
+                    nextTxs = [
+                      ...(nextData.transactions.booked || []),
+                      ...(nextData.transactions.pending || []),
+                    ];
+                  }
+                  txs = [...txs, ...nextTxs];
+                  nextKey = nextData.continuation_key;
+                  pages++;
+                } catch (e) {
+                  break;
+                }
+              }
+            }
+
+            // Apply exact date filtering
             const filtered = txs.filter((t) => {
               const date = t.booking_date || t.value_date || "";
               return (!apiFrom || date >= apiFrom) && (!apiTo || date <= apiTo);
             });
-            console.log(`[STATS] After date filter: ${filtered.length} txs`);
             combined = [...combined, ...filtered];
-          } else {
-            console.log(`[STATS] Account ${acc.id} (${acc.type}): NO data in AsyncStorage for key "${key}"`);
+            
+            // Cache it for the account detail screen 
+            if (txs.length > 0) {
+              const cacheKey = `${CONNECTED_TRANSACTIONS_PREFIX}${acc.id}`;
+              await AsyncStorage.setItem(cacheKey, JSON.stringify(txs));
+            }
+          } catch (e) {
+             console.log(`[STATS] Error loading connected account ${acc.id} from API:`, e);
+             // Fallback to cache if API fails
+             const cacheKey = `${CONNECTED_TRANSACTIONS_PREFIX}${acc.id}`;
+             try {
+                const data = await AsyncStorage.getItem(cacheKey);
+                if (data) {
+                  const txs: Transaction[] = JSON.parse(data);
+                  const filtered = txs.filter((t) => {
+                    const date = t.booking_date || t.value_date || "";
+                    return (!apiFrom || date >= apiFrom) && (!apiTo || date <= apiTo);
+                  });
+                  combined = [...combined, ...filtered];
+                }
+             } catch (cacheErr) {}
           }
-        } catch (e) {
-          console.log(`[STATS] Error loading account ${acc.id}:`, e);
         }
       }
 
@@ -262,18 +329,6 @@ export default function HomeScreen() {
       style: "currency",
       currency: "EUR",
     }).format(amount);
-  };
-
-  const openDateModal = () => {
-    setTempFrom(filterDateFrom);
-    setTempTo(filterDateTo);
-    setDateModalVisible(true);
-  };
-
-  const applyDateFilter = () => {
-    setFilterDateFrom(tempFrom);
-    setFilterDateTo(tempTo);
-    setDateModalVisible(false);
   };
 
   return (

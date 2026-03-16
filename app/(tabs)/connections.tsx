@@ -93,6 +93,7 @@ export default function ConnectionsScreen() {
       }
     };
 
+    // -- Native Deep Link Listener --
     // Check initial URL (Cold start)
     Linking.getInitialURL().then(handleUrl);
 
@@ -100,7 +101,31 @@ export default function ConnectionsScreen() {
     const subscription = Linking.addEventListener("url", (event) =>
       handleUrl(event.url),
     );
-    return () => subscription.remove();
+
+    // -- Web Popup Listener --
+    // Listen for messages from the Vercel auth popup
+    const handleMessage = (event: MessageEvent) => {
+      if (Platform.OS === "web" && event.data && event.data.type === "BANK_AUTH_RESULT") {
+        const { code, error } = event.data;
+        if (error) {
+          Alert.alert("Connection Failed", error);
+          setConnecting(false);
+          setAuthUrl(null);
+        } else if (code) {
+          handleAuthCode(code);
+        }
+      }
+    };
+    if (Platform.OS === "web") {
+      window.addEventListener("message", handleMessage);
+    }
+
+    return () => {
+      subscription.remove();
+      if (Platform.OS === "web") {
+        window.removeEventListener("message", handleMessage);
+      }
+    };
   }, [sessions]);
 
   const loadBanks = async () => {
@@ -186,10 +211,19 @@ export default function ConnectionsScreen() {
       const authData = await startAuth(bank.name, bank.country);
 
       if (Platform.OS === "web") {
-        // Web: Set URL and let user click to open (avoids popup blocker)
-        setAuthUrl(authData.url);
+        // Web: Open a popup window directly. The popup will handle the redirect
+        // and message back the code using window.opener.postMessage.
+        const width = 500;
+        const height = 700;
+        const left = window.screen.width / 2 - width / 2;
+        const top = window.screen.height / 2 - height / 2;
+        window.open(
+          authData.url,
+          "BankAuth",
+          `width=${width},height=${height},top=${top},left=${left},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+        );
       } else {
-        // Native: Open immediately
+        // Native: Open immediately using standard WebBrowser
         await WebBrowser.openBrowserAsync(authData.url);
       }
     } catch (err: any) {
@@ -330,54 +364,17 @@ export default function ConnectionsScreen() {
 
       {connecting && !showManualInput ? (
         <View style={styles.connectingContainer}>
-          {authUrl && Platform.OS === "web" ? (
-            <View style={{ alignItems: "center", gap: 16 }}>
-              <Text
-                style={[
-                  styles.connectingText,
-                  { color: textColor, textAlign: "center" },
-                ]}
-              >
-                {i18n.ready_to_connect || "Ready to connect!"}
+          <View style={{ alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <ActivityIndicator size="large" color={tintColor} />
+            <Text style={[styles.connectingText, { color: textColor, marginTop: 10 }]}>
+              {i18n.connecting}
+            </Text>
+            {Platform.OS === "web" && (
+              <Text style={{ color: textColor, opacity: 0.6, fontSize: 12, textAlign: "center", marginTop: 10 }}>
+                Waiting for bank authorization in popup...
               </Text>
-              <TouchableOpacity
-                style={[
-                  styles.connectButton,
-                  {
-                    backgroundColor: tintColor,
-                    marginTop: 0,
-                    paddingHorizontal: 24,
-                  },
-                ]}
-                onPress={() => WebBrowser.openBrowserAsync(authUrl)}
-              >
-                <Text
-                  style={[styles.connectButtonText, { color: backgroundColor }]}
-                >
-                  {i18n.open_bank_login || "Open Bank Login"}
-                </Text>
-              </TouchableOpacity>
-              <Text
-                style={{
-                  color: textColor,
-                  opacity: 0.6,
-                  fontSize: 12,
-                  textAlign: "center",
-                  maxWidth: 250,
-                }}
-              >
-                (Pop-up blockers may prevent automatic opening. Click the button
-                above to proceed.)
-              </Text>
-            </View>
-          ) : (
-            <>
-              <ActivityIndicator size="large" color={tintColor} />
-              <Text style={[styles.connectingText, { color: textColor }]}>
-                {i18n.connecting}
-              </Text>
-            </>
-          )}
+            )}
+          </View>
 
           <TouchableOpacity
             onPress={() => setShowManualInput(true)}

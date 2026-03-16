@@ -629,7 +629,7 @@ export default function AccountDetailScreen() {
           id: getStableTxId(tx),
           creditor: tx.creditor?.name || "Unknown",
           debtor: tx.debtor?.name || "Unknown",
-          amount: tx.transaction_amount.amount,
+          amount: getTransactionAmount(tx),
           // We provide the cleaned reference AND the raw one to give AI more context
           reference: cleanRef,
           raw_reference:
@@ -663,8 +663,8 @@ INSTRUCTIONS:
 2. Assign the MOST APPROPRIATE category ID from the available list.
 3. If a transaction clearly fits a category (e.g., "Rewe" -> Groceries, "Shell" -> Gas), ASSIGN IT.
 4. CRITICAL RULE FOR INCOME VS EXPENSE: 
-   - If the amount is POSITIVE (Income), you MUST assign it to the category representing Income (e.g., "Einkommen", "Income"). Do NOT assign it to anything else.
-   - If the amount is NEGATIVE (Expense), you MUST NOT assign it to the Income category. Assign it to the most relevant expense category.
+   - Note the "amount" field we provided. If the amount has a MINUS sign (-) before it (e.g. -45.00), it is an EXPENSE. You MUST assign it to an expense category. You MUST NOT assign it to the Income category.
+   - If the amount is POSITIVE (no minus sign, e.g. 100.00), it is INCOME. You MUST assign it to the category representing Income (e.g., "Einkommen", "Income"). Do NOT assign it to anything else.
 5. If NO existing category fits, BUT you are confident it belongs to a common category, you may suggest a NEW category name.
 IMPORTANT: Aim for a COMPACT list of categories. Do not create granular categories like "Coffee" or "Gym"; instead consolidate into "Lifestyle" or "Leisure". Ideally, keep the TOTAL number of categories around 6-7 if possible. Prefer broader categories like "Shopping", "Mobility", "Living", "Lifestyle".
 6. If a transaction is ambiguous or absolutely does not fit any category (existing or new), assign null.
