@@ -1,0 +1,51 @@
+Act as a Senior React Native & Expo Developer. Your task is to refactor the directory structure of my Expo app from a "Type-Driven" architecture into a "Feature-Driven" (Domain-Driven) architecture. 
+
+CRITICAL RULE: DO NOT change, add, or remove any application functionality, business logic, or UI behavior. This is strictly a structural refactor to reorganize files and fix import paths.
+
+### 1. Current State Summary
+Currently, files are grouped by their type:
+- `/app` contains both routing AND business logic/screen UI.
+- `/components` contains both global UI and feature-specific UI.
+- `/hooks` contains global hooks and feature-specific hooks.
+- `/context` contains feature-specific state.
+- `/api` contains the Express backend.
+
+### 2. Desired Directory Structure
+Please reorganize the project to match the following structure:
+
+/app                        (ONLY Expo routing - thin wrappers)
+/src/
+  ├── features/             (Grouped by Domain)
+  │   ├── accounts/         (hooks, components, context related to accounts)
+  │   ├── transactions/     (hooks, components, utils related to transactions)
+  │   ├── debts/            (hooks, components, context related to debts)
+  │   ├── invest/           (hooks related to investments)
+  │   └── dashboard/        (hooks, components for the main overview)
+  ├── shared/               (Generic code)
+  │   ├── components/       (Dumb UI: generic cards, buttons, wrappers)
+  │   ├── context/          (Global state: SettingsContext)
+  │   ├── hooks/            (Generic hooks: theme, keyboard)
+  │   └── utils/            (Global helpers: date.ts, financeHelpers.ts)
+  ├── constants/            (Colors, Themes)
+  └── services/             (API client configs/fetchers)
+/server                     (Rename /api to /server - Node/Express backend)
+
+### 3. Execution Steps
+Please execute (or provide a script to execute) this refactoring in the following exact order:
+
+STEP 1: Create the new `/src` directory and all necessary subdirectories (`features`, `shared`, `constants`, `services`).
+STEP 2: Rename the `/api` directory to `/server`.
+STEP 3: Move global and generic files:
+  - Move global constants to `/src/constants/`.
+  - Move generic UI components (like BalanceCard, UI wrappers) to `/src/shared/components/`.
+  - Move generic utilities and contexts (like SettingsContext) to `/src/shared/`.
+STEP 4: Migrate features to `/src/features/`:
+  - Identify all components, hooks, and contexts related to "Accounts" and move them to `/src/features/accounts/`.
+  - Repeat this grouping process for "Debts", "Transactions", "Invest", and "Dashboard".
+STEP 5: Make `/app` a "Thin Layer":
+  - Extract the UI and business logic from the screens in `/app/` into standard React components (e.g., `<AccountsScreen />`) inside their respective `/src/features/...` folder.
+  - Keep ONLY the Expo Router default exports inside `/app`, importing the extracted screen components.
+STEP 6: Fix All Imports:
+  - Carefully analyze all moved files and update the `import` statements across the entire project so the app compiles without errors. Ensure absolute or relative paths are perfectly mapped to the new `/src` structure.
+
+Please acknowledge these instructions. If you have the ability to move files and edit code directly (like in Cursor), begin Step 1. If you are a text-based AI, output a comprehensive Node.js or Bash script that will safely create the folders, move the files, and update the imports.

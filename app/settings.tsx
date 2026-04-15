@@ -10,8 +10,8 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
-import { useSettings } from "../context/SettingsContext";
-import { useThemeColor } from "../hooks/use-theme-color";
+import { useSettings } from "../src/shared/context/SettingsContext";
+import { useThemeColor } from "../src/shared/hooks/use-theme-color";
 
 export default function SettingsScreen() {
   const router = useRouter();

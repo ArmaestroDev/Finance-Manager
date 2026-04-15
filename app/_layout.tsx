@@ -9,11 +9,11 @@ import { useEffect } from "react";
 import { Platform } from "react-native";
 import "react-native-reanimated";
 
-import { AccountsProvider } from "../context/AccountsContext";
-import { CategoriesProvider } from "../context/CategoriesContext";
-import { DebtsProvider } from "../context/DebtsContext";
-import { SettingsProvider } from "../context/SettingsContext";
-import { useColorScheme } from "../hooks/use-color-scheme";
+import { AccountsProvider } from "../src/features/accounts/context/AccountsContext";
+import { CategoriesProvider } from "../src/features/transactions/context/CategoriesContext";
+import { DebtsProvider } from "../src/features/debts/context/DebtsContext";
+import { SettingsProvider } from "../src/shared/context/SettingsContext";
+import { useColorScheme } from "../src/shared/hooks/use-color-scheme";
 
 export const unstable_settings = {
   anchor: "(tabs)",

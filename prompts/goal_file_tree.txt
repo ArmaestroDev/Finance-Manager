@@ -1,0 +1,55 @@
+finance-manager/
+├── app/                        # 1. EXPO ROUTING ONLY (Thin Layer)
+│   ├── _layout.tsx
+│   ├── (tabs)/
+│   │   ├── _layout.tsx
+│   │   ├── index.tsx           # Renders <DashboardScreen />
+│   │   ├── accounts.tsx        # Renders <AccountsScreen />
+│   │   └── debts.tsx
+│   └── account/
+│       └── [id].tsx
+│
+├── src/                        # 2. MAIN APPLICATION CODE
+│   ├── features/               # -> Grouped by Business Domain
+│   │   ├── accounts/
+│   │   │   ├── components/     # (AddAccountModal.tsx, BankSelectionModal.tsx)
+│   │   │   ├── hooks/          # (useAccounts.ts, useBankConnections.ts)
+│   │   │   └── context/        # (AccountsContext.tsx)
+│   │   │
+│   │   ├── transactions/
+│   │   │   ├── components/     # (TransactionItem.tsx, AddTransactionModal.tsx)
+│   │   │   ├── hooks/          # (useAccountTransactions.ts, useAutoCategorize.ts)
+│   │   │   └── utils/          # (transactions.ts parser)
+│   │   │
+│   │   ├── debts/
+│   │   │   ├── components/     # (AddDebtModal.tsx)
+│   │   │   └── context/        # (DebtsContext.tsx)
+│   │   │
+│   │   ├── invest/
+│   │   │   └── hooks/          # (useInvestCalculator.ts)
+│   │   │
+│   │   └── dashboard/
+│   │       ├── components/     # (StatsOverview.tsx, BalanceCard.tsx)
+│   │       └── hooks/          # (useFinanceStats.ts)
+│   │
+│   ├── shared/                 # -> Global Reusable Code (Dumb Components)
+│   │   ├── components/         # Generic UI (Button, Card, CategoryFilterBar, haptic-tab)
+│   │   ├── context/            # App-wide State (SettingsContext.tsx)
+│   │   ├── hooks/              # Generic hooks (useTheme, useKeyboard)
+│   │   └── utils/              # Global helpers (date.ts, financeHelpers.ts)
+│   │
+│   ├── constants/              # Global Static Configs (Colors.ts, Theme.ts)
+│   └── services/               # API / External Communication
+│       └── api.ts              # Axios/Fetch clients talking to Express API
+│
+├── server/                     # 3. EXPRESS BACKEND (Renamed from /api)
+│   ├── package.json            # Separate dependencies for the backend
+│   ├── index.js                # Express Server
+│   ├── routes/                 # Separated route logic
+│   └── middleware/             # JWT, CORS middleware
+│
+├── assets/                     # Fonts, Images, Splash screens
+├── dist/                       # Web build artifacts
+├── package.json                # Frontend/Expo dependencies
+├── app.json
+└── vercel.json
