@@ -1,6 +1,7 @@
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import isoWeek from "dayjs/plugin/isoWeek";
+import "dayjs/locale/de";
 import React, { useEffect, useState } from "react";
 import {
   Modal,
@@ -28,6 +29,7 @@ interface DateFilterModalProps {
   backgroundColor: string;
   textColor: string;
   tintColor: string;
+  i18n: Record<string, string>;
 }
 
 export function DateFilterModal({
@@ -42,7 +44,16 @@ export function DateFilterModal({
   backgroundColor,
   textColor,
   tintColor,
+  i18n,
 }: DateFilterModalProps) {
+  useEffect(() => {
+    if (i18n.german === "Deutsch") {
+      dayjs.locale("de");
+    } else {
+      dayjs.locale("en");
+    }
+  }, [i18n]);
+
   const [range, setRange] = useState<{
     startDate: dayjs.Dayjs | undefined;
     endDate: dayjs.Dayjs | undefined;
@@ -129,7 +140,9 @@ export function DateFilterModal({
 
     const weeks = [];
     for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
-    const weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+    const weekdays = i18n.german === "Deutsch" 
+      ? ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+      : ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
     return (
       <View style={styles.calendarContainer}>
@@ -250,7 +263,7 @@ export function DateFilterModal({
               activeOpacity={0.8}
             >
               <Text style={{ color: textColor, opacity: 0.6, fontSize: 12, marginBottom: 4 }}>
-                From (DD.MM.YYYY)
+                {i18n.from} (DD.MM.YYYY)
               </Text>
               <TextInput
                 style={[styles.dateInput, { color: textColor }]}
@@ -273,7 +286,7 @@ export function DateFilterModal({
               activeOpacity={0.8}
             >
               <Text style={{ color: textColor, opacity: 0.6, fontSize: 12, marginBottom: 4 }}>
-                To (DD.MM.YYYY)
+                {i18n.to} (DD.MM.YYYY)
               </Text>
               <TextInput
                 style={[styles.dateInput, { color: textColor }]}
@@ -292,13 +305,13 @@ export function DateFilterModal({
 
           <View style={styles.modalButtons}>
             <TouchableOpacity onPress={onCancel} style={styles.modalButton}>
-              <Text style={{ color: textColor }}>Cancel</Text>
+              <Text style={{ color: textColor }}>{i18n.cancel}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleApply}
               style={[styles.modalButton, { backgroundColor: tintColor }]}
             >
-              <Text style={{ color: backgroundColor, fontWeight: "600" }}>Apply</Text>
+              <Text style={{ color: backgroundColor, fontWeight: "600" }}>{i18n.apply}</Text>
             </TouchableOpacity>
           </View>
         </View>

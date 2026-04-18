@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { BalanceCard } from "./BalanceCard";
 import { DateFilterModal } from "../../../../shared/components/DateFilterModal";
 import { StatsOverview } from "./StatsOverview";
@@ -17,12 +17,11 @@ export function DashboardScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
   const tintColor = useThemeColor({}, "tint");
-  const surfaceColor = useThemeColor({}, "surface");
   const router = useRouter();
   const { isBalanceHidden, i18n, mainAccountId } = useSettings();
   const { categories, transactionCategoryMap } = useCategories();
 
-  const { allTransactions, statsLoading, filterDateFrom, filterDateTo, accounts, cashBalance, refreshAccounts, isRefreshing, loadAllTransactions, applyDateFilter } = useFinanceData();
+  const { allTransactions, statsLoading, filterDateFrom, filterDateTo, accounts, cashBalance, refreshAccounts, loadAllTransactions, applyDateFilter } = useFinanceData();
   const { totalAssets, totalLiabilities, totalIncome, totalExpenses, categoryBreakdown, pieData } = useFinanceStats({ allTransactions, accounts, cashBalance, categories, transactionCategoryMap });
   const { setSelectedCategoryId } = useDateFilter();
 
@@ -78,13 +77,13 @@ export function DashboardScreen() {
         backgroundColor={backgroundColor}
         textColor={textColor}
         tintColor={tintColor}
+        i18n={i18n}
       />
-
       {/* Two-column desktop layout */}
       <View style={styles.twoColumn}>
         {/* Left column: balance cards */}
         <View style={styles.leftPanel}>
-          <Text style={[styles.sectionLabel, { color: textColor, opacity: 0.5 }]}>OVERVIEW</Text>
+          <Text style={[styles.sectionLabel, { color: textColor, opacity: 0.5 }]}>{i18n.overview_title.toUpperCase()}</Text>
           <BalanceCard
             title={i18n.total_assets}
             amount={isBalanceHidden ? "*****" : formatAmount(totalAssets)}
@@ -99,12 +98,6 @@ export function DashboardScreen() {
               textColor="#cc0000"
             />
           )}
-          <View style={[styles.netCard, { backgroundColor: surfaceColor }]}>
-            <Text style={[styles.netLabel, { color: textColor, opacity: 0.5 }]}>NET WORTH</Text>
-            <Text style={[styles.netAmount, { color: totalAssets - totalLiabilities >= 0 ? "#2ecc71" : "#e74c3c" }]}>
-              {isBalanceHidden ? "*****" : formatAmount(totalAssets - totalLiabilities)}
-            </Text>
-          </View>
           {isBalanceHidden && (
             <Text style={{ color: textColor, opacity: 0.4, fontSize: 12, textAlign: "center", marginTop: 8 }}>
               {i18n.balances_hidden}
@@ -148,8 +141,5 @@ const styles = StyleSheet.create({
   leftPanel: { width: 300, padding: 24, borderRightWidth: 1, borderRightColor: "rgba(128,128,128,0.1)", gap: 0 },
   rightPanel: { flex: 1, padding: 24, overflow: "scroll" as any },
   sectionLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 1, marginBottom: 16 },
-  netCard: { borderRadius: 16, padding: 20, marginTop: 4 },
-  netLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 1, marginBottom: 6 },
-  netAmount: { fontSize: 28, fontWeight: "800" },
   statsSectionHeader: { marginBottom: 16 },
 });

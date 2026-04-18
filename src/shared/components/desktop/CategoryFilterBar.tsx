@@ -1,7 +1,10 @@
 import React, { useMemo } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import {
+  getStableTxId,
+  getTransactionAmount,
+} from "../../../features/transactions/utils/transactions";
 import type { Transaction } from "../../../services/enableBanking";
-import { getStableTxId, getTransactionAmount } from "../../../features/transactions/utils/transactions";
 import { formatAmount } from "../../utils/financeHelpers";
 
 interface TransactionCategory {
@@ -60,7 +63,7 @@ export function CategoryFilterBar({
       <View style={styles.statsRow}>
         <View style={styles.statItem}>
           <Text style={[styles.statLabel, { color: textColor, opacity: 0.6 }]}>
-            {i18n.income || "Income"}
+            {i18n.income}
           </Text>
           <Text style={[styles.statValue, { color: "#2ecc71" }]}>
             {isBalanceHidden ? "*****" : formatAmount(accountIncome)}
@@ -69,7 +72,7 @@ export function CategoryFilterBar({
         <View style={[styles.divider, { backgroundColor: textColor + "20" }]} />
         <View style={styles.statItem}>
           <Text style={[styles.statLabel, { color: textColor, opacity: 0.6 }]}>
-            {i18n.expenses || "Expenses"}
+            {i18n.expenses}
           </Text>
           <Text style={[styles.statValue, { color: "#e74c3c" }]}>
             {isBalanceHidden ? "*****" : formatAmount(accountExpenses)}
@@ -77,9 +80,21 @@ export function CategoryFilterBar({
         </View>
         <View style={[styles.divider, { backgroundColor: textColor + "20" }]} />
         <View style={styles.statItem}>
-          <Text style={[styles.statLabel, { color: textColor, opacity: 0.6 }]}>Net</Text>
-          <Text style={[styles.statValue, { color: accountIncome - accountExpenses >= 0 ? "#2ecc71" : "#e74c3c" }]}>
-            {isBalanceHidden ? "*****" : formatAmount(accountIncome - accountExpenses)}
+          <Text style={[styles.statLabel, { color: textColor, opacity: 0.6 }]}>
+            {i18n.net}
+          </Text>
+          <Text
+            style={[
+              styles.statValue,
+              {
+                color:
+                  accountIncome - accountExpenses >= 0 ? "#2ecc71" : "#e74c3c",
+              },
+            ]}
+          >
+            {isBalanceHidden
+              ? "*****"
+              : formatAmount(accountIncome - accountExpenses)}
           </Text>
         </View>
 
@@ -89,10 +104,18 @@ export function CategoryFilterBar({
             onPress={() => onSelectFilter(null)}
             style={[
               styles.pill,
-              { backgroundColor: !selectedFilter ? tintColor : textColor + "15" },
+              {
+                backgroundColor: !selectedFilter ? tintColor : textColor + "15",
+              },
             ]}
           >
-            <Text style={{ color: !selectedFilter ? "#fff" : textColor, fontSize: 12, fontWeight: "600" }}>
+            <Text
+              style={{
+                color: !selectedFilter ? "#fff" : textColor,
+                fontSize: 12,
+                fontWeight: "600",
+              }}
+            >
               All
             </Text>
           </TouchableOpacity>
@@ -102,14 +125,33 @@ export function CategoryFilterBar({
             return (
               <TouchableOpacity
                 key={cat.id}
-                onPress={() => onSelectFilter(selectedFilter === cat.id ? null : cat.id)}
+                onPress={() =>
+                  onSelectFilter(selectedFilter === cat.id ? null : cat.id)
+                }
                 style={[
                   styles.pill,
-                  { backgroundColor: selectedFilter === cat.id ? cat.color : cat.color + "20" },
+                  {
+                    backgroundColor:
+                      selectedFilter === cat.id ? cat.color : cat.color + "20",
+                  },
                 ]}
               >
-                <View style={[styles.pillDot, { backgroundColor: selectedFilter === cat.id ? "#fff" : cat.color }]} />
-                <Text style={{ color: selectedFilter === cat.id ? "#fff" : textColor, fontSize: 12, fontWeight: "600" }}>
+                <View
+                  style={[
+                    styles.pillDot,
+                    {
+                      backgroundColor:
+                        selectedFilter === cat.id ? "#fff" : cat.color,
+                    },
+                  ]}
+                />
+                <Text
+                  style={{
+                    color: selectedFilter === cat.id ? "#fff" : textColor,
+                    fontSize: 12,
+                    fontWeight: "600",
+                  }}
+                >
                   {cat.name}
                   {!isBalanceHidden && total !== 0 && (
                     <Text style={{ fontSize: 10, opacity: 0.8 }}>
@@ -137,10 +179,28 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   statItem: { alignItems: "center", minWidth: 80 },
-  statLabel: { fontSize: 11, marginBottom: 2, textTransform: "uppercase", letterSpacing: 0.5 },
+  statLabel: {
+    fontSize: 11,
+    marginBottom: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
   statValue: { fontSize: 16, fontWeight: "700" },
   divider: { width: 1, height: 32, borderRadius: 1 },
-  pillsRow: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" },
-  pill: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20 },
+  pillsRow: {
+    flex: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    justifyContent: "flex-end",
+  },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+  },
   pillDot: { width: 6, height: 6, borderRadius: 3 },
 });

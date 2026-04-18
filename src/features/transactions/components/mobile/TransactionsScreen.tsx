@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, SectionList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSettings } from "../../../../shared/context/SettingsContext";
 import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
 import { useDateFilter } from "../../../../shared/context/DateFilterContext";
@@ -9,6 +9,7 @@ import { useCategories } from "../../context/CategoriesContext";
 import { useFinanceData } from "../../../dashboard/hooks/useFinanceData";
 import { useFinanceStats } from "../../../dashboard/hooks/useFinanceStats";
 import { CategoryFilterBar } from "../../../../shared/components/CategoryFilterBar";
+import { TransactionStatsSummary } from "../../../../shared/components/TransactionStatsSummary";
 import { TransactionItem } from "../TransactionItem";
 import { DateFilterModal } from "../../../../shared/components/DateFilterModal";
 import { getStableTxId } from "../../utils/transactions";
@@ -43,6 +44,20 @@ export function TransactionsScreen() {
     });
   }, [allTransactions, selectedCategoryId, getCategoryForTransaction]);
 
+  const groupedTransactions = useMemo(() => {
+    const groups: { [key: string]: any[] } = {};
+    filteredTransactions.forEach((tx) => {
+      const dateStr = tx.booking_date || tx.value_date || "";
+      const date = dateStr ? new Date(dateStr).toLocaleDateString() : "Unknown Date";
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(tx);
+    });
+    return Object.keys(groups).map((date) => ({
+      title: date,
+      data: groups[date],
+    }));
+  }, [filteredTransactions]);
+
   const handleTransactionPress = (tx: any) => {};
 
   return (
@@ -59,6 +74,15 @@ export function TransactionsScreen() {
         </TouchableOpacity>
       </View>
 
+      <TransactionStatsSummary
+        income={totalIncome}
+        expenses={totalExpenses}
+        isBalanceHidden={isBalanceHidden}
+        textColor={textColor}
+        i18n={i18n}
+        style={{ marginBottom: 24 }}
+      />
+
       <CategoryFilterBar
         categories={categories}
         transactions={allTransactions}
@@ -71,6 +95,7 @@ export function TransactionsScreen() {
         textColor={textColor}
         tintColor={tintColor}
         i18n={i18n}
+        showStats={false}
       />
 
       {statsLoading && allTransactions.length === 0 ? (
@@ -78,8 +103,8 @@ export function TransactionsScreen() {
           <ActivityIndicator size="large" color={tintColor} />
         </View>
       ) : (
-        <FlatList
-          data={filteredTransactions}
+        <SectionList
+          sections={groupedTransactions}
           renderItem={({ item }) => (
             <TransactionItem
               item={item}
@@ -87,8 +112,14 @@ export function TransactionsScreen() {
               onPress={handleTransactionPress}
             />
           )}
+          renderSectionHeader={({ section: { title } }) => (
+            <View style={[styles.sectionHeader, { backgroundColor }]}>
+              <Text style={[styles.sectionTitle, { color: textColor }]}>{title}</Text>
+            </View>
+          )}
           keyExtractor={(item) => getStableTxId(item)}
           contentContainerStyle={styles.listContent}
+          stickySectionHeadersEnabled={true}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -119,6 +150,7 @@ export function TransactionsScreen() {
         backgroundColor={backgroundColor}
         textColor={textColor}
         tintColor={tintColor}
+        i18n={i18n}
       />
     </View>
   );
@@ -133,4 +165,6 @@ const styles = StyleSheet.create({
   listContent: { paddingBottom: 40 },
   emptyState: { marginTop: 80, alignItems: "center", gap: 12 },
   emptyText: { fontSize: 16, fontWeight: "600" },
+  sectionHeader: { paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: "rgba(128,128,128,0.1)", marginBottom: 8 },
+  sectionTitle: { fontSize: 14, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.6 },
 });

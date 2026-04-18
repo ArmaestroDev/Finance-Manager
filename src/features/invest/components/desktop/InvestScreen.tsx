@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useColorScheme, useWindowDimensions } from "react-native";
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { useColorScheme } from "../../../../shared/hooks/use-color-scheme";
 import { LineChart } from "react-native-gifted-charts";
 import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
 import { useSettings } from "../../../../shared/context/SettingsContext";

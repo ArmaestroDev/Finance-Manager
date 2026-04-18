@@ -33,6 +33,8 @@ export default function SettingsScreen() {
     setLanguage,
     mainAccountId,
     setMainAccountId,
+    theme,
+    setTheme,
     i18n,
   } = useSettings();
 
@@ -48,6 +50,7 @@ export default function SettingsScreen() {
   const [keyInput, setKeyInput] = useState("");
   const [isLangModalVisible, setLangModalVisible] = useState(false);
   const [isMainAccModalVisible, setMainAccModalVisible] = useState(false);
+  const [isThemeModalVisible, setThemeModalVisible] = useState(false);
 
   const activeMainAccount = accounts.find(a => a.id === mainAccountId) || 
                           accounts.find(a => a.category === "Giro") || 
@@ -153,6 +156,26 @@ export default function SettingsScreen() {
               </Text>
               <Text style={[styles.rowSubLabel, { color: textColor }]}>
                 {i18n.language_sub}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>
+            {i18n.appearance}
+          </Text>
+          <TouchableOpacity
+            style={[styles.row, { borderBottomColor: textColor + "20" }]}
+            onPress={() => setThemeModalVisible(true)}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowLabel, { color: textColor }]}>
+                {theme === "system" ? i18n.theme_system : theme === "dark" ? i18n.theme_dark : i18n.theme_light}
+              </Text>
+              <Text style={[styles.rowSubLabel, { color: textColor }]}>
+                {i18n.appearance_sub}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
@@ -465,6 +488,82 @@ export default function SettingsScreen() {
             <View style={[styles.modalButtons, { marginTop: 24 }]}>
               <TouchableOpacity
                 onPress={() => setMainAccModalVisible(false)}
+                style={styles.modalButton}
+              >
+                <Text style={{ color: textColor }}>{i18n.cancel}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Theme Selection Modal */}
+      <Modal
+        visible={isThemeModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setThemeModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor }]}>
+            <Text style={[styles.modalTitle, { color: textColor }]}>
+              {i18n.appearance}
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.selectionRow,
+                {
+                  borderBottomColor: textColor + "10",
+                },
+              ]}
+              onPress={() => {
+                setTheme("system");
+                setThemeModalVisible(false);
+              }}
+            >
+              <Text style={{ color: textColor, fontSize: 18 }}>
+                {i18n.theme_system} {theme === "system" && "✓"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.selectionRow,
+                {
+                  borderBottomColor: textColor + "10",
+                },
+              ]}
+              onPress={() => {
+                setTheme("light");
+                setThemeModalVisible(false);
+              }}
+            >
+              <Text style={{ color: textColor, fontSize: 18 }}>
+                {i18n.theme_light} {theme === "light" && "✓"}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.selectionRow,
+                {
+                  borderBottomColor: textColor + "10",
+                },
+              ]}
+              onPress={() => {
+                setTheme("dark");
+                setThemeModalVisible(false);
+              }}
+            >
+              <Text style={{ color: textColor, fontSize: 18 }}>
+                {i18n.theme_dark} {theme === "dark" && "✓"}
+              </Text>
+            </TouchableOpacity>
+
+            <View style={[styles.modalButtons, { marginTop: 24 }]}>
+              <TouchableOpacity
+                onPress={() => setThemeModalVisible(false)}
                 style={styles.modalButton}
               >
                 <Text style={{ color: textColor }}>{i18n.cancel}</Text>

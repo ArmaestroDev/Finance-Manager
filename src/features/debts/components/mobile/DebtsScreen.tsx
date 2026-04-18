@@ -135,9 +135,9 @@ export function DebtsScreen() {
         style={[styles.fab, { backgroundColor: tintColor }]}
         onPress={() => {
           if (entities.length === 0) {
-            Alert.alert("No People", "Please add a person first.", [
-              { text: "Cancel", style: "cancel" },
-              { text: "Add Person", onPress: () => setManageModalVisible(true) },
+            Alert.alert(i18n.add_person_alert_title, i18n.add_person_alert_msg, [
+              { text: i18n.cancel, style: "cancel" },
+              { text: i18n.add_person_btn, onPress: () => setManageModalVisible(true) },
             ]);
           } else {
             setAddDebtModalVisible(true);

@@ -30,7 +30,7 @@ export function ConnectionsScreen() {
       <View style={styles.twoColumn}>
         {/* Left: connect button and status */}
         <View style={[styles.leftPanel, { borderRightColor: textColor + "10" }]}>
-          <Text style={[styles.sectionLabel, { color: textColor }]}>CONNECT A BANK</Text>
+          <Text style={[styles.sectionLabel, { color: textColor }]}>{i18n.connect_bank.toUpperCase()}</Text>
           {connecting && !showManualInput ? (
             <View style={styles.connectingBox}>
               <ActivityIndicator size="large" color={tintColor} />
@@ -71,7 +71,7 @@ export function ConnectionsScreen() {
         {/* Right: connected sessions */}
         <View style={styles.rightPanel}>
           <Text style={[styles.sectionLabel, { color: textColor, marginBottom: 16 }]}>
-            CONNECTED ACCOUNTS ({sessions.length})
+            {i18n.connected_accounts.toUpperCase()} ({sessions.length})
           </Text>
           {sessions.length === 0 ? (
             <View style={styles.emptyState}>

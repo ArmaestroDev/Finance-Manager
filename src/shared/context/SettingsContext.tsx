@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { Strings } from "../../constants/Strings";
 
 type Language = "en" | "de";
+export type ThemeAppearance = "system" | "light" | "dark";
 
 interface SettingsContextType {
   isBalanceHidden: boolean;
@@ -10,16 +11,18 @@ interface SettingsContextType {
   geminiApiKey: string | null;
   language: Language;
   mainAccountId: string | null;
+  theme: ThemeAppearance;
   toggleBalanceHidden: (pin?: string) => Promise<boolean>;
   setPin: (newPin: string) => Promise<void>;
   verifyPin: (pin: string) => boolean;
   setGeminiApiKey: (key: string) => Promise<void>;
   setLanguage: (lang: Language) => Promise<void>;
   setMainAccountId: (id: string) => Promise<void>;
-  i18n: typeof Strings.en;
+  setTheme: (newTheme: ThemeAppearance) => Promise<void>;
+  i18n: typeof Strings.de;
 }
 
-const SettingsContext = createContext<SettingsContextType | undefined>(
+export const SettingsContext = createContext<SettingsContextType | undefined>(
   undefined,
 );
 
@@ -29,6 +32,7 @@ const STORAGE_KEYS = {
   GEMINI_API_KEY: "settings_gemini_api_key",
   LANGUAGE: "settings_language",
   MAIN_ACCOUNT_ID: "settings_main_account_id",
+  THEME: "settings_theme",
 };
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
@@ -37,6 +41,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [geminiApiKey, setGeminiApiKeyState] = useState<string | null>(null);
   const [language, setLanguageState] = useState<Language>("de");
   const [mainAccountId, setMainAccountIdState] = useState<string | null>(null);
+  const [theme, setThemeState] = useState<ThemeAppearance>("system");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -45,12 +50,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const loadSettings = async () => {
     try {
-      const [hidden, pin, apiKey, lang, mainAcc] = await Promise.all([
+      const [hidden, pin, apiKey, lang, mainAcc, storedTheme] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.BALANCE_HIDDEN),
         AsyncStorage.getItem(STORAGE_KEYS.USER_PIN),
         AsyncStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY),
         AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
         AsyncStorage.getItem(STORAGE_KEYS.MAIN_ACCOUNT_ID),
+        AsyncStorage.getItem(STORAGE_KEYS.THEME),
       ]);
       setIsBalanceHidden(hidden === "true");
       setUserPin(pin);
@@ -59,6 +65,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setLanguageState(lang);
       }
       setMainAccountIdState(mainAcc);
+      if (storedTheme === "system" || storedTheme === "light" || storedTheme === "dark") {
+        setThemeState(storedTheme as ThemeAppearance);
+      }
     } catch (e) {
       console.error("Failed to load settings", e);
     } finally {
@@ -87,6 +96,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const setMainAccountId = async (id: string) => {
     await AsyncStorage.setItem(STORAGE_KEYS.MAIN_ACCOUNT_ID, id);
     setMainAccountIdState(id);
+  };
+
+  const setTheme = async (newTheme: ThemeAppearance) => {
+    await AsyncStorage.setItem(STORAGE_KEYS.THEME, newTheme);
+    setThemeState(newTheme);
   };
 
   const verifyPin = (pin: string) => {
@@ -121,12 +135,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         geminiApiKey,
         language,
         mainAccountId,
+        theme,
         toggleBalanceHidden,
         setPin,
         verifyPin,
         setGeminiApiKey,
         setLanguage,
         setMainAccountId,
+        setTheme,
         i18n: Strings[language],
       }}
     >

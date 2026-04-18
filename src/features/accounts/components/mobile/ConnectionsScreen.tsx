@@ -47,6 +47,11 @@ export function ConnectionsScreen() {
       />
       <Text style={[styles.title, { color: textColor }]}>{i18n.connections_title}</Text>
       <Text style={[styles.subtitle, { color: textColor, opacity: 0.6 }]}>{i18n.connections_subtitle}</Text>
+      <View style={{ marginBottom: 16 }}>
+        <Text style={{ color: textColor, fontWeight: "700", fontSize: 13, textTransform: "uppercase", opacity: 0.5 }}>
+          {i18n.connected_accounts}
+        </Text>
+      </View>
       {sessions.length > 0 && (
         <FlatList data={sessions} renderItem={renderSession} keyExtractor={(item) => item.sessionId}
           style={styles.list} contentContainerStyle={styles.listContent} />

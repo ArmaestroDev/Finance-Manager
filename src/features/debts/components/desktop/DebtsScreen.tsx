@@ -45,14 +45,14 @@ export function DebtsScreen() {
             style={[styles.topBtn, { backgroundColor: tintColor }]}
             onPress={() => {
               if (entities.length === 0) {
-                Alert.alert("No People", "Please add a person first.", [{ text: "Cancel", style: "cancel" }, { text: "Add Person", onPress: () => setManageModalVisible(true) }]);
+                Alert.alert(i18n.no_people_alert_title || "No People", i18n.add_person_alert_msg, [{ text: i18n.cancel, style: "cancel" }, { text: i18n.add_person_btn, onPress: () => setManageModalVisible(true) }]);
               } else {
-                setAddDebtModalVisible(true);
+                setAddDebtDebtModalVisible(true);
               }
             }}
           >
             <Ionicons name="add" size={18} color={backgroundColor} />
-            <Text style={{ color: backgroundColor, fontWeight: "600", fontSize: 13 }}>Add Debt</Text>
+            <Text style={{ color: backgroundColor, fontWeight: "600", fontSize: 13 }}>{i18n.add_debt_title}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.topBtn, { backgroundColor: textColor + "10" }]} onPress={() => setManageModalVisible(true)}>
             <Ionicons name="people" size={18} color={textColor} />
@@ -65,27 +65,27 @@ export function DebtsScreen() {
       <View style={styles.twoColumn}>
         {/* Left: summary */}
         <View style={[styles.leftPanel, { borderRightColor: textColor + "10" }]}>
-          <Text style={[styles.sectionLabel, { color: textColor }]}>NET POSITION</Text>
+          <Text style={[styles.sectionLabel, { color: textColor }]}>{i18n.total_net_position.toUpperCase()}</Text>
           <Text style={[styles.totalAmount, { color: totalNet >= 0 ? "#2ecc71" : "#e74c3c" }]}>
             {totalNet < 0 ? "-" : "+"}{formatCurrency(totalNet)}
           </Text>
           <View style={[styles.summaryBreakdown, { backgroundColor: surfaceColor }]}>
             <View style={styles.breakRow}>
-              <Text style={{ color: "#2ecc71", fontSize: 13, fontWeight: "600" }}>They owe you</Text>
+              <Text style={{ color: "#2ecc71", fontSize: 13, fontWeight: "600" }}>{i18n.they_owe_you}</Text>
               <Text style={{ color: "#2ecc71", fontWeight: "700" }}>
                 +{formatCurrency(entitiesWithBalance.filter(e => e.netBalance > 0).reduce((s, e) => s + e.netBalance, 0))}
               </Text>
             </View>
             <View style={[styles.breakDivider, { backgroundColor: textColor + "10" }]} />
             <View style={styles.breakRow}>
-              <Text style={{ color: "#e74c3c", fontSize: 13, fontWeight: "600" }}>You owe</Text>
+              <Text style={{ color: "#e74c3c", fontSize: 13, fontWeight: "600" }}>{i18n.you_owe}</Text>
               <Text style={{ color: "#e74c3c", fontWeight: "700" }}>
                 -{formatCurrency(entitiesWithBalance.filter(e => e.netBalance < 0).reduce((s, e) => s + Math.abs(e.netBalance), 0))}
               </Text>
             </View>
           </View>
           <Text style={[styles.hint, { color: textColor }]}>
-            {entities.length} {entities.length === 1 ? "person" : "people"} tracked
+            {entities.length === 1 ? i18n.person_tracked : i18n.people_tracked.replace("{count}", entities.length.toString())}
           </Text>
         </View>
 
@@ -93,9 +93,9 @@ export function DebtsScreen() {
         <View style={styles.rightPanel}>
           {/* Table header */}
           <View style={[styles.tableHeader, { borderBottomColor: textColor + "15" }]}>
-            <Text style={[styles.th, { color: textColor }]}>Person</Text>
+            <Text style={[styles.th, { color: textColor }]}>{i18n.person_label}</Text>
             <Text style={[styles.th, { color: textColor }]}>Status</Text>
-            <Text style={[styles.thRight, { color: textColor }]}>Net Balance</Text>
+            <Text style={[styles.thRight, { color: textColor }]}>{i18n.net_balance}</Text>
           </View>
           <FlatList
             data={entitiesWithBalance}

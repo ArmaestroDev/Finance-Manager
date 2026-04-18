@@ -40,8 +40,8 @@ export function TransactionItem({ item, getCategoryForTransaction, onPress }: Tr
         </View>
         <View style={styles.transactionLeft}>
           <Text style={[styles.transactionName, { color: theme.text }]} numberOfLines={1}>{name}</Text>
-          <Text style={[styles.transactionDate, { color: theme.textSecondary }]}>
-            {date} {reference ? `• ${reference}` : ""}
+          <Text style={[styles.transactionDate, { color: theme.textSecondary }]} numberOfLines={1}>
+            {reference || ""}
           </Text>
         </View>
         <Text style={[styles.transactionAmount, { color: isNegative ? theme.text : theme.income }]}>

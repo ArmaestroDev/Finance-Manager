@@ -154,6 +154,7 @@ export function DashboardScreen() {
           backgroundColor={backgroundColor}
           textColor={textColor}
           tintColor={tintColor}
+          i18n={i18n}
         />
 
         <View style={styles.statsSection}>

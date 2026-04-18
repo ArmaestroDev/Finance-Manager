@@ -308,8 +308,8 @@ Example output format:
         ));
 
       if (isOverloaded) {
-        title = i18n.ai_overload_title || "AI Service Busy";
-        msg = i18n.ai_overload_msg || "The AI model is currently experiencing high demand. Please try again in a moment.";
+        title = i18n.ai_overload_title || "Service Busy";
+        msg = i18n.ai_overload_msg || "The categorization service is currently experiencing high demand. Please try again in a moment.";
       }
 
       if (Platform.OS === "web") {

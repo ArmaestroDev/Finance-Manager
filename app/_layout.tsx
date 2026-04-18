@@ -23,9 +23,21 @@ export const unstable_settings = {
   anchor: "(tabs)",
 };
 
-export default function RootLayout() {
+function RootLayoutInner() {
   const colorScheme = useColorScheme();
 
+  return (
+    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      </Stack>
+      <ImportQueueOverlay />
+      <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+    </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
   // Hide scrollbars on web while keeping scroll functionality
   useEffect(() => {
     if (Platform.OS === "web" && typeof document !== "undefined") {
@@ -73,15 +85,7 @@ export default function RootLayout() {
             <DebtsProvider>
               <TransactionsProvider>
                 <ImportQueueProvider>
-                  <ThemeProvider
-                    value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-                  >
-                    <Stack>
-                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                    </Stack>
-                    <ImportQueueOverlay />
-                    <StatusBar style="auto" />
-                  </ThemeProvider>
+                  <RootLayoutInner />
                 </ImportQueueProvider>
               </TransactionsProvider>
             </DebtsProvider>

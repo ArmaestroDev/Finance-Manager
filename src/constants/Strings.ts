@@ -27,7 +27,7 @@ export const Strings = {
     bank_assets: "Bank Assets",
     cash_at_hand: "Cash at Hand",
     edit_cash: "EDIT",
-    add_manual_account: "+ Add Manual Account",
+    add_manual_account: "Add Manual Account",
     no_accounts: "No accounts yet",
     no_accounts_hint: "Add a manual account or connect a bank",
     update_cash_title: "Update Cash Balance",
@@ -118,14 +118,16 @@ export const Strings = {
 
     // Account Details
     transactions_title: "Transactions",
+    date_range: "Date range",
+    date_range_title: "DATE RANGE",
     filter_all: "All Time",
     filter_year: "This Year",
     filter_90: "90 Days",
     filter_30: "30 Days",
     filter_custom: "Custom",
     add_transaction: "+ Add Transaction",
-    auto_categorize: "Auto-Categorize (AI)",
-    ai_processing: "AI is assigning magic...",
+    auto_categorize: "Categorizing",
+    ai_processing: "Categorizing...",
     delete_account: "Delete Account",
     delete_account_confirm:
       "Are you sure you want to delete this account? This action cannot be undone.",
@@ -135,12 +137,23 @@ export const Strings = {
     tx_amount_label: "Amount (negative for expense)",
     change_category: "Change Category",
     manage_categories: "Manage Categories",
-    ai_overload_title: "AI Service Busy",
-    ai_overload_msg: "The AI model is currently experiencing high demand. Please try again in a moment.",
+    ai_overload_title: "Service Busy",
+    ai_overload_msg:
+      "The categorization service is currently experiencing high demand. Please try again in a moment.",
+    ai_categorization_title: "Categorization",
+    ai_categorization_desc:
+      "Which transactions would you like the service to process?",
+    uncategorized_only: "Uncategorized Only",
+    recategorize_all: "Recategorize All",
 
     // Settings
     settings_title: "Settings",
-    ai_integration: "AI Integration",
+    appearance: "Appearance",
+    appearance_sub: "Choose your theme preference",
+    theme_system: "System Default",
+    theme_light: "Light",
+    theme_dark: "Dark",
+    ai_integration: "Categorization Integration",
     gemini_api_key: "Gemini API Key",
     not_set: "Not set",
     privacy: "Privacy",
@@ -165,13 +178,43 @@ export const Strings = {
     main_account: "Main Account",
     main_account_sub: "Account used for the dashboard breakdown.",
     select_main_account: "Select Main Account",
+
+    // Dashboard
+    by_category: "By Category",
+    net: "Net",
+
+    // Account Details
+    import: "Import",
+    categories: "Categories",
+
+    // Date Range Picker
+    filter_by_date: "Filter by Date",
+    from: "From",
+    to: "To",
+    apply: "Apply",
+
+    // Debts
+    they_owe_you: "They owe you",
+    you_owe: "You owe",
+    actions: "Actions",
+    no_people_added: "No people added yet",
+    add_btn: "+ Add",
+    people_tracked: "{count} people tracked",
+    person_tracked: "1 person tracked",
+
+    // Invest
+    growth_chart: "Growth chart",
+
+    // Connections
+    connect_bank: "Connect a bank",
+    connected_accounts: "Connected accounts",
   },
   de: {
     // Tabs
     tab_home: "Übersicht",
     tab_accounts: "Konten",
     tab_debts: "Schulden",
-    tab_invest: "Invest",
+    tab_invest: "Investieren",
     tab_transactions: "Transaktionen",
     tab_connections: "Verbinden",
 
@@ -187,6 +230,10 @@ export const Strings = {
     expenses_label: "Ausgaben",
     uncategorized: "Unkategorisiert",
 
+    // Dashboard
+    by_category: "Kategorie",
+    net: "Netto",
+
     // Accounts
     accounts_title: "Konten",
     accounts_subtitle: "Übersicht deiner Finanzen",
@@ -194,7 +241,7 @@ export const Strings = {
     bank_assets: "Bankvermögen",
     cash_at_hand: "Bargeld",
     edit_cash: "BEARB.",
-    add_manual_account: "+ Manuelles Konto",
+    add_manual_account: "Manuelles Konto",
     no_accounts: "Noch keine Konten",
     no_accounts_hint: "Füge ein manuelles Konto hinzu oder verbinde eine Bank",
     update_cash_title: "Bargeldbestand aktualisieren",
@@ -235,6 +282,13 @@ export const Strings = {
     net_balance: "Nettosaldo",
     history: "Verlauf",
     no_history: "Kein Verlauf.",
+    they_owe_you: "Schuldet mir",
+    you_owe: "Ich schulde",
+    actions: "Aktionen",
+    no_people_added: "Noch keine Personen hinzugefügt",
+    add_btn: "+ Hinzufügen",
+    people_tracked: "{count} Personen verfolgt",
+    person_tracked: "1 Person verfolgt",
 
     // Invest
     invest_title: "ETF Sparplan",
@@ -264,6 +318,7 @@ export const Strings = {
     delete: "Löschen",
     update: "Aktualisieren",
     years_suffix: " Jahre",
+    growth_chart: "Wachstumschart",
 
     // Connections
     connections_title: "Verbindungen",
@@ -282,17 +337,21 @@ export const Strings = {
     no_connections: "Noch keine Bankkonten verbunden",
     ready_to_connect: "Bereit zum Verbinden!",
     open_bank_login: "Bank-Login öffnen",
+    connect_bank: "Bank verbinden",
+    connected_accounts: "Verbundene Konten",
 
     // Account Details
     transactions_title: "Transaktionen",
+    date_range: "Zeitraum",
+    date_range_title: "ZEITRAUM",
     filter_all: "Gesamt",
     filter_year: "Dieses Jahr",
     filter_90: "90 Tage",
     filter_30: "30 Tage",
     filter_custom: "Benutzerdefiniert",
     add_transaction: "+ Transaktion",
-    auto_categorize: "Auto-Kategorisierung (AI)",
-    ai_processing: "KI weist Kategorien zu...",
+    auto_categorize: "Kategorisieren",
+    ai_processing: "Kategorien werden zugewiesen...",
     delete_account: "Konto löschen",
     delete_account_confirm:
       "Möchtest du dieses Konto wirklich löschen? Dies kann nicht rückgängig gemacht werden.",
@@ -302,13 +361,31 @@ export const Strings = {
     tx_amount_label: "Betrag (negativ für Ausgaben)",
     change_category: "Kategorie ändern",
     manage_categories: "Kategorien verwalten",
-    ai_overload_title: "KI-Dienst ausgelastet",
-    ai_overload_msg: "Das KI-Modell ist derzeit stark ausgelastet. Bitte versuche es in einem Moment erneut.",
+    ai_overload_title: "Dienst ausgelastet",
+    ai_overload_msg:
+      "Der Kategorisierungs-Dienst ist derzeit stark ausgelastet. Bitte versuche es in einem Moment erneut.",
+    ai_categorization_title: "Kategorisierung",
+    ai_categorization_desc: "Welche Transaktionen sollen verarbeitet werden?",
+    uncategorized_only: "Nur Unkategorisierte",
+    recategorize_all: "Alle neu kategorisieren",
+    import: "Importieren",
+    categories: "Kategorien",
+
+    // Date Range Picker
+    filter_by_date: "Nach Datum filtern",
+    from: "Von",
+    to: "Bis",
+    apply: "Anwenden",
 
     // Settings
     settings_title: "Einstellungen",
-    ai_integration: "AI Integration",
-    gemini_api_key: "Gemini API Key",
+    appearance: "Erscheinungsbild",
+    appearance_sub: "Wähle dein bevorzugtes Design",
+    theme_system: "Systemstandard",
+    theme_light: "Hell",
+    theme_dark: "Dunkel",
+    ai_integration: "Kategorisierungs-Integration",
+    gemini_api_key: "Gemini API-Schlüssel",
     not_set: "Nicht gesetzt",
     privacy: "Privatsphäre",
     hide_total: "Gesamtbeträge ausblenden",
@@ -323,12 +400,12 @@ export const Strings = {
     enter_pin: "PIN eingeben",
     set_pin_btn: "PIN setzen",
     confirm_btn: "Bestätigen",
-    save_key_btn: "Key speichern",
+    save_key_btn: "Schlüssel speichern",
     language: "Sprache",
     language_sub: "Wähle deine bevorzugte Sprache",
     english: "Englisch",
     german: "Deutsch",
-    dashboard_section: "Dashboard",
+    dashboard_section: "Übersicht",
     main_account: "Hauptkonto",
     main_account_sub: "Konto, das für die Dashboard-Auswertung verwendet wird.",
     select_main_account: "Hauptkonto auswählen",

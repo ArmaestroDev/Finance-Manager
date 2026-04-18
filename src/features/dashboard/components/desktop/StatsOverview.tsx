@@ -64,7 +64,7 @@ export function StatsOverview({ statsLoading, hasTransactions, totalIncome, tota
               innerCircleColor={theme.surface}
               centerLabelComponent={() => (
                 <View style={{ alignItems: "center" }}>
-                  <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 2 }}>Expenses</Text>
+                  <Text style={{ fontSize: 13, color: theme.textSecondary, marginBottom: 2 }}>{i18n.expenses_label}</Text>
                   <Text style={{ fontSize: 16, fontWeight: "800", color: theme.text }}>
                     {isBalanceHidden ? "***" : formatAmount(totalExpenses)}
                   </Text>
@@ -95,7 +95,7 @@ export function StatsOverview({ statsLoading, hasTransactions, totalIncome, tota
           </View>
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <View style={styles.incExpItem}>
-            <Text style={[styles.incExpLabel, { color: theme.textSecondary }]}>Net</Text>
+            <Text style={[styles.incExpLabel, { color: theme.textSecondary }]}>{i18n.net}</Text>
             <Text style={[styles.incExpAmount, { color: totalIncome - totalExpenses >= 0 ? theme.income : theme.expense }]}>
               {isBalanceHidden ? "*****" : (totalIncome - totalExpenses >= 0 ? "+" : "") + formatAmount(totalIncome - totalExpenses)}
             </Text>
@@ -105,7 +105,7 @@ export function StatsOverview({ statsLoading, hasTransactions, totalIncome, tota
         {/* Right: Category legend */}
         {categoryBreakdown.length > 0 && (
           <View style={styles.legendCol}>
-            <Text style={[styles.legendTitle, { color: theme.textSecondary }]}>By Category</Text>
+            <Text style={[styles.legendTitle, { color: theme.textSecondary }]}>{i18n.by_category}</Text>
             {categoryBreakdown.map((item) => (
               <TouchableOpacity key={item.categoryId} style={styles.legendRow} onPress={() => onCategoryPress?.(item.categoryId)} activeOpacity={0.6}>
                 <View style={[styles.legendDot, { backgroundColor: item.color }]} />
@@ -136,6 +136,6 @@ const styles = StyleSheet.create({
   legendTitle: { fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 },
   legendRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   legendDot: { width: 10, height: 10, borderRadius: 5 },
-  legendName: { flex: 1, fontSize: 14, fontWeight: "500" },
+  legendName: { fontSize: 14, fontWeight: "500", flexShrink: 1 },
   legendAmount: { fontSize: 14, fontWeight: "600" },
 });

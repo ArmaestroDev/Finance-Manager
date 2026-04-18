@@ -236,8 +236,23 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
       const updated = [...current, account];
       await AsyncStorage.setItem(MANUAL_ACCOUNTS_KEY, JSON.stringify(updated));
 
-      // Refresh to update the global list
-      await refreshAccounts(false);
+      // Update the local state instead of doing a full network refresh
+      const unifiedAccount: UnifiedAccount = {
+        id: account.id,
+        type: "manual",
+        name: account.name,
+        category: account.category,
+        balance: account.balance,
+        currency: account.currency,
+        bankName: account.bankName || "Manual Account",
+        loading: false,
+      };
+
+      setAccounts((prev) => {
+        const newAccounts = [...prev, unifiedAccount];
+        AsyncStorage.setItem(CACHED_ACCOUNTS_KEY, JSON.stringify(newAccounts)).catch(console.error);
+        return newAccounts;
+      });
     } catch (e) {
       console.error(e);
     }
@@ -257,7 +272,12 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
         // Also remove transactions for this account (optional but good practice)
         await AsyncStorage.removeItem(`manual_transactions_${id}`);
 
-        await refreshAccounts(false);
+        // Update the local state instead of doing a full network refresh
+        setAccounts((prev) => {
+          const newAccounts = prev.filter((acc) => acc.id !== id);
+          AsyncStorage.setItem(CACHED_ACCOUNTS_KEY, JSON.stringify(newAccounts)).catch(console.error);
+          return newAccounts;
+        });
       }
     } catch (e) {
       console.error("Failed to delete manual account:", e);

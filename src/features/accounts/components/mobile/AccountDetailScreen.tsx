@@ -34,6 +34,7 @@ import { useAccountStats } from "../../hooks/useAccountStats";
 
 // ── Components ──
 import { CategoryFilterBar } from "../../../../shared/components/CategoryFilterBar";
+import { TransactionStatsSummary } from "../../../../shared/components/TransactionStatsSummary";
 import { DateFilterModal } from "../../../../shared/components/DateFilterModal";
 import { AddTransactionModal } from "../../../transactions/components/AddTransactionModal";
 import { CategoryManageModal } from "../../../transactions/components/CategoryManageModal";
@@ -372,7 +373,7 @@ export function AccountDetailScreen() {
 
       <DateFilterModal
         visible={isFilterModalVisible}
-        title="Filter by Date"
+        title={i18n.filter_by_date}
         tempFrom={tempFrom}
         tempTo={tempTo}
         onTempFromChange={setTempFrom}
@@ -382,6 +383,7 @@ export function AccountDetailScreen() {
         backgroundColor={backgroundColor}
         textColor={textColor}
         tintColor={tintColor}
+        i18n={i18n}
       />
 
       <TransactionDetailModal
@@ -491,6 +493,16 @@ export function AccountDetailScreen() {
         </View>
       </View>
 
+      {/* ── Top Stats ── */}
+      <TransactionStatsSummary
+        income={accountIncome}
+        expenses={accountExpenses}
+        isBalanceHidden={isBalanceHidden}
+        textColor={textColor}
+        i18n={i18n}
+        style={{ marginBottom: 24 }}
+      />
+
       {/* ── Balance Card ── */}
       <View style={[styles.balanceCard, { backgroundColor: surfaceColor }]}>
         <Text style={[styles.balanceLabel, { color: textColor, opacity: 0.6 }]}>Balance</Text>
@@ -513,25 +525,12 @@ export function AccountDetailScreen() {
 
       {/* ── Date Presets ── */}
       <View style={styles.presetsRow}>
-        {[
-          { label: "30D", value: 30 },
-          { label: "90D", value: 90 },
-          { label: "YTD", value: "year" as const },
-        ].map((preset) => (
-          <TouchableOpacity
-            key={preset.label}
-            onPress={() => applyPreset(preset.value)}
-            style={[styles.presetBtn, { borderColor: "transparent", backgroundColor: tintColor + "15" }]}
-          >
-            <Text style={{ color: tintColor, fontSize: 13, fontWeight: "600" }}>{preset.label}</Text>
-          </TouchableOpacity>
-        ))}
         <TouchableOpacity
           onPress={openDateModal}
           style={[styles.presetBtn, { borderColor: "transparent", backgroundColor: tintColor + "15" }]}
         >
           <Ionicons name="calendar-outline" size={16} color={tintColor} />
-          <Text style={{ color: tintColor, fontSize: 13, fontWeight: "600" }}>Custom</Text>
+          <Text style={{ color: tintColor, fontSize: 13, fontWeight: "600" }}>{i18n.date_range || "Date range"}</Text>
         </TouchableOpacity>
         {type === "manual" && (
           <TouchableOpacity
@@ -547,7 +546,7 @@ export function AccountDetailScreen() {
           style={[styles.presetBtn, { borderColor: "transparent", backgroundColor: tintColor + "15" }]}
         >
           <Ionicons name="document-text-outline" size={16} color={tintColor} />
-          <Text style={{ color: tintColor, fontSize: 13, fontWeight: "600" }}>Import</Text>
+          <Text style={{ color: tintColor, fontSize: 13, fontWeight: "600" }}>{i18n.import}</Text>
         </TouchableOpacity>
       </View>
 
@@ -564,6 +563,7 @@ export function AccountDetailScreen() {
         textColor={textColor}
         tintColor={tintColor}
         i18n={i18n}
+        showStats={false}
       />
 
       {/* ── Transaction List ── */}
@@ -622,23 +622,23 @@ export function AccountDetailScreen() {
               <View style={{ alignItems: "center", paddingVertical: 20 }}>
                 <ActivityIndicator size="large" color={tintColor} />
                 <Text style={{ color: textColor, fontSize: 16, fontWeight: "600", marginTop: 24, textAlign: "center" }}>
-                  {i18n?.ai_processing || "AI is assigning magic...\nThis might take a few moments."}
+                  {i18n?.ai_processing || "Categorizing...\nThis might take a few moments."}
                 </Text>
               </View>
             ) : (
               <>
                 <Text style={{ fontSize: 24, color: textColor, fontWeight: "800", marginBottom: 12 }}>
-                  AI Categorization
+                  {i18n?.ai_categorization_title || "Categorization"}
                 </Text>
                 <Text style={{ fontSize: 16, color: textColor, opacity: 0.7, marginBottom: 32 }}>
-                  Which transactions would you like the AI to process?
+                  {i18n?.ai_categorization_desc || "Which transactions would you like the service to process?"}
                 </Text>
                 <TouchableOpacity
                   style={{ backgroundColor: tintColor, paddingVertical: 16, borderRadius: 999, marginBottom: 16 }}
                   onPress={() => autoCategorizeTransactions(false)}
                 >
                   <Text style={{ color: backgroundColor, fontWeight: "600", textAlign: "center", fontSize: 16 }}>
-                    Uncategorized Only
+                    {i18n?.uncategorized_only || "Uncategorized Only"}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -646,7 +646,7 @@ export function AccountDetailScreen() {
                   onPress={() => autoCategorizeTransactions(true)}
                 >
                   <Text style={{ color: "#FFF", fontWeight: "600", textAlign: "center", fontSize: 16 }}>
-                    Recategorize All
+                    {i18n?.recategorize_all || "Recategorize All"}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity

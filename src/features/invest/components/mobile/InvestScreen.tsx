@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useColorScheme, useWindowDimensions } from "react-native";
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { useColorScheme } from "../../../../shared/hooks/use-color-scheme";
 import { LineChart } from "react-native-gifted-charts";
 import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
 import { useSettings } from "../../../../shared/context/SettingsContext";
@@ -129,7 +130,7 @@ export function InvestScreen() {
           hideRules={false} rulesColor="#E5E7EB" showVerticalLines={false}
           yAxisColor={textColor} yAxisThickness={1}
         />
-        <Text style={[styles.note, { color: textColor }]}>{i18n.graph_note.replace("{years}", years)}</Text>
+        <Text style={[styles.note, { color: textColor }]}>{i18n.growth_chart || "Growth chart"} ({i18n.graph_note.replace("{years}", years)})</Text>
       </View>
 
       <InvestProfileModal

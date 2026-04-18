@@ -80,6 +80,9 @@ export function StatsOverview({
                   innerCircleColor={theme.surface}
                   centerLabelComponent={() => (
                     <View style={styles.pieCenterLabel}>
+                      <Text style={[styles.pieCenterAmount, { color: theme.textSecondary, fontSize: 12 }]}>
+                        {i18n.expenses_label}
+                      </Text>
                       <Text style={[styles.pieCenterAmount, { color: theme.text }]}>
                         {isBalanceHidden ? "***" : formatAmount(totalExpenses)}
                       </Text>
@@ -214,15 +217,14 @@ const styles = StyleSheet.create({
   },
   legendRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    gap: 12,
   },
   legendLeft: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    flex: 1,
-    marginRight: 16,
+    flexShrink: 1,
   },
   legendDot: {
     width: 12,

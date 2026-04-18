@@ -36,8 +36,6 @@ export function TransactionItem({ item, getCategoryForTransaction, onPress }: Tr
   return (
     <TouchableOpacity onPress={() => onPress(item)} activeOpacity={0.7}>
       <View style={[styles.row, { borderBottomColor: theme.border }]}>
-        {/* Date column */}
-        <Text style={[styles.dateCol, { color: theme.textSecondary }]}>{date}</Text>
         {/* Category dot */}
         <View style={styles.catCol}>
           {txCat ? (
@@ -73,7 +71,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     gap: 16,
   },
-  dateCol: { width: 90, fontSize: 13 },
   catCol: { width: 120 },
   nameCol: { flex: 1 },
   amountCol: { width: 120, textAlign: "right", fontSize: 14, fontWeight: "600" },

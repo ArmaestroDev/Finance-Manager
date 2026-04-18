@@ -1,6 +1,7 @@
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
 import isoWeek from "dayjs/plugin/isoWeek";
+import "dayjs/locale/de";
 import React, { useEffect, useState } from "react";
 import { Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -20,9 +21,19 @@ interface DateFilterModalProps {
   backgroundColor: string;
   textColor: string;
   tintColor: string;
+  i18n: Record<string, string>;
 }
 
-export function DateFilterModal({ visible, title, tempFrom, tempTo, onTempFromChange, onTempToChange, onApply, onCancel, backgroundColor, textColor, tintColor }: DateFilterModalProps) {
+export function DateFilterModal({ visible, title, tempFrom, tempTo, onTempFromChange, onTempToChange, onApply, onCancel, backgroundColor, textColor, tintColor, i18n }: DateFilterModalProps) {
+  useEffect(() => {
+    if (!i18n) return;
+    if (i18n.german === "Deutsch") {
+      dayjs.locale("de");
+    } else {
+      dayjs.locale("en");
+    }
+  }, [i18n]);
+
   const [range, setRange] = useState<{ startDate: dayjs.Dayjs | undefined; endDate: dayjs.Dayjs | undefined }>({
     startDate: tempFrom ? dayjs(tempFrom, "DD.MM.YYYY") : undefined,
     endDate: tempTo ? dayjs(tempTo, "DD.MM.YYYY") : undefined,
@@ -87,7 +98,9 @@ export function DateFilterModal({ visible, title, tempFrom, tempTo, onTempFromCh
     for (let i = endWeekday + 1; i <= 7; i++) days.push(null);
     const weeks = [];
     for (let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
-    const weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+    const weekdays = i18n?.german === "Deutsch"
+      ? ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+      : ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
     return (
       <View style={styles.calendarContainer}>
@@ -157,7 +170,7 @@ export function DateFilterModal({ visible, title, tempFrom, tempTo, onTempFromCh
                   onPress={() => setActiveInput("from")}
                   activeOpacity={0.8}
                 >
-                  <Text style={{ color: textColor, opacity: 0.5, fontSize: 11, marginBottom: 4 }}>FROM</Text>
+                  <Text style={{ color: textColor, opacity: 0.5, fontSize: 11, marginBottom: 4 }}>{i18n?.from?.toUpperCase() || "FROM"}</Text>
                   <TextInput
                     style={[styles.dateInput, { color: textColor }]}
                     value={fromText}
@@ -175,7 +188,7 @@ export function DateFilterModal({ visible, title, tempFrom, tempTo, onTempFromCh
                   onPress={() => setActiveInput("to")}
                   activeOpacity={0.8}
                 >
-                  <Text style={{ color: textColor, opacity: 0.5, fontSize: 11, marginBottom: 4 }}>TO</Text>
+                  <Text style={{ color: textColor, opacity: 0.5, fontSize: 11, marginBottom: 4 }}>{i18n?.to?.toUpperCase() || "TO"}</Text>
                   <TextInput
                     style={[styles.dateInput, { color: textColor }]}
                     value={toText}
@@ -190,10 +203,10 @@ export function DateFilterModal({ visible, title, tempFrom, tempTo, onTempFromCh
               </View>
               <View style={styles.modalButtons}>
                 <TouchableOpacity onPress={onCancel} style={[styles.modalBtn, { backgroundColor: textColor + "12" }]}>
-                  <Text style={{ color: textColor, fontWeight: "600" }}>Cancel</Text>
+                  <Text style={{ color: textColor, fontWeight: "600" }}>{i18n?.cancel || "Cancel"}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={handleApply} style={[styles.modalBtn, { backgroundColor: tintColor }]}>
-                  <Text style={{ color: "#fff", fontWeight: "600" }}>Apply</Text>
+                  <Text style={{ color: "#fff", fontWeight: "600" }}>{i18n?.apply || "Apply"}</Text>
                 </TouchableOpacity>
               </View>
             </View>
