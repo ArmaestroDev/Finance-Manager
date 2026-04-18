@@ -26,6 +26,19 @@ export const unstable_settings = {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
+  // Hide scrollbars on web while keeping scroll functionality
+  useEffect(() => {
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      const style = document.createElement("style");
+      style.textContent = `
+        * { scrollbar-width: none; -ms-overflow-style: none; }
+        *::-webkit-scrollbar { display: none; }
+      `;
+      document.head.appendChild(style);
+      return () => { document.head.removeChild(style); };
+    }
+  }, []);
+
   // Watch for auth redirects if opened as a popup (e.g., returning from Bank Auth on Vercel to Localhost)
   useEffect(() => {
     if (Platform.OS === "web") {

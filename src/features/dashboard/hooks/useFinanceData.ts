@@ -12,7 +12,7 @@ export function useFinanceData() {
   const { transactionsByAccount, isLoading: statsLoading, refreshTransactions } = useTransactionsContext();
 
   const allTransactions = useMemo(() => {
-    let targetAccounts = [];
+    let targetAccounts: typeof accounts = [];
     if (mainAccountId) {
       const found = accounts.find(a => a.id === mainAccountId);
       if (found) targetAccounts = [found];
