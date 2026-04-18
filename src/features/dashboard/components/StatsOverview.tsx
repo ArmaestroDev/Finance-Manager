@@ -3,11 +3,14 @@ import {
   ActivityIndicator,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { PieChart } from "react-native-gifted-charts";
 import type { CategoryBreakdownItem, PieDataItem } from "../hooks/useFinanceStats";
 import { formatAmount } from "../../../shared/utils/financeHelpers";
+import { Colors } from "../../../constants/theme";
+import { useColorScheme } from "../../../shared/hooks/use-color-scheme";
 
 interface StatsOverviewProps {
   statsLoading: boolean;
@@ -17,9 +20,10 @@ interface StatsOverviewProps {
   categoryBreakdown: CategoryBreakdownItem[];
   pieData: PieDataItem[];
   isBalanceHidden: boolean;
-  backgroundColor: string;
-  textColor: string;
-  tintColor: string;
+  backgroundColor?: string;
+  textColor?: string;
+  tintColor?: string;
+  onCategoryPress?: (categoryId: string) => void;
   i18n: {
     pull_to_refresh: string;
     income_label: string;
@@ -35,22 +39,33 @@ export function StatsOverview({
   categoryBreakdown,
   pieData,
   isBalanceHidden,
-  backgroundColor,
-  textColor,
-  tintColor,
+  onCategoryPress,
   i18n,
 }: StatsOverviewProps) {
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? "light"];
+
+  const enhancedPieData = pieData.map((item, index) => ({
+    ...item,
+    onPress: () => {
+      const breakdownItem = categoryBreakdown[index];
+      if (breakdownItem && onCategoryPress) {
+        onCategoryPress(breakdownItem.categoryId);
+      }
+    },
+  }));
+
   return (
     <View
-      style={[styles.statsCard, { backgroundColor: tintColor + "0A" }]}
+      style={[styles.statsCard, { backgroundColor: theme.surface }]}
     >
       {statsLoading ? (
         <View style={styles.statsLoading}>
-          <ActivityIndicator size="large" color={tintColor} />
+          <ActivityIndicator size="large" color={theme.primary} />
         </View>
       ) : !hasTransactions ? (
         <View style={styles.statsLoading}>
-          <Text style={{ color: textColor, opacity: 0.5, fontSize: 14 }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 15 }}>
             {i18n.pull_to_refresh}
           </Text>
         </View>
@@ -60,19 +75,19 @@ export function StatsOverview({
           <View style={styles.chartRow}>
             {/* Pie Chart */}
             <View style={styles.pieContainer}>
-              {pieData.length > 0 ? (
+              {enhancedPieData.length > 0 ? (
                 <PieChart
-                  data={pieData}
+                  data={enhancedPieData}
                   donut
                   radius={70}
-                  innerRadius={40}
-                  innerCircleColor={backgroundColor}
+                  innerRadius={45}
+                  innerCircleColor={theme.surface}
                   centerLabelComponent={() => (
                     <View style={styles.pieCenterLabel}>
                       <Text
                         style={[
                           styles.pieCenterAmount,
-                          { color: textColor },
+                          { color: theme.text },
                         ]}
                       >
                         {isBalanceHidden
@@ -86,13 +101,12 @@ export function StatsOverview({
                 <View
                   style={[
                     styles.emptyPie,
-                    { borderColor: tintColor + "30" },
+                    { borderColor: theme.border },
                   ]}
                 >
                   <Text
                     style={{
-                      color: textColor,
-                      opacity: 0.4,
+                      color: theme.textSecondary,
                       fontSize: 12,
                     }}
                   >
@@ -105,55 +119,39 @@ export function StatsOverview({
             {/* Income / Expenses */}
             <View style={styles.incomeExpenseCol}>
               <View style={styles.incExpItem}>
-                <View style={styles.incExpHeader}>
-                  <View
-                    style={[
-                      styles.incExpDot,
-                      { backgroundColor: "#2ecc71" },
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.incExpLabel,
-                      { color: textColor, opacity: 0.7 },
-                    ]}
-                  >
-                    {i18n.income_label}
-                  </Text>
-                </View>
-                <Text style={[styles.incExpAmount, { color: "#2ecc71" }]}>
-                  {isBalanceHidden ? "*****" : formatAmount(totalIncome)}
+                <Text
+                  style={[
+                    styles.incExpLabel,
+                    { color: theme.textSecondary },
+                  ]}
+                >
+                  {i18n.income_label}
+                </Text>
+                <Text style={[styles.incExpAmount, { color: theme.income }]}>
+                  {isBalanceHidden ? "*****" : "+" + formatAmount(totalIncome)}
                 </Text>
               </View>
 
               <View
                 style={[
                   styles.incExpDivider,
-                  { backgroundColor: textColor + "15" },
+                  { backgroundColor: theme.border },
                 ]}
               />
 
               <View style={styles.incExpItem}>
-                <View style={styles.incExpHeader}>
-                  <View
-                    style={[
-                      styles.incExpDot,
-                      { backgroundColor: "#FF6B6B" },
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.incExpLabel,
-                      { color: textColor, opacity: 0.7 },
-                    ]}
-                  >
-                    {i18n.expenses_label}
-                  </Text>
-                </View>
-                <Text style={[styles.incExpAmount, { color: "#FF6B6B" }]}>
+                <Text
+                  style={[
+                    styles.incExpLabel,
+                    { color: theme.textSecondary },
+                  ]}
+                >
+                  {i18n.expenses_label}
+                </Text>
+                <Text style={[styles.incExpAmount, { color: theme.expense }]}>
                   {isBalanceHidden
                     ? "*****"
-                    : formatAmount(totalExpenses)}
+                    : "-" + formatAmount(totalExpenses)}
                 </Text>
               </View>
             </View>
@@ -163,7 +161,12 @@ export function StatsOverview({
           {categoryBreakdown.length > 0 && (
             <View style={styles.legendContainer}>
               {categoryBreakdown.map((item) => (
-                <View key={item.categoryId} style={styles.legendRow}>
+                <TouchableOpacity 
+                  key={item.categoryId} 
+                  style={styles.legendRow}
+                  onPress={() => onCategoryPress?.(item.categoryId)}
+                  activeOpacity={0.6}
+                >
                   <View style={styles.legendLeft}>
                     <View
                       style={[
@@ -172,7 +175,7 @@ export function StatsOverview({
                       ]}
                     />
                     <Text
-                      style={[styles.legendName, { color: textColor }]}
+                      style={[styles.legendName, { color: theme.text }]}
                       numberOfLines={1}
                     >
                       {item.name}
@@ -181,14 +184,14 @@ export function StatsOverview({
                   <Text
                     style={[
                       styles.legendAmount,
-                      { color: textColor, opacity: 0.8 },
+                      { color: theme.text },
                     ]}
                   >
                     {isBalanceHidden
                       ? "*****"
                       : formatAmount(item.amount)}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           )}
@@ -200,8 +203,14 @@ export function StatsOverview({
 
 const styles = StyleSheet.create({
   statsCard: {
-    borderRadius: 16,
-    padding: 20,
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: "#8E1E5E",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+    marginBottom: 24,
   },
   statsLoading: {
     minHeight: 180,
@@ -211,7 +220,7 @@ const styles = StyleSheet.create({
   chartRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 20,
+    gap: 24,
   },
   pieContainer: {
     alignItems: "center",
@@ -222,7 +231,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   pieCenterAmount: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "700",
   },
   emptyPie: {
@@ -236,37 +245,28 @@ const styles = StyleSheet.create({
   },
   incomeExpenseCol: {
     flex: 1,
-    gap: 12,
+    gap: 16,
   },
   incExpItem: {
     gap: 4,
   },
-  incExpHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  incExpDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
   incExpLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "500",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   incExpAmount: {
     fontSize: 22,
     fontWeight: "700",
-    marginLeft: 18,
   },
   incExpDivider: {
     height: 1,
     borderRadius: 1,
   },
   legendContainer: {
-    marginTop: 20,
-    gap: 10,
+    marginTop: 32,
+    gap: 16,
   },
   legendRow: {
     flexDirection: "row",
@@ -276,9 +276,9 @@ const styles = StyleSheet.create({
   legendLeft: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
     flex: 1,
-    marginRight: 12,
+    marginRight: 16,
   },
   legendDot: {
     width: 12,
@@ -286,12 +286,12 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   legendName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "500",
     flexShrink: 1,
   },
   legendAmount: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "600",
   },
 });

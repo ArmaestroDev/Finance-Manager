@@ -298,7 +298,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   connectButtonText: {
-    color: "#fff",
     fontSize: 17,
     fontWeight: "600",
   },
@@ -326,7 +325,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   submitButtonText: {
-    color: "#fff",
     fontSize: 16,
     fontWeight: "600",
   },

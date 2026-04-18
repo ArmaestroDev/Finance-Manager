@@ -276,11 +276,11 @@ export function AccountsScreen() {
             <TouchableOpacity
               style={[
                 styles.addAccountButton,
-                { borderColor: tintColor, marginTop: 20 },
+                { backgroundColor: tintColor, marginTop: 32 },
               ]}
               onPress={() => setAddAccountModalVisible(true)}
             >
-              <Text style={[styles.addAccountText, { color: tintColor }]}>
+              <Text style={[styles.addAccountText, { color: backgroundColor }]}>
                 {i18n.add_manual_account}
               </Text>
             </TouchableOpacity>
@@ -360,7 +360,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   editBadgeText: {
-    color: "#fff",
     fontSize: 10,
     fontWeight: "bold",
   },

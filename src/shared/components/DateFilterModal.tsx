@@ -1,17 +1,20 @@
 import dayjs from "dayjs";
 import customParseFormat from "dayjs/plugin/customParseFormat";
+import isoWeek from "dayjs/plugin/isoWeek";
 import React, { useEffect, useState } from "react";
 import {
   Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import DateTimePicker from "react-native-ui-datepicker";
+import { Ionicons } from "@expo/vector-icons";
 
 dayjs.extend(customParseFormat);
+dayjs.extend(isoWeek);
 
 interface DateFilterModalProps {
   visible: boolean;
@@ -20,7 +23,7 @@ interface DateFilterModalProps {
   tempTo: string;
   onTempFromChange: (value: string) => void;
   onTempToChange: (value: string) => void;
-  onApply: () => void;
+  onApply: (from: string, to: string) => void;
   onCancel: () => void;
   backgroundColor: string;
   textColor: string;
@@ -44,28 +47,182 @@ export function DateFilterModal({
     startDate: dayjs.Dayjs | undefined;
     endDate: dayjs.Dayjs | undefined;
   }>({
-    startDate: tempFrom ? dayjs(tempFrom, "DD-MM-YYYY") : undefined,
-    endDate: tempTo ? dayjs(tempTo, "DD-MM-YYYY") : undefined,
+    startDate: tempFrom ? dayjs(tempFrom, "DD.MM.YYYY") : undefined,
+    endDate: tempTo ? dayjs(tempTo, "DD.MM.YYYY") : undefined,
   });
+
+  const [fromText, setFromText] = useState(tempFrom || "");
+  const [toText, setToText] = useState(tempTo || "");
+  const [activeInput, setActiveInput] = useState<"from" | "to" | null>(null);
+  const [currentMonth, setCurrentMonth] = useState(dayjs().startOf("month"));
 
   // Re-sync range when modal becomes visible or props change
   useEffect(() => {
     if (visible) {
+      const start = tempFrom ? dayjs(tempFrom, "DD.MM.YYYY") : dayjs().startOf("month");
+      const end = tempTo ? dayjs(tempTo, "DD.MM.YYYY") : dayjs();
+      
       setRange({
-        startDate: tempFrom ? dayjs(tempFrom, "DD-MM-YYYY") : undefined,
-        endDate: tempTo ? dayjs(tempTo, "DD-MM-YYYY") : undefined,
+        startDate: start,
+        endDate: end,
       });
+      setFromText(start.format("DD.MM.YYYY"));
+      setToText(end.format("DD.MM.YYYY"));
+      setActiveInput(null); // Reset active input when modal opens
+      
+      if (start.isValid()) {
+        setCurrentMonth(start.startOf("month"));
+      } else {
+        setCurrentMonth(dayjs().startOf("month"));
+      }
     }
   }, [visible, tempFrom, tempTo]);
 
   const handleApply = () => {
-    if (range.startDate) {
-      onTempFromChange(range.startDate.format("DD-MM-YYYY"));
+    const s = range.startDate ? range.startDate.format("DD.MM.YYYY") : fromText;
+    const e = range.endDate ? range.endDate.format("DD.MM.YYYY") : toText;
+    onTempFromChange(s);
+    onTempToChange(e);
+    onApply(s, e);
+  };
+
+  const handleFromTextChange = (text: string) => {
+    const cleaned = text.replace(/[^0-9.]/g, "");
+    setFromText(cleaned);
+    if (cleaned.length === 10) {
+      const parsed = dayjs(cleaned, "DD.MM.YYYY", true);
+      if (parsed.isValid()) {
+        setRange(prev => ({ ...prev, startDate: parsed }));
+        setCurrentMonth(parsed.startOf("month"));
+      }
     }
-    if (range.endDate) {
-      onTempToChange(range.endDate.format("DD-MM-YYYY"));
+  };
+
+  const handleToTextChange = (text: string) => {
+    const cleaned = text.replace(/[^0-9.]/g, "");
+    setToText(cleaned);
+    if (cleaned.length === 10) {
+      const parsed = dayjs(cleaned, "DD.MM.YYYY", true);
+      if (parsed.isValid()) {
+        setRange(prev => ({ ...prev, endDate: parsed }));
+        setCurrentMonth(parsed.startOf("month"));
+      }
     }
-    onApply();
+  };
+
+  const handleDayPress = (day: dayjs.Dayjs) => {
+    if (activeInput === "from") {
+      setRange(prev => ({ ...prev, startDate: day }));
+      setFromText(day.format("DD.MM.YYYY"));
+      // The user specifically requested NOT to auto-switch to "To"
+    } else if (activeInput === "to") {
+      setRange(prev => ({ ...prev, endDate: day }));
+      setToText(day.format("DD.MM.YYYY"));
+    }
+  };
+
+  const renderCalendar = () => {
+    const start = currentMonth.startOf("month");
+    const end = currentMonth.endOf("month");
+    const days: (dayjs.Dayjs | null)[] = [];
+    
+    const startWeekday = start.isoWeekday();
+    for (let i = 1; i < startWeekday; i++) {
+      days.push(null);
+    }
+    
+    for (let i = 1; i <= end.date(); i++) {
+      days.push(start.date(i));
+    }
+    
+    const endWeekday = end.isoWeekday();
+    for (let i = endWeekday + 1; i <= 7; i++) {
+      days.push(null);
+    }
+
+    const weeks = [];
+    for(let i = 0; i < days.length; i += 7) weeks.push(days.slice(i, i + 7));
+    
+    const weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+
+    return (
+      <View style={styles.calendarContainer}>
+        <View style={styles.monthHeader}>
+          <TouchableOpacity onPress={() => setCurrentMonth(currentMonth.subtract(1, "month"))} style={styles.arrowButton}>
+            <Ionicons name="chevron-back" size={24} color={textColor} />
+          </TouchableOpacity>
+          <Text style={[styles.monthTitle, { color: textColor }]}>
+            {currentMonth.format("MMMM YYYY")}
+          </Text>
+          <TouchableOpacity onPress={() => setCurrentMonth(currentMonth.add(1, "month"))} style={styles.arrowButton}>
+            <Ionicons name="chevron-forward" size={24} color={textColor} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.weekdaysRow}>
+          {weekdays.map(wd => (
+             <View key={wd} style={styles.weekdayCell}>
+               <Text style={[styles.weekdayText, { color: textColor, opacity: 0.6 }]}>{wd}</Text>
+             </View>
+          ))}
+        </View>
+
+        {weeks.map((week, wIdx) => (
+          <View key={wIdx} style={styles.weekRow}>
+            {week.map((day, dIdx) => {
+              if (!day) return <View key={dIdx} style={styles.dayCellEmpty} />;
+              
+              const isSelectedStart = range.startDate && day.isSame(range.startDate, "day");
+              const isSelectedEnd = range.endDate && day.isSame(range.endDate, "day");
+              const isSelected = isSelectedStart || isSelectedEnd;
+              
+              // Only highlight range if both start and end exist
+              let inRange = false;
+              if (range.startDate && range.endDate) {
+                // Handle cases where user selects 'to' before 'from' chronologically
+                const actualStart = range.startDate.isBefore(range.endDate) ? range.startDate : range.endDate;
+                const actualEnd = range.startDate.isBefore(range.endDate) ? range.endDate : range.startDate;
+                inRange = day.isAfter(actualStart, "day") && day.isBefore(actualEnd, "day");
+              }
+              
+              const isToday = day.isSame(dayjs(), "day");
+              
+              let cellBg = "transparent";
+              let txtColor = textColor;
+              
+              if (isSelected) {
+                cellBg = tintColor;
+                // Use the modal's background color so text has contrast against the tint color
+                txtColor = backgroundColor; 
+              } else if (inRange) {
+                cellBg = tintColor + "20"; // 20% opacity for range
+              } else if (isToday) {
+                txtColor = tintColor;
+              }
+
+              return (
+                <TouchableOpacity 
+                  key={dIdx}
+                  onPress={() => handleDayPress(day)}
+                  style={[
+                    styles.dayCell,
+                    { backgroundColor: cellBg },
+                    isToday && !isSelected && !inRange && { borderWidth: 1, borderColor: tintColor }
+                  ]}>
+                  <Text style={[
+                    styles.dayText,
+                    { color: txtColor },
+                    isSelected && { fontWeight: "700" }
+                  ]}>
+                    {day.date()}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        ))}
+      </View>
+    );
   };
 
   return (
@@ -78,40 +235,52 @@ export function DateFilterModal({
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor }]}>
           <Text style={[styles.modalTitle, { color: textColor }]}>{title}</Text>
+          
+          <View style={styles.dateLabelsRow}>
+            <TouchableOpacity 
+              style={[
+                styles.dateBox, 
+                activeInput === "from" && { borderColor: tintColor, borderWidth: 2 }
+              ]}
+              onPress={() => setActiveInput("from")}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: textColor, opacity: 0.6, fontSize: 12, marginBottom: 4 }}>From (DD.MM.YYYY)</Text>
+              <TextInput
+                style={[styles.dateInput, { color: textColor }]}
+                value={fromText}
+                onChangeText={handleFromTextChange}
+                onFocus={() => setActiveInput("from")}
+                placeholder="--.--.----"
+                placeholderTextColor={textColor + "80"}
+                keyboardType="numeric"
+                maxLength={10}
+              />
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[
+                styles.dateBox, 
+                activeInput === "to" && { borderColor: tintColor, borderWidth: 2 }
+              ]}
+              onPress={() => setActiveInput("to")}
+              activeOpacity={0.8}
+            >
+              <Text style={{ color: textColor, opacity: 0.6, fontSize: 12, marginBottom: 4 }}>To (DD.MM.YYYY)</Text>
+              <TextInput
+                style={[styles.dateInput, { color: textColor }]}
+                value={toText}
+                onChangeText={handleToTextChange}
+                onFocus={() => setActiveInput("to")}
+                placeholder="--.--.----"
+                placeholderTextColor={textColor + "80"}
+                keyboardType="numeric"
+                maxLength={10}
+              />
+            </TouchableOpacity>
+          </View>
 
-          <ScrollView style={styles.pickerContainer}>
-            <DateTimePicker
-              mode="range"
-              startDate={range.startDate}
-              endDate={range.endDate}
-              onChange={(params) =>
-                setRange({
-                  startDate: params.startDate
-                    ? dayjs(params.startDate)
-                    : undefined,
-                  endDate: params.endDate ? dayjs(params.endDate) : undefined,
-                })
-              }
-              styles={{
-                month_selector_label: { color: textColor },
-                year_selector_label: { color: textColor },
-                button_next_image: { tintColor },
-                button_prev_image: { tintColor },
-                day_label: { color: textColor },
-                weekday_label: { color: textColor, opacity: 0.6 },
-                months: { backgroundColor },
-                month_label: { color: textColor },
-                years: { backgroundColor },
-                year_label: { color: textColor },
-                today: { borderColor: tintColor },
-                today_label: { color: tintColor },
-                selected: { backgroundColor: tintColor },
-                range_fill: { backgroundColor: tintColor + "20" },
-                range_start: { backgroundColor: tintColor },
-                range_end: { backgroundColor: tintColor },
-              }}
-            />
-          </ScrollView>
+          {activeInput && renderCalendar()}
 
           <View style={styles.modalButtons}>
             <TouchableOpacity onPress={onCancel} style={styles.modalButton}>
@@ -143,7 +312,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: "100%",
     maxWidth: 420,
-    borderRadius: 16,
+    borderRadius: 24,
     padding: 24,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
@@ -153,22 +322,89 @@ const styles = StyleSheet.create({
     maxHeight: "90%",
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 16,
+  },
+  dateLabelsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    gap: 16,
+  },
+  dateBox: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "rgba(150,150,150,0.1)",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  dateInput: {
+    fontWeight: "600",
+    fontSize: 16,
+    padding: 0,
+    margin: 0,
+  },
+  calendarContainer: {
+    marginBottom: 16,
+  },
+  monthHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  monthTitle: {
+    fontSize: 16,
     fontWeight: "700",
+  },
+  arrowButton: {
+    padding: 4,
+  },
+  weekdaysRow: {
+    flexDirection: "row",
     marginBottom: 8,
   },
-  pickerContainer: {
-    marginBottom: 16,
+  weekdayCell: {
+    flex: 1,
+    alignItems: "center",
+  },
+  weekdayText: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  weekRow: {
+    flexDirection: "row",
+    marginBottom: 4,
+  },
+  dayCellEmpty: {
+    flex: 1,
+    aspectRatio: 1,
+    margin: 2,
+  },
+  dayCell: {
+    flex: 1,
+    aspectRatio: 1,
+    margin: 2,
+    borderRadius: 999,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  dayText: {
+    fontSize: 14,
   },
   modalButtons: {
     flexDirection: "row",
     justifyContent: "flex-end",
-    gap: 8,
+    gap: 12,
   },
   modalButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 999,
     alignItems: "center",
+    justifyContent: "center",
   },
 });

@@ -3,6 +3,9 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import type { Transaction } from "../../../services/enableBanking";
 import { getTransactionAmount } from "../utils/transactions";
 import { cleanRemittanceInfo } from "../../../shared/utils/financeHelpers";
+import { Colors } from "../../../constants/theme";
+import { useColorScheme } from "../../../shared/hooks/use-color-scheme";
+import { IconSymbol } from "../../../shared/components/ui/icon-symbol";
 
 interface TransactionCategory {
   id: string;
@@ -12,17 +15,19 @@ interface TransactionCategory {
 
 interface TransactionItemProps {
   item: Transaction;
-  textColor: string;
+  textColor?: string;
   getCategoryForTransaction: (txId: string) => TransactionCategory | null;
   onPress: (tx: Transaction) => void;
 }
 
 export function TransactionItem({
   item,
-  textColor,
   getCategoryForTransaction,
   onPress,
 }: TransactionItemProps) {
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? "light"];
+  
   const amount = getTransactionAmount(item);
   const isNegative = amount < 0;
   const name =
@@ -38,42 +43,31 @@ export function TransactionItem({
 
   return (
     <TouchableOpacity onPress={() => onPress(item)}>
-      <View
-        style={[styles.transactionItem, { borderBottomColor: textColor }]}
-      >
-        {txCat && (
-          <View
-            style={[styles.categoryDot, { backgroundColor: txCat.color }]}
+      <View style={styles.transactionItem}>
+        <View style={[styles.iconContainer, { backgroundColor: txCat?.color ? txCat.color + "25" : "#6B728020" }]}>
+          <IconSymbol 
+            name="creditcard.fill" 
+            size={20} 
+            color={txCat?.color || "#6B7280"} 
           />
-        )}
+        </View>
         <View style={styles.transactionLeft}>
-          <Text style={[styles.transactionName, { color: textColor }]}>
+          <Text style={[styles.transactionName, { color: theme.text }]} numberOfLines={1}>
             {name}
           </Text>
           <Text
             style={[
               styles.transactionDate,
-              { color: textColor, opacity: 0.6 },
+              { color: theme.textSecondary },
             ]}
           >
-            {date}
+            {date} {reference ? `• ${reference}` : ""}
           </Text>
-          {reference && (
-            <Text
-              style={[
-                styles.referenceText,
-                { color: textColor, opacity: 0.5 },
-              ]}
-              numberOfLines={2}
-            >
-              {reference}
-            </Text>
-          )}
         </View>
         <Text
           style={[
             styles.transactionAmount,
-            { color: isNegative ? textColor : "#2ecc71" },
+            { color: isNegative ? theme.text : theme.income },
           ]}
         >
           {isNegative ? "" : "+"}
@@ -93,7 +87,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 8,
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 16,
   },
   transactionLeft: {
     flex: 1,
@@ -101,25 +103,14 @@ const styles = StyleSheet.create({
   },
   transactionName: {
     fontSize: 16,
-    fontWeight: "500",
+    fontWeight: "600",
     marginBottom: 4,
   },
   transactionDate: {
     fontSize: 13,
   },
-  referenceText: {
-    fontSize: 13,
-    marginTop: 4,
-    lineHeight: 18,
-  },
   transactionAmount: {
     fontSize: 16,
     fontWeight: "600",
-  },
-  categoryDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 10,
   },
 });

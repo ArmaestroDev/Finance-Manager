@@ -111,7 +111,7 @@ export function CategoryFilterBar({
         >
           <Text
             style={{
-              color: !selectedFilter ? "#fff" : textColor,
+              color: !selectedFilter ? "#000" : textColor,
               fontSize: 12,
               fontWeight: "600",
             }}

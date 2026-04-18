@@ -135,8 +135,10 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 999,
     alignItems: "center",
+    justifyContent: "center",
   },
 });

@@ -45,3 +45,11 @@ app-example
 # server
 server/node_modules/
 server/.env
+
+onlyAI/
+
+# AI Multi-Agent Pipeline
+pipeline/
+!pipeline/outputs/.gitkeep
+.env
+GEMINI.md

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   Platform,
   StyleSheet,
@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Colors } from "../../constants/theme";
+import { useColorScheme } from "../hooks/use-color-scheme";
 
 interface InputGroupProps {
   label: string;
@@ -29,6 +31,10 @@ export function InputGroup({
   textColor,
   backgroundColor,
 }: InputGroupProps) {
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? "light"];
+  const [isFocused, setIsFocused] = useState(false);
+
   const handleIncrement = () => {
     const val = parseFloat(value) || 0;
     onChange((val + 1).toString());
@@ -39,14 +45,20 @@ export function InputGroup({
   };
 
   return (
-    <View style={[styles.inputGroup, { backgroundColor }]}>
+    <View style={styles.container}>
       <View style={styles.inputLabelContainer}>
         <Text style={[styles.inputLabel, { color: textColor }]}>{label}</Text>
-        <Text style={styles.inputSubLabel}>{subLabel}</Text>
+        <Text style={[styles.inputSubLabel, { color: theme.textSecondary }]}>{subLabel}</Text>
       </View>
-      <View style={styles.inputControls}>
+      <View 
+        style={[
+          styles.inputControls, 
+          { backgroundColor: theme.background },
+          isFocused && { borderColor: theme.primary, borderWidth: 1 }
+        ]}
+      >
         <TouchableOpacity onPress={handleDecrement} style={styles.controlBtn}>
-          <Text style={[styles.controlBtnText, { color: textColor }]}>-</Text>
+          <Text style={[styles.controlBtnText, { color: theme.textSecondary }]}>-</Text>
         </TouchableOpacity>
         <View style={styles.inputWrapper}>
           {prefix && (
@@ -61,13 +73,15 @@ export function InputGroup({
             value={value}
             onChangeText={onChange}
             keyboardType="numeric"
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
           />
           {suffix && (
             <Text style={[styles.affix, { color: textColor }]}>{suffix}</Text>
           )}
         </View>
         <TouchableOpacity onPress={handleIncrement} style={styles.controlBtn}>
-          <Text style={[styles.controlBtnText, { color: textColor }]}>+</Text>
+          <Text style={[styles.controlBtnText, { color: theme.textSecondary }]}>+</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -75,10 +89,9 @@ export function InputGroup({
 }
 
 const styles = StyleSheet.create({
-  inputGroup: {
+  container: {
     flex: 1,
-    borderRadius: 12,
-    padding: 12,
+    marginBottom: 16,
   },
   inputLabelContainer: {
     marginBottom: 8,
@@ -89,24 +102,28 @@ const styles = StyleSheet.create({
   },
   inputSubLabel: {
     fontSize: 12,
-    color: "gray",
+    marginTop: 2,
   },
   inputControls: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "transparent", // For focus state sizing
   },
   controlBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.05)",
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.04)",
     alignItems: "center",
     justifyContent: "center",
   },
   controlBtnText: {
     fontSize: 20,
-    fontWeight: "600",
+    fontWeight: "500",
   },
   inputWrapper: {
     flex: 1,
@@ -115,14 +132,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   input: {
-    fontSize: 18,
-    fontWeight: "bold",
+    fontSize: 20,
+    fontWeight: "600",
     textAlign: "center",
     minWidth: 40,
     padding: 0,
   },
   affix: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "600",
+    opacity: 0.8,
   },
 });

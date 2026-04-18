@@ -18,13 +18,14 @@ import { useThemeColor } from "../../../shared/hooks/use-theme-color";
 import { useFinanceData } from "../hooks/useFinanceData";
 import { useFinanceStats } from "../hooks/useFinanceStats";
 import { formatAmount } from "../../../shared/utils/financeHelpers";
+import { useDateFilter } from "../../../shared/context/DateFilterContext";
 
 export function DashboardScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
   const tintColor = useThemeColor({}, "tint");
   const router = useRouter();
-  const { isBalanceHidden, i18n } = useSettings();
+  const { isBalanceHidden, i18n, mainAccountId } = useSettings();
   const { categories, transactionCategoryMap } = useCategories();
 
   // ── Data hook ──
@@ -57,6 +58,32 @@ export function DashboardScreen() {
     transactionCategoryMap,
   });
 
+  const { setSelectedCategoryId } = useDateFilter();
+
+  const handleCategoryPress = (categoryId: string) => {
+    setSelectedCategoryId(categoryId);
+    
+    // Find the primary account to redirect to
+    let targetAccount = null;
+    if (mainAccountId) {
+      targetAccount = accounts.find(a => a.id === mainAccountId);
+    }
+    
+    if (!targetAccount) {
+      targetAccount = accounts.find(a => a.category === "Giro") || accounts[0];
+    }
+    
+    if (targetAccount) {
+      router.push({
+        pathname: `/account/${targetAccount.id}`,
+        params: {
+          name: targetAccount.name,
+          type: targetAccount.type
+        }
+      });
+    }
+  };
+
   // ── Date modal state (UI-only) ──
   const [isDateModalVisible, setDateModalVisible] = useState(false);
   const [tempFrom, setTempFrom] = useState("");
@@ -68,8 +95,8 @@ export function DashboardScreen() {
     setDateModalVisible(true);
   };
 
-  const handleApplyDateFilter = () => {
-    applyDateFilter(tempFrom, tempTo);
+  const handleApplyDateFilter = (from: string, to: string) => {
+    applyDateFilter(from, to);
     setDateModalVisible(false);
   };
 
@@ -164,6 +191,7 @@ export function DashboardScreen() {
             backgroundColor={backgroundColor}
             textColor={textColor}
             tintColor={tintColor}
+            onCategoryPress={handleCategoryPress}
             i18n={i18n}
           />
         </View>
@@ -187,38 +215,39 @@ export function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 60,
-    paddingHorizontal: 20,
+    paddingTop: 80,
+    paddingHorizontal: 24,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 24,
+    alignItems: "center",
+    marginBottom: 32,
   },
   title: {
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 4,
+    fontSize: 32,
+    fontWeight: "800",
+    marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
+    fontWeight: "500",
   },
   scrollContent: {
-    paddingBottom: 40,
-    gap: 16,
+    paddingBottom: 64,
+    gap: 24,
   },
   statsSection: {
-    marginTop: 8,
+    marginTop: 16,
   },
   statsHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    marginBottom: 16,
   },
   statsTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
   },
 });

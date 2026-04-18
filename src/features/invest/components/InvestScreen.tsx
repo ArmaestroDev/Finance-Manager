@@ -267,19 +267,19 @@ export function InvestScreen() {
           width={chartWidth}
           spacing={calculatedSpacing > 0 ? calculatedSpacing : 20}
           initialSpacing={20}
-          color1="#00afdb"
-          color2="#e6b800"
+          color1="#8E1E5E"
+          color2="#9CA3AF"
           textColor1={textColor}
-          dataPointsColor1="#00afdb"
-          dataPointsColor2="#e6b800"
+          dataPointsColor1="#8E1E5E"
+          dataPointsColor2="#9CA3AF"
           dataPointsShape1="circular"
           dataPointsShape2="circular"
           dataPointsRadius1={4}
           dataPointsRadius2={4}
           thickness={3}
-          startFillColor1="#00afdb"
-          endFillColor1="#00afdb"
-          startOpacity1={0.2}
+          startFillColor1="#8E1E5E"
+          endFillColor1="#8E1E5E"
+          startOpacity1={0.15}
           endOpacity1={0.0}
           areaChart1
           yAxisTextStyle={{ color: "gray", fontSize: 11 }}
@@ -293,7 +293,8 @@ export function InvestScreen() {
           xAxisIndicesHeight={5}
           xAxisIndicesColor={textColor}
           xAxisLabelTextStyle={{ color: textColor, fontSize: 10, width: 60 }}
-          hideRules={true}
+          hideRules={false}
+          rulesColor="#E5E7EB"
           showVerticalLines={false}
           yAxisColor={textColor}
           yAxisThickness={1}
@@ -340,50 +341,57 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    padding: 16,
-    paddingBottom: 40,
+    paddingTop: 80,
+    paddingHorizontal: 24,
+    paddingBottom: 64,
   },
   profilesContainer: {
-    marginTop: 40,
-    marginBottom: 10,
+    marginTop: 0,
+    marginBottom: 24,
   },
   profilesScroll: {
     alignItems: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: 0,
+    paddingVertical: 4,
   },
   addProfileBtn: {
     borderWidth: 1,
-    borderStyle: "dashed",
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 10,
+    borderColor: "transparent",
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    marginRight: 12,
+    backgroundColor: "rgba(142, 30, 94, 0.1)", // Primary Light
   },
   addProfileText: {
     fontWeight: "600",
+    fontSize: 15,
   },
   profileChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 999,
+    marginRight: 12,
   },
   profileChipText: {
     color: "#fff",
     fontWeight: "600",
+    fontSize: 15,
   },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 20,
+    marginBottom: 32,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: "bold",
+    fontSize: 32,
+    fontWeight: "800",
   },
   resetButton: {
-    padding: 8,
+    padding: 12,
+    backgroundColor: "rgba(0,0,0,0.05)",
+    borderRadius: 999,
   },
   resetButtonText: {
     fontSize: 14,
@@ -391,40 +399,46 @@ const styles = StyleSheet.create({
   },
   inputsRow: {
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 10,
+    gap: 16,
+    marginBottom: 0,
   },
   resultsContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    borderRadius: 16,
-    padding: 16,
-    marginVertical: 20,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderRadius: 24,
+    padding: 24,
+    marginVertical: 32,
+    shadowColor: "#8E1E5E",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+    backgroundColor: "#FFFFFF",
   },
   resultItem: {
     alignItems: "center",
   },
   resultLabel: {
     fontSize: 12,
-    marginBottom: 4,
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    fontWeight: "500",
   },
   resultValue: {
-    fontSize: 16,
-    fontWeight: "bold",
+    fontSize: 18,
+    fontWeight: "800",
   },
   chartContainer: {
-    marginTop: 10,
+    marginTop: 16,
     justifyContent: "center",
     alignItems: "center",
   },
   note: {
-    marginTop: 10,
-    fontSize: 12,
+    marginTop: 24,
+    fontSize: 13,
     fontStyle: "italic",
     textAlign: "center",
+    opacity: 0.6,
   },
 });

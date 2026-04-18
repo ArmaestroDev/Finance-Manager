@@ -1,11 +1,13 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { Colors } from "../../../constants/theme";
+import { useColorScheme } from "../../../shared/hooks/use-color-scheme";
 
 interface BalanceCardProps {
   title: string;
   amount: string;
-  backgroundColor: string;
-  textColor: string;
+  backgroundColor?: string;
+  textColor?: string;
 }
 
 export function BalanceCard({
@@ -14,10 +16,13 @@ export function BalanceCard({
   backgroundColor,
   textColor,
 }: BalanceCardProps) {
+  const colorScheme = useColorScheme();
+  const theme = Colors[colorScheme ?? "light"];
+
   return (
-    <View style={[styles.card, { backgroundColor }]}>
-      <Text style={[styles.cardTitle, { color: textColor }]}>{title}</Text>
-      <Text style={[styles.cardAmount, { color: textColor }]}>{amount}</Text>
+    <View style={[styles.card, { backgroundColor: theme.surface }]}>
+      <Text style={[styles.cardTitle, { color: theme.textSecondary }]}>{title}</Text>
+      <Text style={[styles.cardAmount, { color: theme.text }]}>{amount}</Text>
     </View>
   );
 }
@@ -25,23 +30,25 @@ export function BalanceCard({
 const styles = StyleSheet.create({
   card: {
     padding: 24,
-    borderRadius: 16,
-    alignItems: "center",
+    borderRadius: 24,
+    alignItems: "flex-start",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowColor: "#8E1E5E",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+    marginBottom: 16,
   },
   cardTitle: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "500",
     marginBottom: 8,
-    opacity: 0.9,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   cardAmount: {
-    fontSize: 32,
-    fontWeight: "700",
+    fontSize: 36,
+    fontWeight: "800",
   },
 });

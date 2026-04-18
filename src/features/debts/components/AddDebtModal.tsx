@@ -276,8 +276,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   modalButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

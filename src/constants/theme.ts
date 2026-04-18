@@ -5,25 +5,39 @@
 
 import { Platform } from 'react-native';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+const tintColorLight = '#8E1E5E';
+const tintColorDark = '#FDF4F8';
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
+    text: '#1E1B4B',
+    textSecondary: '#6B7280',
+    background: '#FAFAFA',
+    surface: '#FFFFFF',
     tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
+    icon: '#6B7280',
+    tabIconDefault: '#9CA3AF',
     tabIconSelected: tintColorLight,
+    primary: '#8E1E5E',
+    primaryLight: '#FDF4F8',
+    income: '#10B981',
+    expense: '#F43F5E',
+    border: '#F3F4F6',
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
+    text: '#FDF4F8',
+    textSecondary: '#9CA3AF',
+    background: '#111827',
+    surface: '#1F2937',
     tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
+    icon: '#9CA3AF',
+    tabIconDefault: '#6B7280',
     tabIconSelected: tintColorDark,
+    primary: '#FDF4F8', // Lighter for dark mode
+    primaryLight: '#8E1E5E', // Darker for dark mode
+    income: '#10B981', // Keep semantic colors consistent or slightly muted
+    expense: '#F43F5E',
+    border: '#374151',
   },
 };
 

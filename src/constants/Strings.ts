@@ -5,6 +5,7 @@ export const Strings = {
     tab_accounts: "Accounts",
     tab_debts: "Debts",
     tab_invest: "Invest",
+    tab_transactions: "Transactions",
     tab_connections: "Connections",
 
     // Home (Overview)
@@ -134,6 +135,8 @@ export const Strings = {
     tx_amount_label: "Amount (negative for expense)",
     change_category: "Change Category",
     manage_categories: "Manage Categories",
+    ai_overload_title: "AI Service Busy",
+    ai_overload_msg: "The AI model is currently experiencing high demand. Please try again in a moment.",
 
     // Settings
     settings_title: "Settings",
@@ -158,6 +161,10 @@ export const Strings = {
     language_sub: "Select your preferred language",
     english: "English",
     german: "German",
+    dashboard_section: "Dashboard",
+    main_account: "Main Account",
+    main_account_sub: "Account used for the dashboard breakdown.",
+    select_main_account: "Select Main Account",
   },
   de: {
     // Tabs
@@ -165,6 +172,7 @@ export const Strings = {
     tab_accounts: "Konten",
     tab_debts: "Schulden",
     tab_invest: "Invest",
+    tab_transactions: "Transaktionen",
     tab_connections: "Verbinden",
 
     // Home (Overview)
@@ -294,6 +302,8 @@ export const Strings = {
     tx_amount_label: "Betrag (negativ für Ausgaben)",
     change_category: "Kategorie ändern",
     manage_categories: "Kategorien verwalten",
+    ai_overload_title: "KI-Dienst ausgelastet",
+    ai_overload_msg: "Das KI-Modell ist derzeit stark ausgelastet. Bitte versuche es in einem Moment erneut.",
 
     // Settings
     settings_title: "Einstellungen",
@@ -318,5 +328,9 @@ export const Strings = {
     language_sub: "Wähle deine bevorzugte Sprache",
     english: "Englisch",
     german: "Deutsch",
+    dashboard_section: "Dashboard",
+    main_account: "Hauptkonto",
+    main_account_sub: "Konto, das für die Dashboard-Auswertung verwendet wird.",
+    select_main_account: "Hauptkonto auswählen",
   },
 };

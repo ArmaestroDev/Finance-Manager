@@ -23,6 +23,7 @@ interface UseAutoCategorizeParams {
   setLoading: (loading: boolean) => void;
   router: any;
   i18n: Record<string, string>;
+  onFinish?: () => void;
 }
 
 export function useAutoCategorize({
@@ -38,6 +39,7 @@ export function useAutoCategorize({
   setLoading,
   router,
   i18n,
+  onFinish,
 }: UseAutoCategorizeParams) {
   const [isCategorizing, setIsCategorizing] = useState(false);
 
@@ -55,24 +57,20 @@ export function useAutoCategorize({
           ],
         );
       }
+      onFinish?.();
       return;
     }
 
     // Identify uncategorized transactions
-    const threeMonthsAgo = new Date();
-    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-
     const uncategorized = transactions.filter((tx) => {
       const txId = getStableTxId(tx);
-      
       if (!reCategorizeAll && getCategoryForTransaction(txId)) return false;
-
-      const txDate = new Date(tx.booking_date || tx.value_date || "");
-      return txDate >= threeMonthsAgo;
+      return true;
     });
 
     if (uncategorized.length === 0) {
       Alert.alert("All Done", "All transactions are already categorized!");
+      onFinish?.();
       return;
     }
 
@@ -155,11 +153,18 @@ Example output format:
           },
         );
 
-        const data = await response.json();
-
-        if (data.error) {
-          throw new Error(data.error.message);
+        if (!response.ok) {
+          let errorMsg = `Request failed with status ${response.status}`;
+          try {
+            const errorData = await response.json();
+            errorMsg = errorData.error?.message || errorMsg;
+          } catch (e) {
+            // Body is not JSON
+          }
+          throw new Error(errorMsg);
         }
+
+        const data = await response.json();
 
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!resultText) continue;
@@ -247,13 +252,14 @@ Example output format:
 
           // Bulk create new categories if any
           if (newCategoriesToCreate.size > 0) {
+            const existingColors = new Set(categories.map(c => c.color));
+            let availableColors = categoryColors.filter(c => !existingColors.has(c));
+            if (availableColors.length === 0) availableColors = [...categoryColors];
+
             const newCatsInput = Array.from(newCategoriesToCreate).map(
-              (name) => ({
+              (name, index) => ({
                 name,
-                color:
-                  categoryColors[
-                    Math.floor(Math.random() * categoryColors.length)
-                  ],
+                color: availableColors[index % availableColors.length],
               }),
             );
 
@@ -282,21 +288,39 @@ Example output format:
         }
       }
 
-      Alert.alert("Success", `Categorized ${categorizedCount} transactions.`);
+      const successMsg = `Categorized ${categorizedCount} transactions.`;
+      if (Platform.OS === "web") {
+        alert(successMsg);
+      } else {
+        Alert.alert("Success", successMsg);
+      }
     } catch (err: any) {
       console.error("Auto-categorization failed", err);
       let msg = err.message || "Unknown error";
-      if (
-        typeof msg === "string" &&
-        (msg.includes("503") || msg.includes("overloaded"))
-      ) {
-        msg =
-          "The AI service is currently overloaded. Please try again in a moment.";
+      let title = "Auto-categorization Issue";
+
+      const isOverloaded = 
+        (typeof msg === "string" && (
+          msg.includes("503") || 
+          msg.includes("overloaded") || 
+          msg.includes("high demand") ||
+          msg.includes("temporary")
+        ));
+
+      if (isOverloaded) {
+        title = i18n.ai_overload_title || "AI Service Busy";
+        msg = i18n.ai_overload_msg || "The AI model is currently experiencing high demand. Please try again in a moment.";
       }
-      Alert.alert("Auto-categorization Issue", msg);
+
+      if (Platform.OS === "web") {
+        alert(`${title}: ${msg}`);
+      } else {
+        Alert.alert(title, msg);
+      }
     } finally {
       setLoading(false);
       setIsCategorizing(false);
+      onFinish?.();
     }
   };
 

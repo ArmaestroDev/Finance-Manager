@@ -1,45 +1,48 @@
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import { useImportQueue } from "../../import/context/ImportQueueContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Modal,
   Platform,
   RefreshControl,
   ScrollView,
+  SectionList,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { useAccounts } from "../context/AccountsContext";
+import type { Transaction } from "../../../services/enableBanking";
+import { useDateFilter } from "../../../shared/context/DateFilterContext";
+import { useSettings } from "../../../shared/context/SettingsContext";
+import { useThemeColor } from "../../../shared/hooks/use-theme-color";
 import {
   CATEGORY_COLORS,
   useCategories,
 } from "../../transactions/context/CategoriesContext";
-import { useSettings } from "../../../shared/context/SettingsContext";
-import { useThemeColor } from "../../../shared/hooks/use-theme-color";
-import type { Transaction } from "../../../services/enableBanking";
+import { useAccounts } from "../context/AccountsContext";
 
 // ── Hooks ──
-import { useAccountStats } from "../hooks/useAccountStats";
 import { useAccountTransactions } from "../../transactions/hooks/useAccountTransactions";
 import { useAutoCategorize } from "../../transactions/hooks/useAutoCategorize";
+import { useAccountStats } from "../hooks/useAccountStats";
 
 // ── Components ──
-import { AccountCategoryModal } from "./AccountCategoryModal";
-import { AddTransactionModal } from "../../transactions/components/AddTransactionModal";
 import { CategoryFilterBar } from "../../../shared/components/CategoryFilterBar";
-import { CategoryManageModal } from "../../transactions/components/CategoryManageModal";
 import { DateFilterModal } from "../../../shared/components/DateFilterModal";
+import { AddTransactionModal } from "../../transactions/components/AddTransactionModal";
+import { CategoryManageModal } from "../../transactions/components/CategoryManageModal";
 import { EditTransactionModal } from "../../transactions/components/EditTransactionModal";
 import { TransactionDetailModal } from "../../transactions/components/TransactionDetailModal";
 import { TransactionItem } from "../../transactions/components/TransactionItem";
+import { AccountCategoryModal } from "./AccountCategoryModal";
 
 // ── Utils ──
-import { formatAmount } from "../../../shared/utils/financeHelpers";
 import { getStableTxId } from "../../transactions/utils/transactions";
 
 export function AccountDetailScreen() {
@@ -51,6 +54,7 @@ export function AccountDetailScreen() {
   const backgroundColor = useThemeColor({}, "background");
   const textColor = useThemeColor({}, "text");
   const tintColor = useThemeColor({}, "tint");
+  const surfaceColor = useThemeColor({}, "surface");
   const router = useRouter();
   const { isBalanceHidden, geminiApiKey, i18n, language } = useSettings();
   const { deleteManualAccount, refreshAccounts, updateAccount, accounts } =
@@ -64,9 +68,20 @@ export function AccountDetailScreen() {
     bulkAssignCategories,
     bulkAddCategories,
     getCategoryForTransaction,
+    transactionCategoryMap,
   } = useCategories();
 
-  // ── Data hook ──
+  // ── Date Filter hook ──
+  const {
+    filterDateFrom,
+    filterDateTo,
+    applyDateFilter,
+    applyPreset,
+    selectedCategoryId,
+    setSelectedCategoryId,
+  } = useDateFilter();
+
+  // ── Transactions hook ──
   const {
     transactions,
     loading,
@@ -74,15 +89,11 @@ export function AccountDetailScreen() {
     refreshing,
     error,
     category,
-    filterDateFrom,
-    filterDateTo,
-    setFilterDateFrom,
-    setFilterDateTo,
-    applyPreset,
     loadTransactions,
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
+    handleImportBankStatement,
     updateCategoryValue,
     handleDeleteAccount,
   } = useAccountTransactions({
@@ -114,6 +125,7 @@ export function AccountDetailScreen() {
     setLoading,
     router,
     i18n,
+    onFinish: () => setAICatModalVisible(false),
   });
 
   // ── UI-only modal state ──
@@ -125,9 +137,6 @@ export function AccountDetailScreen() {
   const [isDetailModalVisible, setDetailModalVisible] = useState(false);
   const [detailTx, setDetailTx] = useState<Transaction | null>(null);
   const [isCatManageModalVisible, setCatManageModalVisible] = useState(false);
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<
-    string | null
-  >(null);
   const [isAICatModalVisible, setAICatModalVisible] = useState(false);
 
   // ── Date filter modal temp state ──
@@ -137,13 +146,29 @@ export function AccountDetailScreen() {
   const categoriesScrollRef = useRef<ScrollView>(null);
 
   // ── Filtered transactions for display ──
-  const filteredTransactions = selectedCategoryFilter
+  const filteredTransactions = selectedCategoryId
     ? transactions.filter((tx) => {
         const txId = getStableTxId(tx);
         const cat = getCategoryForTransaction(txId);
-        return cat?.id === selectedCategoryFilter;
+        return cat?.id === selectedCategoryId;
       })
     : transactions;
+
+  const groupedTransactions = useMemo(() => {
+    const groups: { [key: string]: Transaction[] } = {};
+    filteredTransactions.forEach((tx) => {
+      const dateStr = tx.booking_date || tx.value_date || "";
+      const date = dateStr
+        ? new Date(dateStr).toLocaleDateString()
+        : "Unknown Date";
+      if (!groups[date]) groups[date] = [];
+      groups[date].push(tx);
+    });
+    return Object.keys(groups).map((date) => ({
+      title: date,
+      data: groups[date],
+    }));
+  }, [filteredTransactions]);
 
   // ── Current account details ──
   const currentAccount = accounts.find((a) => a.id === id);
@@ -160,9 +185,8 @@ export function AccountDetailScreen() {
     setFilterModalVisible(true);
   };
 
-  const handleApplyDateFilter = () => {
-    setFilterDateFrom(tempFrom);
-    setFilterDateTo(tempTo);
+  const handleApplyDateFilter = (from: string, to: string) => {
+    applyDateFilter(from, to);
     setFilterModalVisible(false);
   };
 
@@ -180,6 +204,157 @@ export function AccountDetailScreen() {
     setAICatModalVisible(true);
   };
 
+  // ── Import Queue ──
+  const { addFiles, configure: configureQueue } = useImportQueue();
+
+  // Configure the queue processor with this account's data
+  useEffect(() => {
+    if (id && geminiApiKey) {
+      configureQueue({
+        geminiApiKey,
+        currentCurrency,
+        accountId: id,
+        accountType: type as "connected" | "manual",
+        handleImportBankStatement,
+      });
+    }
+  }, [id, geminiApiKey, currentCurrency, type, handleImportBankStatement, configureQueue]);
+
+  /**
+   * Opens a file picker for PDF or CSV bank statements.
+   * PDFs are added to the background queue; CSVs are processed immediately.
+   */
+  const handleImportPress = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["text/csv", "application/pdf"],
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || result.assets.length === 0) return;
+
+      // Separate PDFs from CSVs
+      const pdfAssets = result.assets.filter(
+        (a) =>
+          a.uri.toLowerCase().endsWith(".pdf") ||
+          a.mimeType === "application/pdf",
+      );
+      const csvAssets = result.assets.filter(
+        (a) =>
+          !a.uri.toLowerCase().endsWith(".pdf") &&
+          a.mimeType !== "application/pdf",
+      );
+
+      // ── Queue PDFs for background processing ──
+      if (pdfAssets.length > 0) {
+        if (!geminiApiKey) {
+          Alert.alert(
+            "API Key Missing",
+            "Please set your Gemini API Key in Settings to import PDF bank statements.",
+          );
+          return;
+        }
+        addFiles(
+          pdfAssets.map((asset) => ({
+            uri: asset.uri,
+            name: asset.name,
+            mimeType: asset.mimeType || "application/pdf",
+            file: asset.file,
+          })),
+        );
+        const count = pdfAssets.length;
+        Alert.alert(
+          "Queued",
+          `${count} PDF${count > 1 ? "s" : ""} added to the import queue. Processing will happen in the background with a 30s cooldown between each file.`,
+        );
+      }
+
+      // ── Process CSVs immediately (lightweight, no API call) ──
+      for (const csvAsset of csvAssets) {
+        try {
+          let fileContent = "";
+          if (Platform.OS === "web") {
+            const file = csvAsset.file;
+            if (!file) throw new Error("File object not found on web");
+            fileContent = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsText(file);
+            });
+          } else {
+            fileContent = await FileSystem.readAsStringAsync(csvAsset.uri);
+          }
+
+          const lines = fileContent.split("\n");
+          const rawParsedTxs: Transaction[] = [];
+
+          for (let i = 1; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (!line) continue;
+            const parts = line.split(";").map((p) => p.replace(/^"|"$/g, ""));
+            if (parts.length >= 3) {
+              const rawDate = parts[0];
+              const rawDesc = parts[1];
+              const rawAmount = parts[2].replace(",", ".");
+
+              if (!rawDate || !rawAmount || isNaN(parseFloat(rawAmount))) continue;
+
+              let formattedDate = new Date().toISOString().split("T")[0];
+              try {
+                const d = new Date(rawDate.split(".").reverse().join("-"));
+                if (!isNaN(d.getTime())) {
+                  formattedDate = d.toISOString().split("T")[0];
+                } else {
+                  const d2 = new Date(rawDate);
+                  if (!isNaN(d2.getTime())) {
+                    formattedDate = d2.toISOString().split("T")[0];
+                  }
+                }
+              } catch (e) {
+                // keep default date
+              }
+
+              const desc = `[Imported] ${rawDesc}`;
+              rawParsedTxs.push({
+                transaction_id: `import_csv_${Date.now()}_${i}`,
+                booking_date: formattedDate,
+                transaction_amount: {
+                  currency: currentCurrency,
+                  amount: parseFloat(rawAmount).toString(),
+                },
+                remittance_information: [desc],
+                creditor: {
+                  name: parseFloat(rawAmount) < 0 ? desc : "Self",
+                },
+                debtor: {
+                  name: parseFloat(rawAmount) > 0 ? desc : "Self",
+                },
+              } as unknown as Transaction);
+            }
+          }
+
+          if (rawParsedTxs.length > 0) {
+            await handleImportBankStatement(rawParsedTxs);
+            Alert.alert(
+              "Success",
+              `Imported ${rawParsedTxs.length} transactions from ${csvAsset.name}.`,
+            );
+          } else {
+            Alert.alert("Notice", `No valid transactions found in ${csvAsset.name}.`);
+          }
+        } catch (csvErr) {
+          console.error(csvErr);
+          Alert.alert("Error", `Failed to process CSV: ${csvAsset.name}`);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert("Error", "Failed to open file picker.");
+    }
+  };
+
   // ── Loading State ──
   if (loading && transactions.length === 0) {
     return (
@@ -187,7 +362,12 @@ export function AccountDetailScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <ActivityIndicator size="large" color={tintColor} />
         <Text
-          style={{ color: textColor, opacity: 0.5, marginTop: 12, fontSize: 14 }}
+          style={{
+            color: textColor,
+            opacity: 0.5,
+            marginTop: 12,
+            fontSize: 14,
+          }}
         >
           Loading transactions...
         </Text>
@@ -260,10 +440,10 @@ export function AccountDetailScreen() {
         visible={isCatManageModalVisible}
         categories={categories}
         categoryColors={CATEGORY_COLORS}
-        onAdd={async (catName, color) => { await addCategory(catName, color); }}
-        onUpdate={async (catId, updates) =>
-          updateCategoryCtx(catId, updates)
-        }
+        onAdd={async (catName, color) => {
+          await addCategory(catName, color);
+        }}
+        onUpdate={async (catId, updates) => updateCategoryCtx(catId, updates)}
         onDelete={async (catId) => deleteCategoryCtx(catId)}
         onClose={() => setCatManageModalVisible(false)}
         backgroundColor={backgroundColor}
@@ -337,6 +517,14 @@ export function AccountDetailScreen() {
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
+            onPress={() =>
+              loadTransactions(false, filterDateFrom, filterDateTo, true)
+            }
+            style={styles.headerBtn}
+          >
+            <Ionicons name="reload" size={20} color={textColor} />
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => setCatManageModalVisible(true)}
             style={styles.headerBtn}
           >
@@ -362,12 +550,7 @@ export function AccountDetailScreen() {
       </View>
 
       {/* ── Balance Card ── */}
-      <View
-        style={[
-          styles.balanceCard,
-          { backgroundColor: tintColor + "12" },
-        ]}
-      >
+      <View style={[styles.balanceCard, { backgroundColor: surfaceColor }]}>
         <Text style={[styles.balanceLabel, { color: textColor, opacity: 0.6 }]}>
           Balance
         </Text>
@@ -381,9 +564,9 @@ export function AccountDetailScreen() {
         </Text>
         <TouchableOpacity
           onPress={() => setCatModalVisible(true)}
-          style={[styles.categoryBadge, { backgroundColor: tintColor + "20" }]}
+          style={[styles.categoryBadge, { backgroundColor: tintColor + "15" }]}
         >
-          <Text style={{ color: tintColor, fontSize: 12, fontWeight: "600" }}>
+          <Text style={{ color: tintColor, fontSize: 12, fontWeight: "700" }}>
             {category}
           </Text>
           <Ionicons name="chevron-down" size={12} color={tintColor} />
@@ -400,32 +583,41 @@ export function AccountDetailScreen() {
           <TouchableOpacity
             key={preset.label}
             onPress={() => applyPreset(preset.value)}
-            style={[styles.presetBtn, { borderColor: tintColor }]}
+            style={[
+              styles.presetBtn,
+              { borderColor: "transparent", backgroundColor: tintColor + "15" },
+            ]}
           >
-            <Text style={{ color: tintColor, fontSize: 12, fontWeight: "600" }}>
+            <Text style={{ color: tintColor, fontSize: 13, fontWeight: "600" }}>
               {preset.label}
             </Text>
           </TouchableOpacity>
         ))}
         <TouchableOpacity
           onPress={openDateModal}
-          style={[styles.presetBtn, { borderColor: tintColor }]}
+          style={[
+            styles.presetBtn,
+            { borderColor: "transparent", backgroundColor: tintColor + "15" },
+          ]}
         >
-          <Ionicons name="calendar-outline" size={14} color={tintColor} />
-          <Text style={{ color: tintColor, fontSize: 12, fontWeight: "600" }}>
+          <Ionicons name="calendar-outline" size={16} color={tintColor} />
+          <Text style={{ color: tintColor, fontSize: 13, fontWeight: "600" }}>
             Custom
           </Text>
         </TouchableOpacity>
         {type === "manual" && (
           <TouchableOpacity
             onPress={() => setTxModalVisible(true)}
-            style={[styles.presetBtn, { backgroundColor: tintColor }]}
+            style={[
+              styles.presetBtn,
+              { backgroundColor: tintColor, borderColor: "transparent" },
+            ]}
           >
-            <Ionicons name="add" size={16} color={backgroundColor} />
+            <Ionicons name="add" size={18} color={backgroundColor} />
             <Text
               style={{
                 color: backgroundColor,
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: "600",
               }}
             >
@@ -433,6 +625,24 @@ export function AccountDetailScreen() {
             </Text>
           </TouchableOpacity>
         )}
+        <TouchableOpacity
+          onPress={handleImportPress}
+          style={[
+            styles.presetBtn,
+            { borderColor: "transparent", backgroundColor: tintColor + "15" },
+          ]}
+        >
+          <Ionicons name="document-text-outline" size={16} color={tintColor} />
+          <Text
+            style={{
+              color: tintColor,
+              fontSize: 13,
+              fontWeight: "600",
+            }}
+          >
+            Import
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Category Filter Bar ── */}
@@ -440,8 +650,8 @@ export function AccountDetailScreen() {
         categories={categories}
         transactions={transactions}
         getCategoryForTransaction={getCategoryForTransaction}
-        selectedFilter={selectedCategoryFilter}
-        onSelectFilter={setSelectedCategoryFilter}
+        selectedFilter={selectedCategoryId}
+        onSelectFilter={setSelectedCategoryId}
         accountIncome={accountIncome}
         accountExpenses={accountExpenses}
         isBalanceHidden={isBalanceHidden}
@@ -451,8 +661,8 @@ export function AccountDetailScreen() {
       />
 
       {/* ── Transaction List ── */}
-      <FlatList
-        data={filteredTransactions}
+      <SectionList
+        sections={groupedTransactions}
         renderItem={({ item }) => (
           <TransactionItem
             item={item}
@@ -461,12 +671,20 @@ export function AccountDetailScreen() {
             onPress={handleTransactionPress}
           />
         )}
+        renderSectionHeader={({ section: { title } }) => (
+          <View style={[styles.sectionHeader, { backgroundColor }]}>
+            <Text style={[styles.sectionTitle, { color: textColor }]}>
+              {title}
+            </Text>
+          </View>
+        )}
         keyExtractor={(item) =>
           item.transaction_id ||
           `gen_${item.booking_date || ""}_${item.transaction_amount.amount}_${item.creditor?.name || item.debtor?.name || ""}`
         }
         style={styles.list}
         contentContainerStyle={styles.listContent}
+        stickySectionHeadersEnabled={true}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -478,10 +696,7 @@ export function AccountDetailScreen() {
           <View style={styles.emptyState}>
             <Text style={{ fontSize: 48 }}>📋</Text>
             <Text
-              style={[
-                styles.emptyText,
-                { color: textColor, opacity: 0.5 },
-              ]}
+              style={[styles.emptyText, { color: textColor, opacity: 0.5 }]}
             >
               No transactions found
             </Text>
@@ -504,7 +719,7 @@ export function AccountDetailScreen() {
               color: textColor,
               opacity: 0.4,
               fontSize: 12,
-              paddingVertical: 16,
+              paddingVertical: 32,
             }}
           >
             {filteredTransactions.length} transaction
@@ -513,44 +728,120 @@ export function AccountDetailScreen() {
         }
       />
 
-      {/* ── AI Processing Overlay ── */}
-      {isCategorizing && (
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(0,0,0,0.6)", zIndex: 9999, justifyContent: "center", alignItems: "center" }]}>
-          <ActivityIndicator size="large" color={tintColor} />
-          <Text style={{ color: "#FFF", fontSize: 16, fontWeight: "600", marginTop: 16 }}>
-            {i18n?.ai_processing || "AI is assigning magic..."}
-          </Text>
-        </View>
-      )}
-
       {/* ── AI Categorization Modal ── */}
       <Modal visible={isAICatModalVisible} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" }}>
-          <View style={{ backgroundColor, padding: 24, borderRadius: 16, width: "80%", maxWidth: 400 }}>
-            <Text style={{ fontSize: 18, color: textColor, fontWeight: "bold", marginBottom: 8 }}>
-              AI Categorization
-            </Text>
-            <Text style={{ fontSize: 14, color: textColor, opacity: 0.8, marginBottom: 20 }}>
-              Which transactions would you like the AI to process?
-            </Text>
-            <TouchableOpacity 
-              style={{ backgroundColor: tintColor, paddingVertical: 12, borderRadius: 12, marginBottom: 12 }} 
-              onPress={() => { setAICatModalVisible(false); autoCategorizeTransactions(false); }}
-            >
-              <Text style={{ color: backgroundColor, fontWeight: "600", textAlign: "center" }}>Uncategorized Only</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={{ backgroundColor: "#FF6B6B", paddingVertical: 12, borderRadius: 12, marginBottom: 16 }} 
-              onPress={() => { setAICatModalVisible(false); autoCategorizeTransactions(true); }}
-            >
-              <Text style={{ color: "#FFF", fontWeight: "600", textAlign: "center" }}>Recategorize All (Overwrite)</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={{ backgroundColor: "transparent", paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: tintColor }} 
-              onPress={() => setAICatModalVisible(false)}
-            >
-              <Text style={{ color: tintColor, fontWeight: "600", textAlign: "center" }}>{i18n?.cancel || "Cancel"}</Text>
-            </TouchableOpacity>
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "center",
+            alignItems: "center",
+          }}
+        >
+          <View
+            style={{
+              backgroundColor,
+              padding: 32,
+              borderRadius: 24,
+              width: "85%",
+              maxWidth: 400,
+            }}
+          >
+            {isCategorizing ? (
+              <View style={{ alignItems: "center", paddingVertical: 20 }}>
+                <ActivityIndicator size="large" color={tintColor} />
+                <Text
+                  style={{
+                    color: textColor,
+                    fontSize: 16,
+                    fontWeight: "600",
+                    marginTop: 24,
+                    textAlign: "center",
+                  }}
+                >
+                  {i18n?.ai_processing || "AI is assigning magic...\nThis might take a few moments."}
+                </Text>
+              </View>
+            ) : (
+              <>
+                <Text
+                  style={{
+                    fontSize: 24,
+                    color: textColor,
+                    fontWeight: "800",
+                    marginBottom: 12,
+                  }}
+                >
+                  AI Categorization
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    color: textColor,
+                    opacity: 0.7,
+                    marginBottom: 32,
+                  }}
+                >
+                  Which transactions would you like the AI to process?
+                </Text>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: tintColor,
+                    paddingVertical: 16,
+                    borderRadius: 999,
+                    marginBottom: 16,
+                  }}
+                  onPress={() => autoCategorizeTransactions(false)}
+                >
+                  <Text
+                    style={{
+                      color: backgroundColor,
+                      fontWeight: "600",
+                      textAlign: "center",
+                      fontSize: 16,
+                    }}
+                  >
+                    Uncategorized Only
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "#F43F5E",
+                    paddingVertical: 16,
+                    borderRadius: 999,
+                    marginBottom: 24,
+                  }}
+                  onPress={() => autoCategorizeTransactions(true)}
+                >
+                  <Text
+                    style={{
+                      color: "#FFF",
+                      fontWeight: "600",
+                      textAlign: "center",
+                      fontSize: 16,
+                    }}
+                  >
+                    Recategorize All
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ paddingVertical: 16, borderRadius: 999, borderWidth: 0 }}
+                  onPress={() => setAICatModalVisible(false)}
+                >
+                  <Text
+                    style={{
+                      color: textColor,
+                      opacity: 0.6,
+                      fontWeight: "600",
+                      textAlign: "center",
+                      fontSize: 16,
+                    }}
+                  >
+                    {i18n?.cancel || "Cancel"}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -561,8 +852,8 @@ export function AccountDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 60,
-    paddingHorizontal: 20,
+    paddingTop: 80,
+    paddingHorizontal: 24,
   },
   centered: {
     justifyContent: "center",
@@ -571,86 +862,108 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 16,
-    gap: 12,
+    marginBottom: 24,
+    gap: 16,
   },
   backButton: {
-    padding: 4,
+    padding: 8,
+    marginLeft: -8,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
+    fontSize: 24,
+    fontWeight: "800",
   },
   headerIban: {
     fontSize: 12,
     fontFamily: "monospace",
-    marginTop: 2,
+    marginTop: 4,
   },
   headerActions: {
     flexDirection: "row",
-    gap: 12,
+    gap: 16,
   },
   headerBtn: {
-    padding: 4,
+    padding: 8,
+    marginRight: -8,
   },
   balanceCard: {
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: 24,
+    padding: 24,
+    marginBottom: 24,
     alignItems: "center",
+    shadowColor: "#8E1E5E",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
   },
   balanceLabel: {
-    fontSize: 13,
+    fontSize: 12,
     marginBottom: 4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    fontWeight: "500",
   },
   balanceAmount: {
     fontSize: 32,
     fontWeight: "800",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   categoryBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
   },
   presetsRow: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
+    gap: 12,
+    marginBottom: 24,
     flexWrap: "wrap",
   },
   presetBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
     borderWidth: 1,
   },
   list: {
     flex: 1,
   },
   listContent: {
-    paddingBottom: 40,
+    paddingBottom: 64,
+  },
+  sectionHeader: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    marginBottom: 8,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    opacity: 0.6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   emptyState: {
-    marginTop: 40,
+    marginTop: 64,
     justifyContent: "center",
     alignItems: "center",
-    gap: 8,
+    gap: 12,
   },
   emptyText: {
     fontSize: 18,
     fontWeight: "600",
   },
   retryButton: {
-    marginTop: 16,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    marginTop: 24,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 999,
   },
 });

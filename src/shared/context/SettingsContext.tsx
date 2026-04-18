@@ -9,11 +9,13 @@ interface SettingsContextType {
   userPin: string | null;
   geminiApiKey: string | null;
   language: Language;
+  mainAccountId: string | null;
   toggleBalanceHidden: (pin?: string) => Promise<boolean>;
   setPin: (newPin: string) => Promise<void>;
   verifyPin: (pin: string) => boolean;
   setGeminiApiKey: (key: string) => Promise<void>;
   setLanguage: (lang: Language) => Promise<void>;
+  setMainAccountId: (id: string) => Promise<void>;
   i18n: typeof Strings.en;
 }
 
@@ -26,6 +28,7 @@ const STORAGE_KEYS = {
   USER_PIN: "settings_user_pin",
   GEMINI_API_KEY: "settings_gemini_api_key",
   LANGUAGE: "settings_language",
+  MAIN_ACCOUNT_ID: "settings_main_account_id",
 };
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
@@ -33,6 +36,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [userPin, setUserPin] = useState<string | null>(null);
   const [geminiApiKey, setGeminiApiKeyState] = useState<string | null>(null);
   const [language, setLanguageState] = useState<Language>("de");
+  const [mainAccountId, setMainAccountIdState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,11 +45,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const loadSettings = async () => {
     try {
-      const [hidden, pin, apiKey, lang] = await Promise.all([
+      const [hidden, pin, apiKey, lang, mainAcc] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.BALANCE_HIDDEN),
         AsyncStorage.getItem(STORAGE_KEYS.USER_PIN),
         AsyncStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY),
         AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
+        AsyncStorage.getItem(STORAGE_KEYS.MAIN_ACCOUNT_ID),
       ]);
       setIsBalanceHidden(hidden === "true");
       setUserPin(pin);
@@ -53,6 +58,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       if (lang === "en" || lang === "de") {
         setLanguageState(lang);
       }
+      setMainAccountIdState(mainAcc);
     } catch (e) {
       console.error("Failed to load settings", e);
     } finally {
@@ -78,28 +84,26 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setLanguageState(lang);
   };
 
+  const setMainAccountId = async (id: string) => {
+    await AsyncStorage.setItem(STORAGE_KEYS.MAIN_ACCOUNT_ID, id);
+    setMainAccountIdState(id);
+  };
+
   const verifyPin = (pin: string) => {
     return userPin === pin;
   };
 
   const toggleBalanceHidden = async (pin?: string): Promise<boolean> => {
-    // If activating, we need to ensure a PIN exists.
-    // If 'pin' is provided here during activation, it means we just set it and can rely on it even if state is stale.
-
     if (!isBalanceHidden) {
-      // Activating
       const effectivePin = userPin || pin;
       if (!effectivePin) {
-        // User must set PIN first
         throw new Error("PIN_NOT_SET");
       }
       setIsBalanceHidden(true);
       await AsyncStorage.setItem(STORAGE_KEYS.BALANCE_HIDDEN, "true");
       return true;
     } else {
-      // Deactivating
       if (!pin) throw new Error("PIN_REQUIRED");
-      // Verify against stored pin (or state)
       if (verifyPin(pin)) {
         setIsBalanceHidden(false);
         await AsyncStorage.setItem(STORAGE_KEYS.BALANCE_HIDDEN, "false");
@@ -116,11 +120,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         userPin,
         geminiApiKey,
         language,
+        mainAccountId,
         toggleBalanceHidden,
         setPin,
         verifyPin,
         setGeminiApiKey,
         setLanguage,
+        setMainAccountId,
         i18n: Strings[language],
       }}
     >

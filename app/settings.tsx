@@ -3,6 +3,7 @@ import { Stack, useRouter } from "expo-router";
 import { useState } from "react";
 import {
     Modal,
+    ScrollView,
     StyleSheet,
     Switch,
     Text,
@@ -12,6 +13,7 @@ import {
 } from "react-native";
 import { useSettings } from "../src/shared/context/SettingsContext";
 import { useThemeColor } from "../src/shared/hooks/use-theme-color";
+import { useAccounts } from "../src/features/accounts/context/AccountsContext";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -29,8 +31,12 @@ export default function SettingsScreen() {
     setGeminiApiKey,
     language,
     setLanguage,
+    mainAccountId,
+    setMainAccountId,
     i18n,
   } = useSettings();
+
+  const { accounts } = useAccounts();
 
   const [isPinModalVisible, setPinModalVisible] = useState(false);
   const [pinMode, setPinMode] = useState<"create" | "verify">("create");
@@ -41,24 +47,25 @@ export default function SettingsScreen() {
   const [isKeyModalVisible, setKeyModalVisible] = useState(false);
   const [keyInput, setKeyInput] = useState("");
   const [isLangModalVisible, setLangModalVisible] = useState(false);
+  const [isMainAccModalVisible, setMainAccModalVisible] = useState(false);
+
+  const activeMainAccount = accounts.find(a => a.id === mainAccountId) || 
+                          accounts.find(a => a.category === "Giro") || 
+                          accounts[0];
 
   const handleToggleBalance = async () => {
     if (isBalanceHidden) {
-      // Deactivate -> Require PIN
       setPinMode("verify");
       setPinInput("");
       setPinModalVisible(true);
       setIsChangingPin(false);
     } else {
-      // Activate
       if (!userPin) {
-        // Require PIN setup
         setPinMode("create");
         setPinInput("");
         setPinModalVisible(true);
         setIsChangingPin(false);
       } else {
-        // Just activate
         try {
           await toggleBalanceHidden();
         } catch (e) {
@@ -83,22 +90,18 @@ export default function SettingsScreen() {
         }
 
         if (isChangingPin) {
-          // Old PIN verified, now set new one
           setPinMode("create");
           setPinInput("");
           setError(null);
         } else {
-          // Just toggling balance
           const success = await toggleBalanceHidden(pinInput);
           if (success) {
             setPinModalVisible(false);
           }
         }
       } else {
-        // Create / Set New
         await setPin(pinInput);
         setPinModalVisible(false);
-        // Only toggle if we were NOT changing the pin (i.e. we were setting it up to hide)
         if (!isChangingPin) {
           await toggleBalanceHidden(pinInput);
         }
@@ -115,106 +118,129 @@ export default function SettingsScreen() {
         options={{ title: i18n.settings_title, headerBackTitle: "Home" }}
       />
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>
-          {i18n.language}
-        </Text>
-        <TouchableOpacity
-          style={[styles.row, { borderBottomColor: textColor + "20" }]}
-          onPress={() => setLangModalVisible(true)}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: textColor }]}>
-              {language === "en" ? i18n.english : i18n.german}
-            </Text>
-            <Text style={[styles.rowSubLabel, { color: textColor }]}>
-              {i18n.language_sub}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>
-          {i18n.ai_integration}
-        </Text>
-        <TouchableOpacity
-          style={[styles.row, { borderBottomColor: textColor + "20" }]}
-          onPress={() => {
-            setKeyInput(geminiApiKey || "");
-            setKeyModalVisible(true);
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: textColor }]}>
-              {i18n.gemini_api_key}
-            </Text>
-            <Text
-              style={[
-                styles.rowSubLabel,
-                { color: textColor, opacity: geminiApiKey ? 1 : 0.6 },
-              ]}
-              numberOfLines={1}
-              ellipsizeMode="middle"
-            >
-              {geminiApiKey
-                ? "••••••••" + geminiApiKey.slice(-4)
-                : i18n.not_set}
-            </Text>
-          </View>
-          <Ionicons name="create-outline" size={20} color={textColor + "80"} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>
-          {i18n.privacy}
-        </Text>
-
-        <View style={[styles.row, { borderBottomColor: textColor + "20" }]}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: textColor }]}>
-              {i18n.hide_total}
-            </Text>
-            <Text style={[styles.rowSubLabel, { color: textColor }]}>
-              {i18n.hide_total_sub}
-            </Text>
-          </View>
-          <Switch
-            value={isBalanceHidden}
-            onValueChange={handleToggleBalance}
-            trackColor={{ false: "#767577", true: tintColor }}
-            thumbColor={"#f4f3f4"}
-          />
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>
+            {i18n.dashboard_section}
+          </Text>
+          <TouchableOpacity
+            style={[styles.row, { borderBottomColor: textColor + "20" }]}
+            onPress={() => setMainAccModalVisible(true)}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowLabel, { color: textColor }]}>
+                {i18n.main_account}
+              </Text>
+              <Text style={[styles.rowSubLabel, { color: textColor }]}>
+                {activeMainAccount ? activeMainAccount.name : i18n.not_set}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={[styles.row, { borderBottomColor: textColor + "20" }]}
-          onPress={() => {
-            if (userPin) {
-              setPinMode("verify");
-              setIsChangingPin(true);
-            } else {
-              setPinMode("create");
-              setIsChangingPin(false);
-            }
-            setPinInput("");
-            setPinModalVisible(true);
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.rowLabel, { color: textColor }]}>
-              {userPin ? i18n.change_pin : i18n.set_privacy_pin}
-            </Text>
-            <Text style={[styles.rowSubLabel, { color: textColor }]}>
-              {userPin ? i18n.update_pin_sub : i18n.protect_balances_sub}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
-        </TouchableOpacity>
-      </View>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>
+            {i18n.language}
+          </Text>
+          <TouchableOpacity
+            style={[styles.row, { borderBottomColor: textColor + "20" }]}
+            onPress={() => setLangModalVisible(true)}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowLabel, { color: textColor }]}>
+                {language === "en" ? i18n.english : i18n.german}
+              </Text>
+              <Text style={[styles.rowSubLabel, { color: textColor }]}>
+                {i18n.language_sub}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
+          </TouchableOpacity>
+        </View>
 
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>
+            {i18n.ai_integration}
+          </Text>
+          <TouchableOpacity
+            style={[styles.row, { borderBottomColor: textColor + "20" }]}
+            onPress={() => {
+              setKeyInput(geminiApiKey || "");
+              setKeyModalVisible(true);
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowLabel, { color: textColor }]}>
+                {i18n.gemini_api_key}
+              </Text>
+              <Text
+                style={[
+                  styles.rowSubLabel,
+                  { color: textColor, opacity: geminiApiKey ? 1 : 0.6 },
+                ]}
+                numberOfLines={1}
+                ellipsizeMode="middle"
+              >
+                {geminiApiKey
+                  ? "••••••••" + geminiApiKey.slice(-4)
+                  : i18n.not_set}
+              </Text>
+            </View>
+            <Ionicons name="create-outline" size={20} color={textColor + "80"} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: textColor }]}>
+            {i18n.privacy}
+          </Text>
+
+          <View style={[styles.row, { borderBottomColor: textColor + "20" }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowLabel, { color: textColor }]}>
+                {i18n.hide_total}
+              </Text>
+              <Text style={[styles.rowSubLabel, { color: textColor }]}>
+                {i18n.hide_total_sub}
+              </Text>
+            </View>
+            <Switch
+              value={isBalanceHidden}
+              onValueChange={handleToggleBalance}
+              trackColor={{ false: "#767577", true: tintColor }}
+              thumbColor={"#f4f3f4"}
+            />
+          </View>
+
+          <TouchableOpacity
+            style={[styles.row, { borderBottomColor: textColor + "20" }]}
+            onPress={() => {
+              if (userPin) {
+                setPinMode("verify");
+                setIsChangingPin(true);
+              } else {
+                setPinMode("create");
+                setIsChangingPin(false);
+              }
+              setPinInput("");
+              setPinModalVisible(true);
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rowLabel, { color: textColor }]}>
+                {userPin ? i18n.change_pin : i18n.set_privacy_pin}
+              </Text>
+              <Text style={[styles.rowSubLabel, { color: textColor }]}>
+                {userPin ? i18n.update_pin_sub : i18n.protect_balances_sub}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+
+      {/* PIN Modal */}
       <Modal
         visible={isPinModalVisible}
         transparent
@@ -240,7 +266,6 @@ export default function SettingsScreen() {
               ]}
               value={pinInput}
               onChangeText={(text) => {
-                // Only numbers
                 if (/^\d*$/.test(text) && text.length <= 5) {
                   setPinInput(text);
                   setError(null);
@@ -275,6 +300,8 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Gemini API Key Modal */}
       <Modal
         visible={isKeyModalVisible}
         transparent
@@ -296,7 +323,7 @@ export default function SettingsScreen() {
                   fontSize: 16,
                   textAlign: "left",
                   letterSpacing: 0,
-                  height: 100, // Multiline height
+                  height: 100,
                 },
               ]}
               multiline
@@ -331,6 +358,7 @@ export default function SettingsScreen() {
         </View>
       </Modal>
 
+      {/* Language Selection Modal */}
       <Modal
         visible={isLangModalVisible}
         transparent
@@ -345,11 +373,9 @@ export default function SettingsScreen() {
 
             <TouchableOpacity
               style={[
-                styles.row,
+                styles.selectionRow,
                 {
-                  borderBottomWidth: 1,
                   borderBottomColor: textColor + "10",
-                  width: "100%",
                 },
               ]}
               onPress={() => {
@@ -357,18 +383,16 @@ export default function SettingsScreen() {
                 setLangModalVisible(false);
               }}
             >
-              <Text style={{ color: textColor, fontSize: 18, padding: 12 }}>
+              <Text style={{ color: textColor, fontSize: 18 }}>
                 {i18n.german} {language === "de" && "✓"}
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={[
-                styles.row,
+                styles.selectionRow,
                 {
-                  borderBottomWidth: 1,
                   borderBottomColor: textColor + "10",
-                  width: "100%",
                 },
               ]}
               onPress={() => {
@@ -376,7 +400,7 @@ export default function SettingsScreen() {
                 setLangModalVisible(false);
               }}
             >
-              <Text style={{ color: textColor, fontSize: 18, padding: 12 }}>
+              <Text style={{ color: textColor, fontSize: 18 }}>
                 {i18n.english} {language === "en" && "✓"}
               </Text>
             </TouchableOpacity>
@@ -392,6 +416,63 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Main Account Selection Modal */}
+      <Modal
+        visible={isMainAccModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setMainAccModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor }]}>
+            <Text style={[styles.modalTitle, { color: textColor }]}>
+              {i18n.select_main_account}
+            </Text>
+
+            <ScrollView style={{ width: "100%", maxHeight: 300 }}>
+              {accounts.map((acc) => (
+                <TouchableOpacity
+                  key={acc.id}
+                  style={[
+                    styles.selectionRow,
+                    {
+                      borderBottomColor: textColor + "10",
+                    },
+                  ]}
+                  onPress={async () => {
+                    await setMainAccountId(acc.id);
+                    setMainAccModalVisible(false);
+                  }}
+                >
+                  <View>
+                    <Text style={{ color: textColor, fontSize: 16, fontWeight: "600" }}>
+                      {acc.name} {activeMainAccount?.id === acc.id && "✓"}
+                    </Text>
+                    <Text style={{ color: textColor, opacity: 0.6, fontSize: 12 }}>
+                      {acc.bankName} • {acc.category}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+              {accounts.length === 0 && (
+                <Text style={{ color: textColor, opacity: 0.5, textAlign: "center", padding: 20 }}>
+                  {i18n.no_accounts}
+                </Text>
+              )}
+            </ScrollView>
+
+            <View style={[styles.modalButtons, { marginTop: 24 }]}>
+              <TouchableOpacity
+                onPress={() => setMainAccModalVisible(false)}
+                style={styles.modalButton}
+              >
+                <Text style={{ color: textColor }}>{i18n.cancel}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -399,10 +480,11 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
+    paddingTop: 20,
   },
   section: {
     marginBottom: 32,
+    paddingHorizontal: 20,
   },
   sectionTitle: {
     fontSize: 14,
@@ -430,6 +512,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
     paddingRight: 16,
   },
+  selectionRow: {
+    width: "100%",
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+  },
   // Modal
   modalOverlay: {
     flex: 1,
@@ -441,7 +529,7 @@ const styles = StyleSheet.create({
   modalContent: {
     width: "100%",
     maxWidth: 320,
-    borderRadius: 16,
+    borderRadius: 24,
     padding: 24,
     alignItems: "center",
     shadowColor: "#000",
@@ -451,14 +539,14 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: "600",
+    fontSize: 20,
+    fontWeight: "800",
     marginBottom: 24,
   },
   pinInput: {
     width: "100%",
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: 12,
     padding: 16,
     fontSize: 24,
     textAlign: "center",
@@ -472,8 +560,10 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 999,
     alignItems: "center",
+    justifyContent: "center",
   },
 });

@@ -12,7 +12,11 @@ import "react-native-reanimated";
 import { AccountsProvider } from "../src/features/accounts/context/AccountsContext";
 import { CategoriesProvider } from "../src/features/transactions/context/CategoriesContext";
 import { DebtsProvider } from "../src/features/debts/context/DebtsContext";
+import { ImportQueueProvider } from "../src/features/import/context/ImportQueueContext";
+import { ImportQueueOverlay } from "../src/features/import/components/ImportQueueOverlay";
 import { SettingsProvider } from "../src/shared/context/SettingsContext";
+import { DateFilterProvider } from "../src/shared/context/DateFilterContext";
+import { TransactionsProvider } from "../src/features/transactions/context/TransactionsContext";
 import { useColorScheme } from "../src/shared/hooks/use-color-scheme";
 
 export const unstable_settings = {
@@ -50,20 +54,27 @@ export default function RootLayout() {
 
   return (
     <SettingsProvider>
-      <AccountsProvider>
-        <CategoriesProvider>
-          <DebtsProvider>
-            <ThemeProvider
-              value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-            >
-              <Stack>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              </Stack>
-              <StatusBar style="auto" />
-            </ThemeProvider>
-          </DebtsProvider>
-        </CategoriesProvider>
-      </AccountsProvider>
+      <DateFilterProvider>
+        <AccountsProvider>
+          <CategoriesProvider>
+            <DebtsProvider>
+              <TransactionsProvider>
+                <ImportQueueProvider>
+                  <ThemeProvider
+                    value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+                  >
+                    <Stack>
+                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    </Stack>
+                    <ImportQueueOverlay />
+                    <StatusBar style="auto" />
+                  </ThemeProvider>
+                </ImportQueueProvider>
+              </TransactionsProvider>
+            </DebtsProvider>
+          </CategoriesProvider>
+        </AccountsProvider>
+      </DateFilterProvider>
     </SettingsProvider>
   );
 }

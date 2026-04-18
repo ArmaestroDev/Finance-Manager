@@ -1,14 +1,14 @@
 import { type Transaction } from "../../../services/enableBanking";
 
-export const getStableTxId = (tx: Transaction) => {
+export const getStableTxId = (tx: any) => {
     return (
         tx.transaction_id ||
-        `gen_${tx.booking_date || ""}_${tx.transaction_amount.amount}_${tx.creditor?.name || tx.debtor?.name || ""}`
+        `gen_${tx.booking_date || ""}_${tx.transaction_amount?.amount ?? tx.amount ?? ""}_${tx.creditor?.name || tx.debtor?.name || ""}`
     );
 };
 
-export const getTransactionAmount = (tx: Transaction) => {
-    let amount = parseFloat(tx.transaction_amount.amount);
+export const getTransactionAmount = (tx: any) => {
+    let amount = parseFloat(tx.transaction_amount?.amount ?? tx.amount ?? "0");
 
     if (tx.credit_debit_indicator === "DBIT") {
         return amount > 0 ? -amount : amount;
