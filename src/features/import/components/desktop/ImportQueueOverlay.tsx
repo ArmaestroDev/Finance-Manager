@@ -21,8 +21,6 @@ function getStatusDisplay(
       return { icon: "time-outline", color: "#9CA3AF", label: "Pending" };
     case "processing":
       return { icon: "sync-outline", color: tintColor, label: "Processing..." };
-    case "waiting":
-      return { icon: "hourglass-outline", color: "#F59E0B", label: "Cooldown" };
     case "completed":
       return { icon: "checkmark-circle", color: "#10B981", label: "Completed" };
     case "failed":
@@ -33,8 +31,7 @@ function getStatusDisplay(
 }
 
 export function ImportQueueOverlay(): React.ReactElement | null {
-  const { items, skipWait, removeItem, retryItem } = useImportQueue();
-  const [now, setNow] = useState<number>(Date.now());
+  const { items, removeItem, retryItem } = useImportQueue();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [slideAnim] = useState(() => new Animated.Value(0));
 
@@ -43,11 +40,6 @@ export function ImportQueueOverlay(): React.ReactElement | null {
   const textSecondary = useThemeColor({}, "textSecondary");
   const tintColor = useThemeColor({}, "tint");
   const borderColor = useThemeColor({}, "border");
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -145,10 +137,6 @@ export function ImportQueueOverlay(): React.ReactElement | null {
         >
           {items.map((item) => {
             const statusInfo = getStatusDisplay(item.status, tintColor);
-            const isWaiting = item.status === "waiting" && item.scheduledAt != null;
-            const timeLeft = isWaiting
-              ? Math.max(0, Math.ceil(((item.scheduledAt as number) - now) / 1000))
-              : 0;
 
             return (
               <View
@@ -170,21 +158,12 @@ export function ImportQueueOverlay(): React.ReactElement | null {
                   </Text>
                   <Text style={[styles.itemStatus, { color: statusInfo.color }]}>
                     {item.status === "processing" && `${statusInfo.label} ${item.progress}%`}
-                    {item.status === "waiting" && `Starting in ${timeLeft}s`}
-                    {item.status === "completed" && `✓ ${item.resultTransactions?.length ?? 0} transactions`}
+                    {item.status === "completed" && `✓ ${item.importedCount ?? 0} imported${(item.skippedCount ?? 0) > 0 ? `, ${item.skippedCount} skipped` : ""}`}
                     {item.status === "failed" && (item.error ?? "Unknown error")}
                     {item.status === "idle" && statusInfo.label}
                   </Text>
                 </View>
                 <View style={styles.itemActions}>
-                  {item.status === "waiting" && (
-                    <TouchableOpacity
-                      style={[styles.actionBtn, { backgroundColor: tintColor }]}
-                      onPress={() => skipWait(item.id)}
-                    >
-                      <Text style={styles.actionBtnText}>Skip Wait</Text>
-                    </TouchableOpacity>
-                  )}
                   {item.status === "failed" && (
                     <TouchableOpacity
                       style={[styles.actionBtn, { backgroundColor: "#F59E0B" }]}

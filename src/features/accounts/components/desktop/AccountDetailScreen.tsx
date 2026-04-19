@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -21,6 +21,8 @@ import { useDateFilter } from "../../../../shared/context/DateFilterContext";
 import { useSettings } from "../../../../shared/context/SettingsContext";
 import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
 import { useImportQueue } from "../../../import/context/ImportQueueContext";
+import { StatementsModal } from "../../../import/components/StatementsModal";
+import { CsvMappingModal } from "../../../import/components/CsvMappingModal";
 import {
   CATEGORY_COLORS,
   useCategories,
@@ -135,6 +137,10 @@ export function AccountDetailScreen() {
   const [detailTx, setDetailTx] = useState<Transaction | null>(null);
   const [isCatManageModalVisible, setCatManageModalVisible] = useState(false);
   const [isAICatModalVisible, setAICatModalVisible] = useState(false);
+  const [isStatementsModalVisible, setStatementsModalVisible] = useState(false);
+  const [csvQueue, setCsvQueue] = useState<
+    { fileName: string; content: string }[]
+  >([]);
 
   const [tempFrom, setTempFrom] = useState("");
   const [tempTo, setTempTo] = useState("");
@@ -197,26 +203,7 @@ export function AccountDetailScreen() {
   };
 
   // ── Import Queue ──
-  const { addFiles, configure: configureQueue } = useImportQueue();
-
-  useEffect(() => {
-    if (id && geminiApiKey) {
-      configureQueue({
-        geminiApiKey,
-        currentCurrency,
-        accountId: id,
-        accountType: type as "connected" | "manual",
-        handleImportBankStatement,
-      });
-    }
-  }, [
-    id,
-    geminiApiKey,
-    currentCurrency,
-    type,
-    handleImportBankStatement,
-    configureQueue,
-  ]);
+  const { addFiles } = useImportQueue();
 
   const handleImportPress = async () => {
     try {
@@ -240,28 +227,20 @@ export function AccountDetailScreen() {
       );
 
       if (pdfAssets.length > 0) {
-        if (!geminiApiKey) {
-          Alert.alert(
-            "API Key Missing",
-            "Please set your Gemini API Key in Settings to import PDF bank statements.",
-          );
-          return;
-        }
         addFiles(
           pdfAssets.map((asset) => ({
             uri: asset.uri,
             name: asset.name,
             mimeType: asset.mimeType || "application/pdf",
             file: asset.file,
+            accountId: id,
+            accountType: type as "connected" | "manual",
+            currency: currentCurrency,
           })),
-        );
-        const count = pdfAssets.length;
-        Alert.alert(
-          "Queued",
-          `${count} PDF${count > 1 ? "s" : ""} added to the import queue. Processing will happen in the background with a 30s cooldown between each file.`,
         );
       }
 
+      const csvItems: { fileName: string; content: string }[] = [];
       for (const csvAsset of csvAssets) {
         try {
           let fileContent = "";
@@ -277,73 +256,17 @@ export function AccountDetailScreen() {
           } else {
             fileContent = await FileSystem.readAsStringAsync(csvAsset.uri);
           }
-
-          const lines = fileContent.split("\n");
-          const rawParsedTxs: Transaction[] = [];
-
-          for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line) continue;
-            const parts = line.split(";").map((p) => p.replace(/^"|"$/g, ""));
-            if (parts.length >= 3) {
-              const rawDate = parts[0];
-              const rawDesc = parts[1];
-              const rawAmount = parts[2].replace(",", ".");
-
-              if (!rawDate || !rawAmount || isNaN(parseFloat(rawAmount)))
-                continue;
-
-              let formattedDate = new Date().toISOString().split("T")[0];
-              try {
-                const d = new Date(rawDate.split(".").reverse().join("-"));
-                if (!isNaN(d.getTime())) {
-                  formattedDate = d.toISOString().split("T")[0];
-                } else {
-                  const d2 = new Date(rawDate);
-                  if (!isNaN(d2.getTime())) {
-                    formattedDate = d2.toISOString().split("T")[0];
-                  }
-                }
-              } catch (e) {
-                // keep default date
-              }
-
-              const desc = `[Imported] ${rawDesc}`;
-              rawParsedTxs.push({
-                transaction_id: `import_csv_${Date.now()}_${i}`,
-                booking_date: formattedDate,
-                transaction_amount: {
-                  currency: currentCurrency,
-                  amount: parseFloat(rawAmount).toString(),
-                },
-                remittance_information: [desc],
-                creditor: {
-                  name: parseFloat(rawAmount) < 0 ? desc : "Self",
-                },
-                debtor: {
-                  name: parseFloat(rawAmount) > 0 ? desc : "Self",
-                },
-              } as unknown as Transaction);
-            }
-          }
-
-          if (rawParsedTxs.length > 0) {
-            await handleImportBankStatement(rawParsedTxs);
-            Alert.alert(
-              "Success",
-              `Imported ${rawParsedTxs.length} transactions from ${csvAsset.name}.`,
-            );
+          if (fileContent.trim()) {
+            csvItems.push({ fileName: csvAsset.name, content: fileContent });
           } else {
-            Alert.alert(
-              "Notice",
-              `No valid transactions found in ${csvAsset.name}.`,
-            );
+            Alert.alert("Empty file", `${csvAsset.name} has no content.`);
           }
         } catch (csvErr) {
           console.error(csvErr);
-          Alert.alert("Error", `Failed to process CSV: ${csvAsset.name}`);
+          Alert.alert("Error", `Failed to read CSV: ${csvAsset.name}`);
         }
       }
+      if (csvItems.length > 0) setCsvQueue((prev) => [...prev, ...csvItems]);
     } catch (err) {
       console.error(err);
       Alert.alert("Error", "Failed to open file picker.");
@@ -530,16 +453,16 @@ export function AccountDetailScreen() {
             <Ionicons name="reload" size={16} color={textColor} />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={handleImportPress}
+            onPress={() => setStatementsModalVisible(true)}
             style={[styles.topBtn, { backgroundColor: textColor + "10" }]}
           >
             <Ionicons
-              name="document-text-outline"
+              name="folder-open-outline"
               size={16}
               color={textColor}
             />
             <Text style={{ color: textColor, fontSize: 13, fontWeight: "600" }}>
-              {i18n.import}
+              {i18n.stmt_title || "Statements"}
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -836,6 +759,35 @@ export function AccountDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      <StatementsModal
+        visible={isStatementsModalVisible}
+        accountId={id}
+        accountType={type as "connected" | "manual"}
+        onClose={() => setStatementsModalVisible(false)}
+        onImport={handleImportPress}
+      />
+
+      {csvQueue.length > 0 && (
+        <CsvMappingModal
+          visible
+          fileName={csvQueue[0].fileName}
+          fileContent={csvQueue[0].content}
+          currency={currentCurrency}
+          onCancel={() => setCsvQueue((q) => q.slice(1))}
+          onConfirm={async (transactions) => {
+            const fileName = csvQueue[0].fileName;
+            setCsvQueue((q) => q.slice(1));
+            if (transactions.length > 0) {
+              await handleImportBankStatement(transactions);
+              Alert.alert(
+                "Imported",
+                `Added ${transactions.length} transaction${transactions.length === 1 ? "" : "s"} from ${fileName}.`,
+              );
+            }
+          }}
+        />
+      )}
     </View>
   );
 }

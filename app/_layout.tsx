@@ -13,6 +13,7 @@ import { AccountsProvider } from "../src/features/accounts/context/AccountsConte
 import { CategoriesProvider } from "../src/features/transactions/context/CategoriesContext";
 import { DebtsProvider } from "../src/features/debts/context/DebtsContext";
 import { ImportQueueProvider } from "../src/features/import/context/ImportQueueContext";
+import { BankStatementsProvider } from "../src/features/import/context/BankStatementsContext";
 import { ImportQueueOverlay } from "../src/features/import/components/ImportQueueOverlay";
 import { SettingsProvider } from "../src/shared/context/SettingsContext";
 import { DateFilterProvider } from "../src/shared/context/DateFilterContext";
@@ -84,9 +85,11 @@ export default function RootLayout() {
           <CategoriesProvider>
             <DebtsProvider>
               <TransactionsProvider>
-                <ImportQueueProvider>
-                  <RootLayoutInner />
-                </ImportQueueProvider>
+                <BankStatementsProvider>
+                  <ImportQueueProvider>
+                    <RootLayoutInner />
+                  </ImportQueueProvider>
+                </BankStatementsProvider>
               </TransactionsProvider>
             </DebtsProvider>
           </CategoriesProvider>

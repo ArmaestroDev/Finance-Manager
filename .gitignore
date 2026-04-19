@@ -53,3 +53,5 @@ pipeline/
 !pipeline/outputs/.gitkeep
 .env
 GEMINI.md
+CLAUDE.md
+import_functionality.md

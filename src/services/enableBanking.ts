@@ -45,6 +45,9 @@ export interface Transaction {
   };
   remittance_information?: string[];
   credit_debit_indicator?: string;
+  // App-local field: set when a transaction was imported from a bank statement
+  // PDF, used to trace/delete by source file. Not part of the Enable Banking API.
+  statement_id?: string;
 }
 
 export interface SessionData {

@@ -21,6 +21,11 @@ interface ManualTransaction {
   debtor?: { name?: string };
 }
 
+export interface ImportResult {
+  importedTxIds: string[];
+  skippedCount: number;
+}
+
 interface TransactionsContextType {
   transactionsByAccount: Record<string, Transaction[]>;
   isLoading: boolean;
@@ -29,7 +34,23 @@ interface TransactionsContextType {
   addManualTransaction: (accountId: string, txTitle: string, txAmount: string) => Promise<void>;
   updateManualTransaction: (accountId: string, editingTx: Transaction, editTitle: string, editAmount: string) => Promise<void>;
   deleteManualTransaction: (accountId: string, editingTx: Transaction) => Promise<void>;
-  importBankStatement: (accountId: string, newTxs: Transaction[], isManual: boolean) => Promise<void>;
+  importBankStatement: (
+    accountId: string,
+    newTxs: Transaction[],
+    isManual: boolean,
+    statementId?: string,
+  ) => Promise<ImportResult>;
+  deleteTransactionsByIds: (
+    accountId: string,
+    txIds: string[],
+    isManual: boolean,
+  ) => Promise<void>;
+  deleteStatementTransactions: (
+    accountId: string,
+    statementId: string,
+    txIds: string[],
+    isManual: boolean,
+  ) => Promise<number>;
   clearGlobalError: () => void;
 }
 
@@ -346,42 +367,144 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
     await updateAccountBalance(accountId, -amountToRemove);
   };
 
-  const importBankStatement = async (accountId: string, newTxs: Transaction[], isManual: boolean) => {
+  const storageKeyFor = (accountId: string, isManual: boolean) =>
+    isManual
+      ? `manual_transactions_${accountId}`
+      : `${CONNECTED_TRANSACTIONS_PREFIX}${accountId}`;
+
+  const applyInMemoryDateFilter = (txs: Transaction[]) => {
+    const apiFrom = toApiDate(filterDateFrom);
+    const apiTo = toApiDate(filterDateTo);
+    const filtered = txs.filter((t) => {
+      const date = t.booking_date || t.value_date || "";
+      return (!apiFrom || date >= apiFrom) && (!apiTo || date <= apiTo);
+    });
+    filtered.sort((a, b) => {
+      const dateA = a.booking_date || a.value_date || "";
+      const dateB = b.booking_date || b.value_date || "";
+      return dateB.localeCompare(dateA);
+    });
+    return filtered;
+  };
+
+  const importBankStatement = async (
+    accountId: string,
+    newTxs: Transaction[],
+    isManual: boolean,
+    statementId?: string,
+  ): Promise<ImportResult> => {
     try {
-      if (isManual) {
-        const txKey = `manual_transactions_${accountId}`;
-        const storedTx = await AsyncStorage.getItem(txKey);
-        let allTxs: Transaction[] = storedTx ? JSON.parse(storedTx) : [];
-        
-        const existingIds = new Set(allTxs.map(t => t.transaction_id));
-        const txsToAdd = newTxs.filter(t => !existingIds.has(t.transaction_id));
-        
-        allTxs = [...txsToAdd, ...allTxs];
-        await AsyncStorage.setItem(txKey, JSON.stringify(allTxs));
-        
-        // Calculate diff and update balance
-        const balanceDiff = txsToAdd.reduce((acc, t) => acc + parseFloat(t.transaction_amount.amount), 0);
-        if (balanceDiff !== 0) {
-          await updateAccountBalance(accountId, balanceDiff);
+      const key = storageKeyFor(accountId, isManual);
+      const stored = await AsyncStorage.getItem(key);
+      let existing: Transaction[] = stored ? JSON.parse(stored) : [];
+
+      // Date-coverage dedupe: the Enable Banking API is authoritative for
+      // connected accounts within its 90-day window, so any date that already
+      // has at least one recorded transaction is considered fully covered and
+      // statement rows for that date are skipped. Dates with no existing log
+      // (usually older than the API window) get imported as-is.
+      const coveredDates = new Set(
+        existing
+          .map((t) => t.booking_date || t.value_date || "")
+          .filter(Boolean),
+      );
+
+      const importedTxIds: string[] = [];
+      const kept: Transaction[] = [];
+      let skipped = 0;
+
+      for (const tx of newTxs) {
+        const date = tx.booking_date || tx.value_date || "";
+        if (date && coveredDates.has(date)) {
+          skipped++;
+          continue;
         }
-      } else {
-        const cacheKey = `${CONNECTED_TRANSACTIONS_PREFIX}${accountId}`;
-        const cachedData = await AsyncStorage.getItem(cacheKey);
-        let cachedTxs: Transaction[] = cachedData ? JSON.parse(cachedData) : [];
-        
-        const existingIds = new Set(cachedTxs.map(t => t.transaction_id || `gen_${t.booking_date || ""}_${t.transaction_amount.amount}_${t.creditor?.name || t.debtor?.name || ""}`));
-        const txsToAdd = newTxs.filter(t => {
-          const id = t.transaction_id || `gen_${t.booking_date || ""}_${t.transaction_amount.amount}_${t.creditor?.name || t.debtor?.name || ""}`;
-          return !existingIds.has(id);
-        });
-        
-        cachedTxs = [...txsToAdd, ...cachedTxs];
-        await AsyncStorage.setItem(cacheKey, JSON.stringify(cachedTxs));
+        const tagged: Transaction = statementId
+          ? { ...tx, statement_id: statementId }
+          : { ...tx };
+        if (tagged.transaction_id) importedTxIds.push(tagged.transaction_id);
+        kept.push(tagged);
       }
-      await loadAllTransactions();
+
+      existing = [...kept, ...existing];
+      await AsyncStorage.setItem(key, JSON.stringify(existing));
+
+      // Update in-memory map for current date filter. No balance change —
+      // imported transactions are independent of account balance.
+      setTransactionsByAccount((prev) => ({
+        ...prev,
+        [accountId]: applyInMemoryDateFilter(existing),
+      }));
+
+      return { importedTxIds, skippedCount: skipped };
     } catch (err) {
       console.error("Failed to import bank statement:", err);
       setGlobalError("Failed to import bank statement");
+      return { importedTxIds: [], skippedCount: 0 };
+    }
+  };
+
+  const deleteTransactionsByIds = async (
+    accountId: string,
+    txIds: string[],
+    isManual: boolean,
+  ) => {
+    if (txIds.length === 0) return;
+    try {
+      const key = storageKeyFor(accountId, isManual);
+      const stored = await AsyncStorage.getItem(key);
+      if (!stored) return;
+      const all: Transaction[] = JSON.parse(stored);
+      const idSet = new Set(txIds);
+      const remaining = all.filter(
+        (t) => !t.transaction_id || !idSet.has(t.transaction_id),
+      );
+      await AsyncStorage.setItem(key, JSON.stringify(remaining));
+      setTransactionsByAccount((prev) => ({
+        ...prev,
+        [accountId]: applyInMemoryDateFilter(remaining),
+      }));
+    } catch (err) {
+      console.error("Failed to delete transactions by ids:", err);
+      setGlobalError("Failed to delete statement transactions");
+    }
+  };
+
+  // Robust cascade: matches by transaction_id AND by statement_id tag so
+  // imports where the stable id may have drifted (pre-existing entries,
+  // dedupe-skipped re-imports, etc.) are still cleaned up.
+  const deleteStatementTransactions = async (
+    accountId: string,
+    statementId: string,
+    txIds: string[],
+    isManual: boolean,
+  ): Promise<number> => {
+    try {
+      const key = storageKeyFor(accountId, isManual);
+      const stored = await AsyncStorage.getItem(key);
+      if (!stored) return 0;
+      const all: Transaction[] = JSON.parse(stored);
+      const idSet = new Set(txIds);
+      let removed = 0;
+      const remaining = all.filter((t) => {
+        const byStmt = t.statement_id && t.statement_id === statementId;
+        const byId = t.transaction_id && idSet.has(t.transaction_id);
+        if (byStmt || byId) {
+          removed++;
+          return false;
+        }
+        return true;
+      });
+      await AsyncStorage.setItem(key, JSON.stringify(remaining));
+      setTransactionsByAccount((prev) => ({
+        ...prev,
+        [accountId]: applyInMemoryDateFilter(remaining),
+      }));
+      return removed;
+    } catch (err) {
+      console.error("Failed to delete statement transactions:", err);
+      setGlobalError("Failed to delete statement transactions");
+      return 0;
     }
   };
 
@@ -396,6 +519,8 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
         updateManualTransaction,
         deleteManualTransaction,
         importBankStatement,
+        deleteTransactionsByIds,
+        deleteStatementTransactions,
         clearGlobalError: () => setGlobalError(null),
       }}
     >

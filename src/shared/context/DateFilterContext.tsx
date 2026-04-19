@@ -9,9 +9,11 @@ interface DateFilterContextType {
   filterDateTo: string;
   refreshSignal: number;
   selectedCategoryId: string | null;
+  selectedStatementId: string | null;
   applyDateFilter: (from: string, to: string) => Promise<void>;
   applyPreset: (days: number | "year") => void;
   setSelectedCategoryId: (id: string | null) => void;
+  setSelectedStatementId: (id: string | null) => void;
 }
 
 const DateFilterContext = createContext<DateFilterContextType | undefined>(undefined);
@@ -20,6 +22,7 @@ export function DateFilterProvider({ children }: { children: ReactNode }) {
   const [filterDateFrom, setFilterDateFrom] = useState<string>("");
   const [filterDateTo, setFilterDateTo] = useState<string>("");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [selectedStatementId, setSelectedStatementId] = useState<string | null>(null);
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -29,10 +32,11 @@ export function DateFilterProvider({ children }: { children: ReactNode }) {
       try {
         const saved = await AsyncStorage.getItem(DATE_FILTER_KEY);
         if (saved) {
-          const { from, to, catId } = JSON.parse(saved);
+          const { from, to, catId, stmtId } = JSON.parse(saved);
           setFilterDateFrom(from);
           setFilterDateTo(to);
           if (catId) setSelectedCategoryId(catId);
+          if (stmtId) setSelectedStatementId(stmtId);
         } else {
           // Default to 1st of this month → today
           const d = new Date();
@@ -69,6 +73,15 @@ export function DateFilterProvider({ children }: { children: ReactNode }) {
     } catch (e) {}
   };
 
+  const handleSetSelectedStatementId = async (id: string | null) => {
+    setSelectedStatementId(id);
+    try {
+      const saved = await AsyncStorage.getItem(DATE_FILTER_KEY);
+      const existing = saved ? JSON.parse(saved) : {};
+      await AsyncStorage.setItem(DATE_FILTER_KEY, JSON.stringify({ ...existing, stmtId: id }));
+    } catch (e) {}
+  };
+
   const applyPreset = (days: number | "year") => {
     const to = new Date();
     const from = new Date();
@@ -93,9 +106,11 @@ export function DateFilterProvider({ children }: { children: ReactNode }) {
         filterDateTo,
         refreshSignal,
         selectedCategoryId,
+        selectedStatementId,
         applyDateFilter,
         applyPreset,
         setSelectedCategoryId: handleSetSelectedCategoryId,
+        setSelectedStatementId: handleSetSelectedStatementId,
       }}
     >
       {children}

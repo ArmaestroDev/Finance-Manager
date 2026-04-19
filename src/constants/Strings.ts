@@ -187,6 +187,19 @@ export const Strings = {
     import: "Import",
     categories: "Categories",
 
+    // Bank Statements
+    stmt_title: "Statements",
+    stmt_empty: "No statements imported yet",
+    stmt_empty_hint: "Use the Import button to upload bank statements",
+    stmt_delete_title: "Delete Statement",
+    stmt_delete_msg: "Delete this statement and all imported transactions?",
+    stmt_imported: "imported",
+    stmt_skipped: "skipped",
+    stmt_count_single: "statement",
+    stmt_count_plural: "statements",
+    stmt_open_pdf: "Open PDF",
+    stmt_pdf_unavailable: "PDF not available for this statement",
+
     // Date Range Picker
     filter_by_date: "Filter by Date",
     from: "From",
@@ -370,6 +383,19 @@ export const Strings = {
     recategorize_all: "Alle neu kategorisieren",
     import: "Importieren",
     categories: "Kategorien",
+
+    // Bank Statements
+    stmt_title: "Kontoauszüge",
+    stmt_empty: "Noch keine Kontoauszüge importiert",
+    stmt_empty_hint: "Verwende die Import-Schaltfläche, um Kontoauszüge hochzuladen",
+    stmt_delete_title: "Kontoauszug löschen",
+    stmt_delete_msg: "Kontoauszug und alle importierten Transaktionen löschen?",
+    stmt_imported: "importiert",
+    stmt_skipped: "übersprungen",
+    stmt_count_single: "Kontoauszug",
+    stmt_count_plural: "Kontoauszüge",
+    stmt_open_pdf: "PDF öffnen",
+    stmt_pdf_unavailable: "Keine PDF für diesen Kontoauszug verfügbar",
 
     // Date Range Picker
     filter_by_date: "Nach Datum filtern",

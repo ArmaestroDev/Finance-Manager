@@ -6,39 +6,35 @@ import React, {
   useReducer,
   useRef,
 } from "react";
-import type { Transaction } from "../../../services/enableBanking";
-import { processStatementWithGemini } from "../services/processStatement";
+import { useTransactionsContext } from "../../transactions/context/TransactionsContext";
+import { parseStatementWithBackend } from "../services/processStatement";
+import { useBankStatements } from "./BankStatementsContext";
 
 // ── Types ──
 
 export type QueueItemStatus =
   | "idle"
   | "processing"
-  | "waiting"
   | "completed"
   | "failed";
 
 export interface QueueItem {
-  /** Unique identifier for the queue item */
   id: string;
-  /** Display name of the PDF file */
   fileName: string;
-  /** Local URI to the picked file */
   fileUri: string;
-  /** MIME type of the file */
   fileMimeType: string;
-  /** Web File object for reading base64 (web platform only) */
   fileObject?: File;
-  /** Current processing state */
   status: QueueItemStatus;
-  /** 0-100 progress indicator */
   progress: number;
-  /** Error message if processing failed */
   error?: string;
-  /** Timestamp (ms) when the cooldown ends and processing should resume */
-  scheduledAt?: number;
-  /** Extracted transactions on successful processing */
-  resultTransactions?: Transaction[];
+  // Per-item context — set when enqueueing so the processor doesn't depend on
+  // which screen the user is currently viewing.
+  accountId: string;
+  accountType: "connected" | "manual";
+  currency: string;
+  // Populated on success
+  importedCount?: number;
+  skippedCount?: number;
 }
 
 // ── Reducer ──
@@ -52,7 +48,6 @@ type QueueAction =
       updates?: Partial<QueueItem>;
     }
   | { type: "UPDATE_PROGRESS"; id: string; progress: number }
-  | { type: "SKIP_WAIT"; id: string }
   | { type: "REMOVE_ITEM"; id: string }
   | { type: "RETRY_ITEM"; id: string };
 
@@ -77,18 +72,7 @@ function queueReducer(state: QueueState, action: QueueAction): QueueState {
     case "UPDATE_PROGRESS":
       return {
         items: state.items.map((item) =>
-          item.id === action.id
-            ? { ...item, progress: action.progress }
-            : item,
-        ),
-      };
-
-    case "SKIP_WAIT":
-      return {
-        items: state.items.map((item) =>
-          item.id === action.id
-            ? { ...item, status: "idle" as const, scheduledAt: undefined }
-            : item,
+          item.id === action.id ? { ...item, progress: action.progress } : item,
         ),
       };
 
@@ -104,7 +88,6 @@ function queueReducer(state: QueueState, action: QueueAction): QueueState {
                 status: "idle" as const,
                 progress: 0,
                 error: undefined,
-                scheduledAt: undefined,
               }
             : item,
         ),
@@ -117,40 +100,31 @@ function queueReducer(state: QueueState, action: QueueAction): QueueState {
 
 // ── Context ──
 
+export interface EnqueueFile {
+  uri: string;
+  name: string;
+  mimeType: string;
+  file?: File;
+  accountId: string;
+  accountType: "connected" | "manual";
+  currency: string;
+}
+
 interface ImportQueueContextValue {
   items: QueueItem[];
-  /** Add picked PDF files to the processing queue */
-  addFiles: (
-    files: Array<{
-      uri: string;
-      name: string;
-      mimeType: string;
-      file?: File;
-    }>,
-  ) => void;
-  /** Skip the 30s cooldown for a waiting item */
-  skipWait: (id: string) => void;
-  /** Remove a completed/failed item from the queue */
+  addFiles: (files: EnqueueFile[]) => void;
   removeItem: (id: string) => void;
-  /** Retry a failed item */
   retryItem: (id: string) => void;
-  /** Configure the queue processor with account-specific data */
-  configure: (config: {
-    geminiApiKey: string;
-    currentCurrency: string;
-    accountId: string;
-    accountType: "connected" | "manual";
-    handleImportBankStatement: (txs: Transaction[]) => Promise<void>;
-  }) => void;
 }
 
 const ImportQueueContext = createContext<ImportQueueContextValue | null>(null);
 
-const COOLDOWN_MS = 30_000; // 30 seconds between API calls
-
 /**
- * Provider component that manages the background import queue.
- * Mount this at the root layout so the queue persists across navigation.
+ * Provider for the background PDF-import queue.
+ *
+ * The processor runs sequentially (one statement at a time) but has no
+ * artificial cooldown: parsing is local-CPU via the Node backend, so back-to-
+ * back imports finish in under a second each.
  */
 export function ImportQueueProvider({
   children,
@@ -159,60 +133,32 @@ export function ImportQueueProvider({
 }) {
   const [state, dispatch] = useReducer(queueReducer, { items: [] });
 
-  // Store the latest state in a ref so the processor loop never has stale data
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  // Configuration ref — set by the active AccountDetailScreen
-  const configRef = useRef<{
-    geminiApiKey: string;
-    currentCurrency: string;
-    accountId: string;
-    accountType: "connected" | "manual";
-    handleImportBankStatement: (txs: Transaction[]) => Promise<void>;
-  } | null>(null);
-
-  // Lock to prevent concurrent processing
   const isProcessingRef = useRef(false);
 
-  const configure = useCallback(
-    (config: {
-      geminiApiKey: string;
-      currentCurrency: string;
-      accountId: string;
-      accountType: "connected" | "manual";
-      handleImportBankStatement: (txs: Transaction[]) => Promise<void>;
-    }) => {
-      configRef.current = config;
-    },
-    [],
-  );
+  const txCtx = useTransactionsContext();
+  const bsCtx = useBankStatements();
+  const txRef = useRef(txCtx);
+  txRef.current = txCtx;
+  const bsRef = useRef(bsCtx);
+  bsRef.current = bsCtx;
 
-  const addFiles = useCallback(
-    (
-      files: Array<{
-        uri: string;
-        name: string;
-        mimeType: string;
-        file?: File;
-      }>,
-    ) => {
-      const newItems: QueueItem[] = files.map((f) => ({
-        id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        fileName: f.name,
-        fileUri: f.uri,
-        fileMimeType: f.mimeType,
-        fileObject: f.file,
-        status: "idle" as const,
-        progress: 0,
-      }));
-      dispatch({ type: "ADD_ITEMS", items: newItems });
-    },
-    [],
-  );
-
-  const skipWait = useCallback((id: string) => {
-    dispatch({ type: "SKIP_WAIT", id });
+  const addFiles = useCallback((files: EnqueueFile[]) => {
+    const newItems: QueueItem[] = files.map((f) => ({
+      id: `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      fileName: f.name,
+      fileUri: f.uri,
+      fileMimeType: f.mimeType,
+      fileObject: f.file,
+      status: "idle" as const,
+      progress: 0,
+      accountId: f.accountId,
+      accountType: f.accountType,
+      currency: f.currency,
+    }));
+    dispatch({ type: "ADD_ITEMS", items: newItems });
   }, []);
 
   const removeItem = useCallback((id: string) => {
@@ -226,39 +172,17 @@ export function ImportQueueProvider({
   // ── Background Processor Loop ──
   useEffect(() => {
     const tick = async () => {
-      // Don't run if already processing
       if (isProcessingRef.current) return;
 
       const { items } = stateRef.current;
-      const config = configRef.current;
-
-      // Check waiting items whose cooldown has expired → transition to idle
-      const now = Date.now();
-      for (const item of items) {
-        if (
-          item.status === "waiting" &&
-          item.scheduledAt &&
-          now >= item.scheduledAt
-        ) {
-          dispatch({
-            type: "UPDATE_STATUS",
-            id: item.id,
-            status: "idle",
-            updates: { scheduledAt: undefined },
-          });
-          return; // Let the next tick pick it up as idle
-        }
-      }
-
-      // Find next idle item
       const nextIdle = items.find((i) => i.status === "idle");
-      if (!nextIdle || !config || !config.geminiApiKey) return;
+      if (!nextIdle) return;
 
-      // Lock processing
       isProcessingRef.current = true;
 
+      const statementId = `stmt_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
       try {
-        // Mark as processing
         dispatch({
           type: "UPDATE_STATUS",
           id: nextIdle.id,
@@ -266,26 +190,50 @@ export function ImportQueueProvider({
         });
         dispatch({ type: "UPDATE_PROGRESS", id: nextIdle.id, progress: 10 });
 
-        // Call Gemini API
-        const transactions = await processStatementWithGemini(
+        const parseResult = await parseStatementWithBackend(
           nextIdle,
-          config.geminiApiKey,
-          config.currentCurrency,
+          statementId,
+          nextIdle.currency,
         );
 
-        dispatch({ type: "UPDATE_PROGRESS", id: nextIdle.id, progress: 80 });
+        dispatch({ type: "UPDATE_PROGRESS", id: nextIdle.id, progress: 70 });
 
-        // Save transactions to account
-        if (transactions.length > 0) {
-          await config.handleImportBankStatement(transactions);
-        }
+        const importResult = await txRef.current.importBankStatement(
+          nextIdle.accountId,
+          parseResult.transactions,
+          nextIdle.accountType === "manual",
+          statementId,
+        );
+
+        const savedPdf = await bsRef.current.savePdfData(
+          statementId,
+          parseResult.pdfBase64,
+        );
+
+        await bsRef.current.addStatement({
+          id: statementId,
+          accountId: nextIdle.accountId,
+          fileName: nextIdle.fileName,
+          uploadedAt: new Date().toISOString(),
+          bank: parseResult.bank,
+          period: parseResult.period,
+          iban: parseResult.iban,
+          importedTxIds: importResult.importedTxIds,
+          skippedCount: importResult.skippedCount,
+          parseWarning: parseResult.parseWarning,
+          hasPdf: savedPdf,
+          mimeType: "application/pdf",
+        });
 
         dispatch({ type: "UPDATE_PROGRESS", id: nextIdle.id, progress: 100 });
         dispatch({
           type: "UPDATE_STATUS",
           id: nextIdle.id,
           status: "completed",
-          updates: { resultTransactions: transactions },
+          updates: {
+            importedCount: importResult.importedTxIds.length,
+            skippedCount: importResult.skippedCount,
+          },
         });
       } catch (err) {
         const errorMessage =
@@ -298,34 +246,20 @@ export function ImportQueueProvider({
         });
       } finally {
         isProcessingRef.current = false;
-
-        // After processing (success or failure), schedule next item with cooldown
-        const currentItems = stateRef.current.items;
-        const remainingIdle = currentItems.find(
-          (i) => i.id !== nextIdle.id && i.status === "idle",
-        );
-        if (remainingIdle) {
-          dispatch({
-            type: "UPDATE_STATUS",
-            id: remainingIdle.id,
-            status: "waiting",
-            updates: { scheduledAt: Date.now() + COOLDOWN_MS },
-          });
-        }
       }
     };
 
-    const interval = setInterval(tick, 1000);
+    // Fast tick since local parse is quick; one statement at a time via the
+    // isProcessingRef guard.
+    const interval = setInterval(tick, 500);
     return () => clearInterval(interval);
-  }, []); // Empty deps — all reads go through refs
+  }, []);
 
   const value: ImportQueueContextValue = {
     items: state.items,
     addFiles,
-    skipWait,
     removeItem,
     retryItem,
-    configure,
   };
 
   return (
@@ -335,14 +269,12 @@ export function ImportQueueProvider({
   );
 }
 
-/**
- * Hook to access the import queue state and actions.
- * Must be used within an ImportQueueProvider.
- */
 export function useImportQueue(): ImportQueueContextValue {
   const context = useContext(ImportQueueContext);
   if (!context) {
-    throw new Error("useImportQueue must be used within an ImportQueueProvider");
+    throw new Error(
+      "useImportQueue must be used within an ImportQueueProvider",
+    );
   }
   return context;
 }

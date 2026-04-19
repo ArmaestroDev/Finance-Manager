@@ -27,13 +27,18 @@ Finance Manager is a cross-platform personal finance application built with **Re
 
 - **Connect real bank accounts** via the Enable Banking Open Banking API (PSD2-compliant)
 - **Create manual accounts** for cash, wallets, or banks not in the Open Banking network
-- **View and filter transactions** by date range with preset filters (30 days, 90 days, this year, custom)
+- **Import bank statements** from PDF files (ING-DiBa, generic German banks) and CSV exports with an interactive column-mapping UI
+- **View and filter transactions** by date range with a persistent date filter and category/statement filters
 - **Categorize transactions** manually or using **AI-powered auto-categorization** via Google's Gemini API
 - **Track debts** owed to/by people and institutions with net balance calculation
 - **Simulate ETF investment strategies** with compound interest charts and saveable profiles
-- **View financial statistics** including income/expense breakdowns and category pie charts
+- **View financial statistics** including income/expense/net breakdowns and category pie charts
 - **Protect balances** behind a 5-digit PIN with a privacy toggle
+- **Switch themes** between System, Light, and Dark mode
 - **Switch languages** between English and German
+- **Set a main/primary account** for the dashboard view
+
+The app features a **responsive design pattern** with separate `desktop/` and `mobile/` component variants for each feature, selecting the appropriate layout based on `Platform.OS`.
 
 The app runs on **iOS**, **Android**, and **Web**. The web version is deployed on **Vercel** with a serverless Express backend.
 
@@ -56,6 +61,8 @@ The app runs on **iOS**, **Android**, and **Web**. The web version is deployed o
 | @react-native-async-storage | 2.2.0 | Persistent local key-value storage |
 | expo-haptics | 15.0.8 | Tactile feedback on tab presses |
 | expo-web-browser | 15.0.10 | In-app browser for bank OAuth flows (native) |
+| expo-document-picker | 14.0.8 | File picking for PDF/CSV bank statement import |
+| expo-file-system | 19.0.21 | Native file system access for reading imported files |
 | expo-linear-gradient | 15.0.8 | Gradient backgrounds |
 
 ### Backend
@@ -63,6 +70,7 @@ The app runs on **iOS**, **Android**, and **Web**. The web version is deployed o
 |---|---|---|
 | Express | 4.21.2 | HTTP server and routing |
 | jsonwebtoken | 9.0.2 | RS256 JWT generation for Enable Banking API auth |
+| pdf-parse | 1.1.4 | PDF text extraction for bank statement parsing |
 | cors | 2.8.6 | Cross-Origin Resource Sharing middleware |
 | dotenv | 16.4.5 | Environment variable loading |
 | Node.js | — | Runtime for the API proxy server |
@@ -86,42 +94,47 @@ The app runs on **iOS**, **Android**, and **Web**. The web version is deployed o
 ### High-Level Pattern
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                        Expo Router (app/)                       │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ ┌────────┐ │
-│  │ Dashboard │ │ Accounts │ │  Debts   │ │ Invest │ │Connect.│ │
-│  │  (tabs)  │ │  (tabs)  │ │  (tabs)  │ │ (tabs) │ │ (tabs) │ │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └───┬────┘ └───┬────┘ │
-│       │             │            │            │          │      │
-│  ┌────▼─────────────▼────────────▼────────────▼──────────▼────┐ │
-│  │              React Context Providers                       │ │
-│  │  Settings | Accounts | Categories | Debts                  │ │
-│  └────┬──────────────────────────────────────────────────┬────┘ │
-│       │                                                  │      │
-│  ┌────▼──────────────────────┐  ┌────────────────────────▼────┐ │
-│  │     Custom Hooks          │  │     UI Components           │ │
-│  │  (business logic layer)   │  │  (modals, cards, lists)     │ │
-│  └────┬──────────────────────┘  └─────────────────────────────┘ │
-│       │                                                         │
-│  ┌────▼────────────────────────────────────────────────────────┐ │
-│  │  Services Layer (enableBanking.ts)                          │ │
-│  │  HTTP client → /api/* endpoints                             │ │
-│  └────┬────────────────────────────────────────────────────────┘ │
-└───────┼─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                          Expo Router (app/)                                  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ ┌────────┐ ┌──────────┐ │
+│  │ Dashboard │ │ Accounts │ │  Debts   │ │ Invest │ │Connect.│ │ Settings │ │
+│  │  (tabs)  │ │  (tabs)  │ │  (tabs)  │ │ (tabs) │ │ (tabs) │ │ (stack)  │ │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └───┬────┘ └───┬────┘ └────┬─────┘ │
+│       └─────────────┴────────────┴────────────┴──────────┴───────────┘       │
+│       │                                                                      │
+│  ┌────▼────────────────────────────────────────────────────────────────────┐  │
+│  │                     React Context Providers (8)                         │  │
+│  │  Settings | DateFilter | Accounts | Categories |                        │  │
+│  │  Debts | Transactions | BankStatements | ImportQueue                    │  │
+│  └────┬──────────────────────────────────────────────────────────────┬────┘  │
+│       │                                                              │       │
+│  ┌────▼──────────────────────┐  ┌────────────────────────────────────▼────┐  │
+│  │     Custom Hooks          │  │     Responsive UI Components           │  │
+│  │  (business logic layer)   │  │  desktop/ ←→ mobile/ variants          │  │
+│  └────┬──────────────────────┘  └─────────────────────────────────────────┘  │
+│       │                                                                      │
+│  ┌────▼────────────────────────────────────────────────────────────────────┐  │
+│  │  Services Layer                                                         │  │
+│  │  enableBanking.ts (HTTP → /api/*) | parseCsv.ts | processStatement.ts   │  │
+│  └────┬────────────────────────────────────────────────────────────────────┘  │
+└───────┼──────────────────────────────────────────────────────────────────────┘
         │  HTTP (fetch)
-┌───────▼─────────────────────────────────────────────────────────┐
-│  Express Backend (api/index.js)                                 │
-│  JWT-authenticated proxy → Enable Banking REST API              │
-└─────────────────────────────────────────────────────────────────┘
+┌───────▼──────────────────────────────────────────────────────────────────────┐
+│  Express Backend (api/index.js)                                              │
+│  JWT-authenticated proxy → Enable Banking REST API                           │
+│  PDF Statement Parser → api/parseStatement.js → api/parsers/*                │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Design Principles
 
-1. **Feature-sliced architecture** — Code is organized by feature domain (`accounts`, `debts`, `invest`, `transactions`, `dashboard`) rather than by technical type.
-2. **Smart/Dumb component separation** — Business logic lives in custom hooks; screens and components handle only rendering.
-3. **Context API for global state** — Four React Contexts manage persistent data domains (accounts, categories, debts, settings).
-4. **Backend as a proxy** — The Express server never stores user data; it only signs JWT tokens and forwards requests to Enable Banking. All user data lives on-device in AsyncStorage.
-5. **Offline-first with cache fallback** — Connected account transactions are cached locally. If the API fails, cached data is served.
+1. **Feature-sliced architecture** — Code is organized by feature domain (`accounts`, `debts`, `invest`, `transactions`, `dashboard`, `import`) rather than by technical type.
+2. **Responsive desktop/mobile split** — Each feature has `desktop/` and `mobile/` subdirectories containing platform-optimized component variants. A root-level barrel file (e.g., `AccountsScreen.tsx`) re-exports the correct variant based on `Platform.OS`.
+3. **Smart/Dumb component separation** — Business logic lives in custom hooks and contexts; screens and components handle only rendering.
+4. **Context API for global state** — Eight React Contexts manage persistent data domains (settings, date filters, accounts, categories, debts, transactions, bank statements, import queue).
+5. **Backend as a proxy** — The Express server never stores user data; it signs JWT tokens, forwards requests to Enable Banking, and parses PDF bank statements. All user data lives on-device in AsyncStorage.
+6. **Offline-first with cache fallback** — Connected account transactions are cached locally. If the API fails, cached data is served.
+7. **Background import queue** — Bank statement imports process sequentially via a reducer-based queue with an overlay showing progress across the entire app.
 
 ---
 
@@ -130,11 +143,16 @@ The app runs on **iOS**, **Android**, and **Web**. The web version is deployed o
 ```
 finance-manager/
 ├── api/                          # Express backend (Vercel serverless function)
-│   └── index.js                  # All API routes and JWT auth logic
+│   ├── index.js                  # All API routes, JWT auth, and PDF parse endpoint
+│   ├── parseStatement.js         # Statement parser dispatcher (detects bank, routes to parser)
+│   └── parsers/                  # Bank-specific PDF statement parsers
+│       ├── shared.js             # Shared utilities: parseGermanAmount, normalizeLines, checkBalanceDelta
+│       ├── ingDiba.js            # ING-DiBa Girokonto PDF parser
+│       └── genericGerman.js      # Generic German bank statement PDF parser (fallback)
 │
 ├── app/                          # Expo Router — screens & navigation
-│   ├── _layout.tsx               # Root layout: wraps app in all Context Providers
-│   ├── settings.tsx              # Settings screen (PIN, language, API key)
+│   ├── _layout.tsx               # Root layout: wraps app in all 8 Context Providers + ImportQueueOverlay
+│   ├── settings.tsx              # Settings screen (dashboard, language, theme, API key, privacy)
 │   ├── (tabs)/                   # Bottom tab navigator group
 │   │   ├── _layout.tsx           # Tab bar configuration (5 tabs)
 │   │   ├── index.tsx             # Dashboard / Home tab
@@ -148,25 +166,36 @@ finance-manager/
 ├── src/                          # Application source code (feature-organized)
 │   ├── constants/                # Global constants
 │   │   ├── Strings.ts            # i18n translation strings (EN + DE)
-│   │   └── theme.ts              # Color palette (light/dark) and font stacks
+│   │   └── theme.ts              # Color palette (light/dark) with semantic tokens, font stacks
 │   │
 │   ├── services/                 # External API clients
 │   │   └── enableBanking.ts      # HTTP client for the Express proxy API
 │   │
 │   ├── shared/                   # Cross-feature shared code
 │   │   ├── context/
-│   │   │   └── SettingsContext.tsx    # Language, PIN, Gemini key, balance hiding
+│   │   │   ├── SettingsContext.tsx    # Language, PIN, Gemini key, balance hiding, theme, main account
+│   │   │   └── DateFilterContext.tsx  # Global date range filter state (persisted to AsyncStorage)
 │   │   ├── hooks/
 │   │   │   ├── use-color-scheme.ts    # System dark/light mode detection (native)
 │   │   │   ├── use-color-scheme.web.ts # System dark/light mode detection (web)
 │   │   │   └── use-theme-color.ts     # Resolves theme-aware colors
 │   │   ├── components/
-│   │   │   ├── CategoryFilterBar.tsx  # Horizontal scrollable category pills
-│   │   │   ├── DateFilterModal.tsx    # Date range picker modal
-│   │   │   ├── InputGroup.tsx         # Labeled text input component
-│   │   │   ├── haptic-tab.tsx         # Tab bar button with haptic feedback
+│   │   │   ├── TransactionStatsSummary.tsx  # Shared income/expense/net summary bar
+│   │   │   ├── CategoryFilterBar.tsx   # Re-export barrel (→ desktop or mobile variant)
+│   │   │   ├── DateFilterModal.tsx     # Re-export barrel (→ desktop or mobile variant)
+│   │   │   ├── InputGroup.tsx          # Re-export barrel (→ desktop or mobile variant)
+│   │   │   ├── haptic-tab.tsx          # Tab bar button with haptic feedback
+│   │   │   ├── desktop/
+│   │   │   │   ├── CategoryFilterBar.tsx  # Desktop category filter pills
+│   │   │   │   ├── DateFilterModal.tsx    # Desktop date range picker modal
+│   │   │   │   └── InputGroup.tsx         # Desktop labeled text input
+│   │   │   ├── mobile/
+│   │   │   │   ├── CategoryFilterBar.tsx  # Mobile category filter pills
+│   │   │   │   ├── DateFilterModal.tsx    # Mobile date range picker modal
+│   │   │   │   └── InputGroup.tsx         # Mobile labeled text input
 │   │   │   └── ui/
 │   │   │       └── icon-symbol.tsx    # Platform-adaptive icon wrapper (SF Symbols / Material)
+│   │   ├── types/                # Shared TypeScript type definitions (empty — types are co-located)
 │   │   └── utils/
 │   │       ├── date.ts               # Date formatting: DD-MM-YYYY ↔ YYYY-MM-DD
 │   │       └── financeHelpers.ts     # Re-exports + formatAmount + cleanRemittanceInfo
@@ -180,54 +209,136 @@ finance-manager/
 │       │   │   ├── useAccountStats.ts    # Income/expense computation per account
 │       │   │   └── useBankConnections.ts # Open Banking OAuth flow + session management
 │       │   └── components/
-│       │       ├── AccountsScreen.tsx       # Accounts tab main UI
-│       │       ├── AccountDetailScreen.tsx  # Single account transactions view
-│       │       ├── ConnectionsScreen.tsx    # Bank connections tab UI
-│       │       ├── AddAccountModal.tsx      # Create manual account form
-│       │       ├── AccountCategoryModal.tsx # Change account category picker
-│       │       ├── BankSelectionModal.tsx   # ASPSP bank list for Open Banking
-│       │       └── CashModal.tsx            # Update cash balance modal
+│       │       ├── AccountsScreen.tsx       # Re-export barrel
+│       │       ├── AccountDetailScreen.tsx  # Re-export barrel
+│       │       ├── ConnectionsScreen.tsx    # Re-export barrel
+│       │       ├── AddAccountModal.tsx      # Re-export barrel
+│       │       ├── AccountCategoryModal.tsx # Re-export barrel
+│       │       ├── BankSelectionModal.tsx   # Re-export barrel
+│       │       ├── CashModal.tsx            # Re-export barrel
+│       │       ├── desktop/                 # Desktop variants of all components
+│       │       │   ├── AccountsScreen.tsx
+│       │       │   ├── AccountDetailScreen.tsx
+│       │       │   ├── ConnectionsScreen.tsx
+│       │       │   ├── AddAccountModal.tsx
+│       │       │   ├── AccountCategoryModal.tsx
+│       │       │   ├── BankSelectionModal.tsx
+│       │       │   └── CashModal.tsx
+│       │       └── mobile/                  # Mobile variants of all components
+│       │           ├── AccountsScreen.tsx
+│       │           ├── AccountDetailScreen.tsx
+│       │           ├── ConnectionsScreen.tsx
+│       │           ├── AddAccountModal.tsx
+│       │           ├── AccountCategoryModal.tsx
+│       │           ├── BankSelectionModal.tsx
+│       │           └── CashModal.tsx
 │       │
 │       ├── dashboard/            # Home screen / financial overview
 │       │   ├── hooks/
 │       │   │   ├── useFinanceData.ts     # Aggregates transactions from all accounts
 │       │   │   └── useFinanceStats.ts    # Computes totals, category breakdowns, pie data
 │       │   └── components/
-│       │       ├── DashboardScreen.tsx    # Dashboard tab main UI
-│       │       ├── BalanceCard.tsx        # Colored card showing total assets/liabilities
-│       │       └── StatsOverview.tsx      # Income/expense bars + category pie chart
+│       │       ├── DashboardScreen.tsx    # Re-export barrel
+│       │       ├── BalanceCard.tsx        # Re-export barrel
+│       │       ├── StatsOverview.tsx      # Re-export barrel
+│       │       ├── desktop/
+│       │       │   ├── DashboardScreen.tsx
+│       │       │   ├── BalanceCard.tsx
+│       │       │   └── StatsOverview.tsx
+│       │       └── mobile/
+│       │           ├── DashboardScreen.tsx
+│       │           ├── BalanceCard.tsx
+│       │           └── StatsOverview.tsx
 │       │
 │       ├── debts/                # Debt tracking
 │       │   ├── context/
 │       │   │   └── DebtsContext.tsx       # Entities (people) + debt items state
 │       │   └── components/
-│       │       ├── DebtsScreen.tsx        # Debts tab main UI
-│       │       ├── AddDebtModal.tsx       # Create new debt entry form
-│       │       ├── DebtDetailModal.tsx    # View all debts for one person
-│       │       └── ManagePeopleModal.tsx  # Add/rename/delete people/institutions
+│       │       ├── DebtsScreen.tsx        # Re-export barrel
+│       │       ├── AddDebtModal.tsx       # Re-export barrel
+│       │       ├── DebtDetailModal.tsx    # Re-export barrel
+│       │       ├── ManagePeopleModal.tsx  # Re-export barrel
+│       │       ├── desktop/              # Desktop variants
+│       │       │   ├── DebtsScreen.tsx
+│       │       │   ├── AddDebtModal.tsx
+│       │       │   ├── DebtDetailModal.tsx
+│       │       │   └── ManagePeopleModal.tsx
+│       │       └── mobile/               # Mobile variants
+│       │           ├── DebtsScreen.tsx
+│       │           ├── AddDebtModal.tsx
+│       │           ├── DebtDetailModal.tsx
+│       │           └── ManagePeopleModal.tsx
 │       │
 │       ├── invest/               # ETF savings calculator
 │       │   ├── hooks/
 │       │   │   └── useInvestCalculator.ts # Compound interest math + profile CRUD
 │       │   └── components/
-│       │       ├── InvestScreen.tsx         # Invest tab main UI
-│       │       ├── InvestProfileModal.tsx   # Save/edit investment profile
-│       │       └── ManageProfilesModal.tsx  # List/delete saved profiles
+│       │       ├── InvestScreen.tsx         # Re-export barrel
+│       │       ├── InvestProfileModal.tsx   # Re-export barrel
+│       │       ├── ManageProfilesModal.tsx  # Re-export barrel
+│       │       ├── desktop/                # Desktop variants
+│       │       │   ├── InvestScreen.tsx
+│       │       │   ├── InvestProfileModal.tsx
+│       │       │   └── ManageProfilesModal.tsx
+│       │       └── mobile/                 # Mobile variants
+│       │           ├── InvestScreen.tsx
+│       │           ├── InvestProfileModal.tsx
+│       │           └── ManageProfilesModal.tsx
 │       │
-│       └── transactions/        # Transaction display + categorization
+│       ├── transactions/        # Transaction display + categorization
+│       │   ├── context/
+│       │   │   ├── CategoriesContext.tsx       # Category CRUD + transaction-category mapping
+│       │   │   └── TransactionsContext.tsx     # Centralized transaction loading, CRUD, & import
+│       │   ├── hooks/
+│       │   │   ├── useAccountTransactions.ts   # Load, cache, CRUD transactions for one account
+│       │   │   └── useAutoCategorize.ts        # Gemini AI auto-categorization logic
+│       │   ├── utils/
+│       │   │   └── transactions.ts             # getStableTxId() + getTransactionAmount()
+│       │   └── components/
+│       │       ├── AddTransactionModal.tsx      # Re-export barrel
+│       │       ├── EditTransactionModal.tsx     # Re-export barrel
+│       │       ├── TransactionDetailModal.tsx   # Re-export barrel
+│       │       ├── TransactionItem.tsx          # Re-export barrel
+│       │       ├── TransactionsScreen.tsx       # Re-export barrel
+│       │       ├── CategoryManageModal.tsx      # Re-export barrel
+│       │       ├── desktop/                    # Desktop variants
+│       │       │   ├── AddTransactionModal.tsx
+│       │       │   ├── EditTransactionModal.tsx
+│       │       │   ├── TransactionDetailModal.tsx
+│       │       │   ├── TransactionItem.tsx
+│       │       │   ├── TransactionsScreen.tsx
+│       │       │   └── CategoryManageModal.tsx
+│       │       └── mobile/                     # Mobile variants
+│       │           ├── AddTransactionModal.tsx
+│       │           ├── EditTransactionModal.tsx
+│       │           ├── TransactionDetailModal.tsx
+│       │           ├── TransactionItem.tsx
+│       │           ├── TransactionsScreen.tsx
+│       │           └── CategoryManageModal.tsx
+│       │
+│       └── import/              # Bank statement import (PDF + CSV)
 │           ├── context/
-│           │   └── CategoriesContext.tsx    # Category CRUD + transaction-category mapping
-│           ├── hooks/
-│           │   ├── useAccountTransactions.ts # Load, cache, CRUD transactions for one account
-│           │   └── useAutoCategorize.ts      # Gemini AI auto-categorization logic
-│           ├── utils/
-│           │   └── transactions.ts          # getStableTxId() + getTransactionAmount()
+│           │   ├── BankStatementsContext.tsx   # Persisted metadata of imported statements
+│           │   └── ImportQueueContext.tsx      # Background processing queue for statement files
+│           ├── services/
+│           │   ├── parseCsv.ts                # CSV parsing, delimiter detection, column mapping engine
+│           │   └── processStatement.ts        # PDF statement → backend API → Transaction[]
 │           └── components/
-│               ├── AddTransactionModal.tsx      # Create manual transaction form
-│               ├── EditTransactionModal.tsx      # Edit existing transaction
-│               ├── TransactionDetailModal.tsx   # Full transaction details overlay
-│               ├── TransactionItem.tsx          # Single transaction row in a list
-│               └── CategoryManageModal.tsx      # Create/edit/delete categories
+│               ├── CsvMappingModal.tsx         # Interactive CSV column-to-role mapping modal
+│               ├── ImportQueueOverlay.tsx       # Re-export barrel
+│               ├── StatementsModal.tsx          # Re-export barrel
+│               ├── desktop/
+│               │   ├── ImportQueueOverlay.tsx  # Desktop floating progress overlay
+│               │   └── StatementsModal.tsx     # Desktop statements management modal
+│               └── mobile/
+│                   ├── ImportQueueOverlay.tsx  # Mobile floating progress overlay
+│                   └── StatementsModal.tsx     # Mobile statements management modal
+│
+├── pipeline/                    # Python LLM pipeline for statement parsing prototyping
+│   ├── pipeline.py              # Multi-stage Gemini API pipeline
+│   ├── config.json              # Pipeline configuration
+│   ├── prompts/                 # Prompt templates
+│   └── outputs/                 # Generated outputs
 │
 ├── assets/images/               # Static images (icons, splash, logos)
 ├── dist/                        # Build output for Vercel web deployment
@@ -237,6 +348,7 @@ finance-manager/
 ├── app.json                     # Expo configuration (name, plugins, splash)
 ├── vercel.json                  # Vercel routing and deployment config
 ├── DEPLOY.md                    # Deployment instructions
+├── CLAUDE.md                    # AI assistant context file
 └── project_documentation.md     # This file
 ```
 
@@ -246,7 +358,7 @@ finance-manager/
 
 ### File: `api/index.js`
 
-The backend is a single Express application that acts as an **authenticated proxy** between the React Native frontend and the [Enable Banking API](https://enablebanking.com). It is required because the Enable Banking API uses **RS256 JWT authentication** with a private key that must never be exposed to the client.
+The backend is a single Express application that acts as an **authenticated proxy** between the React Native frontend and the [Enable Banking API](https://enablebanking.com), and also provides a **bank statement PDF parser** endpoint..
 
 ### How JWT Authentication Works
 
@@ -275,6 +387,33 @@ The backend is a single Express application that acts as an **authenticated prox
 | `GET` | `/api/sessions/:sessionId` | Retrieves session details (accounts list) |
 | `GET` | `/api/accounts/:accountId/balances` | Fetches account balance (types: CLAV, XPCD) |
 | `GET` | `/api/accounts/:accountId/transactions` | Fetches transactions with date filtering and pagination via `continuation_key` |
+| `POST` | `/api/parse-statement` | Parses a PDF bank statement (base64-encoded) and returns extracted transactions |
+
+### PDF Statement Parsing Pipeline
+
+The `/api/parse-statement` endpoint accepts a base64-encoded PDF and filename, then:
+
+1. Decodes the PDF buffer and extracts raw text using `pdf-parse`
+2. Dispatches to the parser chain defined in `api/parseStatement.js`
+3. Returns structured transaction data with metadata
+
+**Parser Architecture** (`api/parseStatement.js`):
+- Maintains an ordered list of parsers: `[ingDiba, genericGerman]`
+- Each parser exposes `detect(rawText)` and `parse(rawText)`
+- Bank-specific parsers run first; the generic fallback catches all remaining formats
+- If a parser detects but extracts zero transactions, the chain continues
+
+**Bank-Specific Parsers** (`api/parsers/`):
+
+| Parser | File | Detection | Notes |
+|---|---|---|---|
+| ING-DiBa | `ingDiba.js` | `/ING-DiBa/i` or Girokonto+Buchung header | State-machine parser: tracks table-start/table-end markers, handles collapsed whitespace from pdf-parse |
+| Generic German | `genericGerman.js` | Always returns `true` (fallback) | Best-effort parser for DD.MM.YYYY + description + German amount format. Always emits `parseWarning` |
+
+**Shared Utilities** (`api/parsers/shared.js`):
+- `parseGermanAmount(str)` — Converts German format (`1.234,56`) to float
+- `normalizeLines(rawText)` — Splits, trims, filters empty lines
+- `checkBalanceDelta(old, new, txs)` — Validates that sum of transactions matches statement balance delta (within ±0.01)
 
 ### Dual-Mode Server
 
@@ -296,7 +435,7 @@ module.exports = app;
 The app uses **Expo Router's file-based routing**:
 
 ```
-app/_layout.tsx          → Root Stack (wraps everything in Context Providers)
+app/_layout.tsx          → Root Stack (wraps everything in 8 Context Providers)
   └── app/(tabs)/_layout.tsx → Bottom Tab Navigator (5 tabs)
         ├── index.tsx        → Dashboard (Home)
         ├── accounts.tsx     → Accounts
@@ -309,13 +448,24 @@ app/_layout.tsx          → Root Stack (wraps everything in Context Providers)
 
 ### Root Layout (`app/_layout.tsx`)
 
-The root layout wraps the entire app in the four Context Providers in this exact order:
+The root layout wraps the entire app in eight Context Providers in this exact order:
 
 ```
-SettingsProvider → AccountsProvider → CategoriesProvider → DebtsProvider
+SettingsProvider
+  → DateFilterProvider
+    → AccountsProvider
+      → CategoriesProvider
+        → DebtsProvider
+          → TransactionsProvider
+            → BankStatementsProvider
+              → ImportQueueProvider
+                → RootLayoutInner (ThemeProvider + Stack + ImportQueueOverlay)
 ```
 
-It also handles **OAuth popup callbacks on web**: when a bank auth popup redirects back, the root layout detects the `code` URL parameter and posts it back to the main window via `window.opener.postMessage`.
+It also:
+- Renders the `ImportQueueOverlay` globally (visible during any screen while imports process)
+- Injects a global CSS rule to hide scrollbars on web
+- Handles **OAuth popup callbacks on web**: when a bank auth popup redirects back, the root layout detects the `code` URL parameter and posts it back to the main window via `window.opener.postMessage`
 
 ### Tab Layout (`app/(tabs)/_layout.tsx`)
 
@@ -324,6 +474,21 @@ Configures 5 bottom tabs with:
 - Haptic feedback on tab press via `HapticTab`
 - i18n-translated tab labels
 - Theme-aware tint colors
+- Hidden tab labels (`tabBarShowLabel: false`)
+
+### Responsive Component Pattern
+
+Every visual component has a barrel file at its feature root that re-exports the platform-appropriate variant:
+
+```typescript
+// src/features/accounts/components/AccountsScreen.tsx (barrel)
+import { Platform } from 'react-native';
+export const AccountsScreen = Platform.OS === 'web'
+  ? require('./desktop/AccountsScreen').AccountsScreen
+  : require('./mobile/AccountsScreen').AccountsScreen;
+```
+
+The `desktop/` variant is optimized for wide viewports (multi-column layouts, larger modals, hover states), while `mobile/` is optimized for touch (bottom sheets, swipe gestures, compact layouts).
 
 ---
 
@@ -339,11 +504,31 @@ Manages user preferences persisted to AsyncStorage.
 | `userPin` | `string \| null` | 5-digit PIN for balance protection |
 | `geminiApiKey` | `string \| null` | User's Google Gemini API key for AI categorization |
 | `language` | `"en" \| "de"` | Active UI language |
+| `mainAccountId` | `string \| null` | User-selected primary account for dashboard display |
+| `theme` | `"system" \| "light" \| "dark"` | App appearance mode |
 | `i18n` | `object` | Resolved string map (`Strings[language]`) |
 
 **Key behavior**: Toggling balance visibility requires PIN creation (first time) or PIN verification (subsequent). PINs are exactly 5 numeric digits.
 
-### 7.2 `AccountsContext` (`src/features/accounts/context/AccountsContext.tsx`)
+### 7.2 `DateFilterContext` (`src/shared/context/DateFilterContext.tsx`)
+
+Global, persisted date range filter shared across Dashboard, Account Detail, and Transactions views.
+
+| State | Type | Description |
+|---|---|---|
+| `filterDateFrom` | `string` | Start date in `DD-MM-YYYY` UI format |
+| `filterDateTo` | `string` | End date in `DD-MM-YYYY` UI format |
+| `refreshSignal` | `number` | Counter incremented on date change to trigger data reloads |
+| `selectedCategoryId` | `string \| null` | Active category filter |
+| `selectedStatementId` | `string \| null` | Active statement filter |
+
+**Key behavior**:
+- Defaults to 1st of current month → today on first load
+- All filter state (dates, category ID, statement ID) is persisted to AsyncStorage under `date_filter_state`
+- `applyPreset(days | "year")` provides quick preset filters
+- Returns `null` (renders nothing) until initialization completes
+
+### 7.3 `AccountsContext` (`src/features/accounts/context/AccountsContext.tsx`)
 
 Central hub for all financial accounts.
 
@@ -365,7 +550,27 @@ Central hub for all financial accounts.
 3. Merge with manual accounts
 4. Cache the final result
 
-### 7.3 `CategoriesContext` (`src/features/transactions/context/CategoriesContext.tsx`)
+### 7.4 `TransactionsContext` (`src/features/transactions/context/TransactionsContext.tsx`)
+
+Centralized transaction management — loading, CRUD, import, and in-memory state.
+
+| State | Type | Description |
+|---|---|---|
+| `transactionsByAccount` | `Record<string, Transaction[]>` | Date-filtered transactions keyed by account ID |
+| `isLoading` | `boolean` | Whether transactions are being fetched |
+| `globalError` | `string \| null` | Error message displayed via Alert |
+
+**Key operations**:
+- `refreshTransactions()` — Reloads all transactions for every account (manual from storage, connected from API with cache merge)
+- `addManualTransaction()` / `updateManualTransaction()` / `deleteManualTransaction()` — CRUD for manual account transactions, auto-adjusts account balance
+- `importBankStatement(accountId, txs, isManual, statementId)` — Imports transactions with composite-key deduplication (date + amount + description), prevents duplicate imports
+- `deleteTransactionsByIds(accountId, txIds, isManual)` — Bulk delete by transaction IDs (used for statement cascade deletion)
+
+**Deduplication logic**: Uses a composite key `"date|amount|description"` (with `[Imported]` prefix stripped, lowercase, whitespace-normalized) to prevent re-importing the same transactions. This handles both re-uploads (new IDs each time) and legitimate same-day transactions (different descriptions).
+
+**Loading modal**: Renders a transparent full-screen modal with a spinner while loading.
+
+### 7.5 `CategoriesContext` (`src/features/transactions/context/CategoriesContext.tsx`)
 
 Manages transaction categories and the mapping of transactions to categories.
 
@@ -378,7 +583,7 @@ Manages transaction categories and the mapping of transactions to categories.
 
 **Color palette**: 12 predefined colors for new categories (`#FF6B6B`, `#FF8E53`, `#FFC93C`, etc.)
 
-### 7.4 `DebtsContext` (`src/features/debts/context/DebtsContext.tsx`)
+### 7.6 `DebtsContext` (`src/features/debts/context/DebtsContext.tsx`)
 
 Tracks people/institutions and individual debt entries.
 
@@ -389,6 +594,52 @@ Tracks people/institutions and individual debt entries.
 
 **Key logic**: `getNetBalance(entityId)` computes net position by summing `OWES_ME` amounts and subtracting `I_OWE` amounts. Positive = they owe me; negative = I owe them.
 
+### 7.7 `BankStatementsContext` (`src/features/import/context/BankStatementsContext.tsx`)
+
+Persists metadata about imported bank statement files.
+
+| State | Type | Description |
+|---|---|---|
+| `statements` | `BankStatement[]` | All imported statement records |
+
+**`BankStatement` type**:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `string` | Unique statement ID (prefixed `stmt_`) |
+| `accountId` | `string` | Target account |
+| `fileName` | `string` | Original file name |
+| `uploadedAt` | `string` | ISO date string |
+| `bank` | `string` | Detected bank name (e.g., "ING-DiBa", "Generic (German)") |
+| `period` | `string \| null` | Statement period (e.g., "01.02.2026 bis 28.02.2026") |
+| `iban` | `string \| null` | Detected IBAN |
+| `importedTxIds` | `string[]` | Transaction IDs created during import |
+| `skippedCount` | `number` | Number of duplicate transactions skipped |
+| `parseWarning` | `string \| null` | Parser warnings (e.g., balance check failure) |
+
+**Key operations**: `addStatement()`, `deleteStatement()`, `getStatementsForAccount(accountId)`.
+
+### 7.8 `ImportQueueContext` (`src/features/import/context/ImportQueueContext.tsx`)
+
+Background processing queue for bank statement imports using `useReducer`.
+
+| State | Type | Description |
+|---|---|---|
+| `items` | `QueueItem[]` | All queued import jobs with status tracking |
+
+**`QueueItem` states**: `idle` → `processing` → `completed` or `failed`
+
+**Queue actions**: `ADD_ITEMS`, `UPDATE_STATUS`, `UPDATE_PROGRESS`, `REMOVE_ITEM`, `RETRY_ITEM`
+
+**Background processor**: An interval-based loop (500ms tick) picks the next `idle` item and:
+1. Reads the file as base64 (FileReader on web, expo-file-system on native)
+2. Sends to `/api/parse-statement` backend endpoint
+3. Calls `TransactionsContext.importBankStatement()` with the parsed transactions
+4. Calls `BankStatementsContext.addStatement()` with metadata
+5. Updates progress (10% → 70% → 100%) and status
+
+**Design**: Sequential processing (one at a time) with no artificial cooldown. The `isProcessingRef` guard prevents concurrent parsing.
+
 ---
 
 ## 8. Custom Hooks (Business Logic)
@@ -397,12 +648,9 @@ Tracks people/institutions and individual debt entries.
 
 Aggregates transactions from **all accounts** for the dashboard stats view.
 
-- Iterates over every `UnifiedAccount` in the context
-- For manual accounts: reads transactions from AsyncStorage
-- For connected accounts: fetches from Enable Banking API via `getTransactions()`
-- Handles pagination (up to 3 pages per account)
-- Falls back to cached transactions if API calls fail
-- Applies date range filtering (`filterDateFrom` → `filterDateTo`)
+- Reads from the centralized `TransactionsContext.transactionsByAccount` map
+- Merges all account transactions into a single flat array
+- No longer fetches independently — relies on the shared `TransactionsContext` for data
 
 ### 8.2 `useFinanceStats` (Dashboard)
 
@@ -509,17 +757,47 @@ const API_BASE =
 - `Transaction` — Transaction record (amount, dates, creditor/debtor, remittance info)
 - `SessionData` — OAuth session result with linked accounts
 
+### File: `src/features/import/services/processStatement.ts`
+
+Handles reading files and sending them to the backend for PDF parsing.
+
+| Function | Description |
+|---|---|
+| `parseStatementWithBackend(item, statementId, currency)` | Reads file as base64, POSTs to `/api/parse-statement`, normalizes response into `Transaction[]` with `import_pdf_{statementId}_{index}` IDs |
+
+**Platform-specific file reading**:
+- **Web**: Uses `FileReader.readAsDataURL()` on the `File` object stored in the queue item
+- **Native**: Uses `expo-file-system` `readAsStringAsync()` with base64 encoding
+
+### File: `src/features/import/services/parseCsv.ts`
+
+Client-side CSV parsing engine for bank export files.
+
+| Function | Description |
+|---|---|
+| `detectDelimiter(text)` | Auto-detects `;`, `,`, or `\t` by counting occurrences in first 5 lines |
+| `parseCsv(text, delimiter?)` | Parses CSV with RFC-4180 quote handling, auto-detects header row (scans first 15 lines for row with most fields) |
+| `autoDetectRoles(headers)` | Maps column headers to roles using German+English regex patterns (e.g., `Buchung` → `date`, `Betrag` → `amount`) |
+| `detectDateFormat(rows, dateCol)` | Detects `DD.MM.YYYY`, `YYYY-MM-DD`, `DD/MM/YYYY`, `MM/DD/YYYY` from sample rows |
+| `detectAmountFormat(rows, amountCols)` | Detects `de` (1.234,56) vs `en` (1,234.56) by checking last separator |
+| `rowsToTransactions(rows, mapping, currency, fileName)` | Converts CSV rows to `Transaction[]` using the confirmed mapping. Supports single `amount` column or split `debit`/`credit` columns |
+
+**CSV Field Roles**: `ignore`, `date`, `description`, `amount`, `debit`, `credit`, `valueDate`
+
 ---
 
 ## 10. Shared Utilities & Constants
 
 ### `src/constants/Strings.ts`
 
-Complete i18n string map with `en` and `de` keys. Contains ~80 translated strings covering every screen and modal. Organized by feature section (Tabs, Home, Accounts, Debts, Invest, Connections, Account Details, Settings).
+Complete i18n string map with `en` and `de` keys. Contains translated strings covering every screen and modal. Organized by feature section (Tabs, Home, Accounts, Debts, Invest, Connections, Account Details, Settings, Appearance, Import).
 
 ### `src/constants/theme.ts`
 
-- **Colors**: Light mode (`#11181C` text, `#fff` background, `#0a7ea4` tint) and Dark mode (`#ECEDEE` text, `#151718` background, `#fff` tint)
+- **Colors**: Full semantic token set for both light and dark modes:
+  - Light: `#1E1B4B` text, `#FAFAFA` background, `#FFFFFF` surface, `#8E1E5E` tint/primary
+  - Dark: `#FDF4F8` text, `#111827` background, `#1F2937` surface, `#FDF4F8` tint/primary
+  - Semantic: `income` (#10B981), `expense` (#F43F5E), `border`, `textSecondary`, `icon`, `primaryLight`
 - **Fonts**: Platform-specific font stacks for `sans`, `serif`, `rounded`, and `mono`
 
 ### `src/shared/utils/date.ts`
@@ -556,9 +834,10 @@ Two critical functions used throughout the stats and categorization system:
 
 | Component | Description |
 |---|---|
-| `CategoryFilterBar` | Horizontal scrollable row of category pills with "All" option. Tap a pill to filter transactions by that category. |
-| `DateFilterModal` | Modal with `react-native-ui-datepicker` for selecting a custom date range. Uses `dayjs`. |
-| `InputGroup` | Reusable labeled text input with styling props. |
+| `TransactionStatsSummary` | Horizontal income / expense / net summary bar with color-coded values. Used across dashboard and account detail screens. |
+| `CategoryFilterBar` | Horizontal scrollable row of category pills with "All" option. Tap a pill to filter transactions by that category. Platform-split (desktop/mobile). |
+| `DateFilterModal` | Modal with `react-native-ui-datepicker` for selecting a custom date range. Uses `dayjs`. Platform-split (desktop/mobile). |
+| `InputGroup` | Reusable labeled text input with styling props. Platform-split (desktop/mobile). |
 | `haptic-tab` | Custom `TabBarButton` that triggers haptic feedback (`Haptics.impactAsync`) on press. |
 | `ui/icon-symbol` | Cross-platform icon: uses SF Symbols (`expo-symbols`) on iOS, falls back to `MaterialIcons` on other platforms. |
 
@@ -568,7 +847,7 @@ Two critical functions used throughout the stats and categorization system:
 | Component | Description |
 |---|---|
 | `AccountsScreen` | SectionList grouped by category (Giro/Savings/Stock). Shows net worth card, cash balance, bank assets. Pull-to-refresh supported. |
-| `AccountDetailScreen` | Full transaction list for one account. Date filter presets, category filter bar, add/edit/delete transactions. AI auto-categorize button. |
+| `AccountDetailScreen` | Full transaction list for one account. Date filter presets, category filter bar, statement filter, add/edit/delete transactions. AI auto-categorize button. PDF/CSV import buttons. |
 | `ConnectionsScreen` | Lists connected banks with account counts. "Connect Bank" button opens the OAuth flow. |
 | `AddAccountModal` | Form with name, initial balance, and category picker for manual accounts. |
 | `AccountCategoryModal` | Simple picker to reassign an account's category. |
@@ -600,11 +879,19 @@ Two critical functions used throughout the stats and categorization system:
 #### Transactions
 | Component | Description |
 |---|---|
+| `TransactionsScreen` | Full transaction list with date grouping, category filters, and search. |
 | `TransactionItem` | Single row showing creditor/debtor name, remittance info, date, amount (color-coded), and category dot. |
 | `AddTransactionModal` | Title + amount form for creating manual transactions. |
 | `EditTransactionModal` | Pre-filled form for modifying transaction title and amount. |
 | `TransactionDetailModal` | Full detail view with category assignment support. |
 | `CategoryManageModal` | Create categories with name + color picker. Edit/delete existing. Colored dot preview. |
+
+#### Import (Bank Statements)
+| Component | Description |
+|---|---|
+| `CsvMappingModal` | Interactive column mapper for CSV imports. Shows header detection, delimiter/date/amount format selectors, per-column role assignment with dropdown, data preview table, and live import count. |
+| `StatementsModal` | Lists all imported statements for an account with metadata (bank, period, imported/skipped counts). Allows statement deletion with cascade (removes associated transactions). |
+| `ImportQueueOverlay` | App-wide floating overlay showing import progress. Displays per-file status (processing/completed/failed), progress bars, and retry/dismiss controls. Auto-hides when empty. |
 
 ---
 
@@ -626,13 +913,15 @@ Renders `InvestScreen` from `src/features/invest`. ETF compound interest calcula
 Renders `ConnectionsScreen` from `src/features/accounts`. Manages Open Banking bank connections.
 
 ### `app/account/[id].tsx` — Account Detail
-Dynamic route that renders `AccountDetailScreen`. Takes `id` and `type` (connected/manual) as route params. Shows transactions, stats, and category management for a single account.
+Dynamic route that renders `AccountDetailScreen`. Takes `id` and `type` (connected/manual) as route params. Shows transactions, stats, category management, and statement import for a single account.
 
 ### `app/settings.tsx` — Settings
-Self-contained settings screen with three sections:
+Self-contained settings screen with five sections:
+- **Dashboard**: Main account selection
 - **Language**: EN/DE toggle
+- **Appearance**: System/Light/Dark theme picker
 - **AI Integration**: Gemini API key entry
-- **Privacy**: Balance hiding toggle with PIN management
+- **Privacy**: Balance hiding toggle + PIN management (create/change)
 
 ---
 
@@ -662,18 +951,73 @@ User taps "Connect Bank"
 ### Transaction Loading Flow
 
 ```
-Account detail screen opens with account ID
-  → useAccountTransactions.loadTransactions()
-  → If connected account:
-      → Try loading from AsyncStorage cache first (instant render)
-      → Fetch fresh from GET /api/accounts/:id/transactions
-      → Handle pagination (continuation_key, up to 5 pages)
-      → Cache full result to AsyncStorage
-      → Apply date filter for UI display
-      → Fetch fresh balance and update AccountsContext
-  → If manual account:
-      → Load from AsyncStorage key "manual_transactions_{id}"
-      → Apply date filter
+DateFilterContext changes (date range or refresh signal)
+  → TransactionsContext.loadAllTransactions()
+  → For each account in AccountsContext.accounts:
+      → If manual account:
+          → Load from AsyncStorage "manual_transactions_{id}"
+          → Apply date filter
+      → If connected account:
+          → Load cache from AsyncStorage first
+          → Fetch fresh from GET /api/accounts/:id/transactions
+          → Handle pagination (continuation_key, up to 5 pages)
+          → Merge API + cached txs (deduplication by composite key)
+          → Cache merged result to AsyncStorage
+          → Apply date filter for in-memory display
+          → Async: fetch fresh balance and update AccountsContext
+  → Set transactionsByAccount in state
+  → All screens reading from TransactionsContext update automatically
+```
+
+### PDF Bank Statement Import Flow
+
+```
+User taps "Import PDF" in account detail screen
+  → expo-document-picker opens file browser
+  → User selects one or more PDF files
+  → ImportQueueContext.addFiles() creates QueueItems with status "idle"
+  → ImportQueueOverlay appears globally showing queued files
+
+Background processor loop (every 500ms):
+  → Picks next "idle" item → sets status to "processing"
+  → readFileAsBase64(item)
+      → Web: FileReader.readAsDataURL() on File object
+      → Native: expo-file-system readAsStringAsync(uri, base64)
+  → POST /api/parse-statement { base64, fileName }
+  → Backend:
+      → pdf-parse extracts text
+      → parseStatement.js detects bank (ING-DiBa? Generic German?)
+      → Bank-specific parser extracts transactions, IBAN, period, balances
+      → Runs balance delta check (warns if doesn't match)
+      → Returns { bank, iban, period, transactions[], parseWarning }
+  → Frontend normalizes to Transaction[] with IDs "import_pdf_{statementId}_{index}"
+  → TransactionsContext.importBankStatement(accountId, txs, isManual, statementId)
+      → Composite-key deduplication against existing transactions
+      → Stores new transactions to AsyncStorage
+      → Updates in-memory map
+      → Returns { importedTxIds, skippedCount }
+  → BankStatementsContext.addStatement({ id, accountId, fileName, bank, period, ... })
+  → ImportQueueOverlay shows "completed" with imported/skipped counts
+  → User can dismiss items or retry failed ones
+```
+
+### CSV Bank Statement Import Flow
+
+```
+User taps "Import CSV" in account detail screen
+  → expo-document-picker opens file browser
+  → User selects a CSV file
+  → File content read as text
+  → CsvMappingModal opens with:
+      → Auto-detected delimiter (;, comma, tab)
+      → Auto-detected header row (row with most fields in first 15 lines)
+      → Auto-mapped column roles (regex on header names)
+      → Auto-detected date format and amount format
+  → User reviews/adjusts column roles, date format, amount format
+  → Live preview shows first 5 rows + import count
+  → User confirms import
+  → rowsToTransactions() converts rows to Transaction[]
+  → TransactionsContext.importBankStatement() handles deduplication and storage
 ```
 
 ### AI Auto-Categorization Flow
@@ -757,7 +1101,7 @@ npm run android   # Android emulator
 npm run server    # Runs: node api/index.js → http://localhost:3001
 ```
 
-**Both must be running** for connected bank account features to work locally. The frontend auto-detects `localhost` and routes API calls to `http://localhost:3001/api`.
+**Both must be running** for connected bank account features and PDF statement import to work locally. The frontend auto-detects `localhost` and routes API calls to `http://localhost:3001/api`.
 
 ### All npm scripts
 

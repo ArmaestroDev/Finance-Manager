@@ -2,13 +2,24 @@ import { Platform } from "react-native";
 import type { Transaction } from "../../../services/enableBanking";
 import type { QueueItem } from "../context/ImportQueueContext";
 
-/**
- * Reads a PDF file and converts it to base64.
- * Handles both web (FileReader) and native (expo-file-system) platforms.
- */
+const API_BASE =
+  typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? "/api"
+    : "http://localhost:3001/api";
+
+export interface StatementParseResult {
+  transactions: Transaction[];
+  bank: string;
+  iban: string | null;
+  period: string | null;
+  oldBalance: number | null;
+  newBalance: number | null;
+  parseWarning: string | null;
+  pdfBase64: string;
+}
+
 async function readFileAsBase64(item: QueueItem): Promise<string> {
   if (Platform.OS === "web") {
-    // On web, use the File object stored during picking
     const file = item.fileObject;
     if (!file) {
       throw new Error(
@@ -29,147 +40,86 @@ async function readFileAsBase64(item: QueueItem): Promise<string> {
       reader.onerror = () => reject(new Error("FileReader failed"));
       reader.readAsDataURL(file);
     });
-  } else {
-    // On native, use expo-file-system
-    const FileSystem = await import("expo-file-system/legacy");
-    const base64Data = await FileSystem.readAsStringAsync(item.fileUri, {
-      encoding: "base64",
-    });
-    return base64Data;
   }
+  const FileSystem = await import("expo-file-system/legacy");
+  return FileSystem.readAsStringAsync(item.fileUri, { encoding: "base64" });
 }
 
 /**
- * Sends a PDF bank statement to the Gemini API for transaction extraction.
+ * Parses a PDF bank statement on the backend and returns normalized
+ * Transaction[] plus statement metadata. No AI, no rate limits.
  *
- * @param item - The queue item containing the file to process
- * @param geminiApiKey - The user's Gemini API key
- * @param currentCurrency - The account's currency code (e.g. "EUR")
- * @returns Parsed Transaction[] extracted from the PDF
- * @throws Error if the API call or parsing fails
+ * Each extracted transaction is assigned a stable ID of the form
+ * `import_pdf_${statementId}_${index}` so downstream cascade deletion can
+ * find them reliably.
  */
-export async function processStatementWithGemini(
+export async function parseStatementWithBackend(
   item: QueueItem,
-  geminiApiKey: string,
+  statementId: string,
   currentCurrency: string,
-): Promise<Transaction[]> {
-  // Step 1: Read the file as base64
-  const base64Data = await readFileAsBase64(item);
+): Promise<StatementParseResult> {
+  const base64 = await readFileAsBase64(item);
 
-  // Step 2: Build the prompt
-  const prompt = `
-You are a financial data extraction assistant.
-Extract all transactions from this bank statement PDF.
-Return a STRICT JSON array of objects representing the transactions.
-Each object MUST have the following keys:
-- date: The booking date in YYYY-MM-DD format.
-- description: The transaction description or reference.
-- amount: The transaction amount as a number (negative for expenses, positive for income).
-
-Do not include any other text, markdown formatting, or explanation. ONLY return the JSON array.
-`;
-
-  // Step 3: Call Gemini API
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                inlineData: {
-                  mimeType: "application/pdf",
-                  data: base64Data,
-                },
-              },
-              { text: prompt },
-            ],
-          },
-        ],
-      }),
-    },
-  );
+  const response = await fetch(`${API_BASE}/parse-statement`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ base64, fileName: item.fileName }),
+  });
 
   if (!response.ok) {
-    const errorBody = await response.text().catch(() => "");
-    if (response.status === 429) {
-      throw new Error(
-        "Rate limit exceeded. The queue will retry automatically.",
-      );
+    let message = `Parse failed (${response.status})`;
+    try {
+      const errBody = await response.json();
+      if (errBody?.error) message = errBody.error;
+    } catch {
+      // ignore
     }
-    throw new Error(
-      `Gemini API error (${response.status}): ${errorBody.slice(0, 200)}`,
-    );
+    throw new Error(message);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as {
+    bank: string;
+    iban: string | null;
+    accountNumber: string | null;
+    period: string | null;
+    oldBalance: number | null;
+    newBalance: number | null;
+    parseWarning: string | null;
+    transactions: Array<{
+      date: string;
+      description: string;
+      amount: number;
+    }>;
+  };
 
-  // Step 4: Parse the response
-  const aiText: string | undefined =
-    data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!aiText) {
-    throw new Error("No response text from Gemini API");
+  if (!Array.isArray(data.transactions)) {
+    throw new Error("Backend returned no transactions array");
   }
 
-  // Extract JSON from potential markdown code fences
-  let jsonString = aiText.trim();
-  const jsonMatch = jsonString.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) {
-    jsonString = jsonMatch[1].trim();
-  }
+  const transactions: Transaction[] = data.transactions.map((entry, index) => {
+    const firstLine = entry.description.split("\n")[0] || entry.description;
+    const remittance = `[Imported] ${entry.description}`;
+    return {
+      transaction_id: `import_pdf_${statementId}_${index}`,
+      booking_date: entry.date,
+      transaction_amount: {
+        currency: currentCurrency,
+        amount: entry.amount.toString(),
+      },
+      remittance_information: [remittance],
+      creditor: { name: entry.amount < 0 ? firstLine : "Self" },
+      debtor: { name: entry.amount >= 0 ? firstLine : "Self" },
+    } as Transaction;
+  });
 
-  let parsed: Array<{ date: string; description: string; amount: number }>;
-  try {
-    parsed = JSON.parse(jsonString);
-  } catch {
-    throw new Error("Failed to parse Gemini response as JSON");
-  }
-
-  if (!Array.isArray(parsed)) {
-    throw new Error("Gemini response is not an array");
-  }
-
-  // Step 5: Map to Transaction format
-  const transactions: Transaction[] = parsed
-    .filter(
-      (entry) =>
-        entry.date &&
-        entry.description &&
-        typeof entry.amount === "number" &&
-        !isNaN(entry.amount),
-    )
-    .map((entry, index) => {
-      // Normalize date to YYYY-MM-DD
-      let formattedDate = entry.date;
-      try {
-        const dateObj = new Date(entry.date);
-        if (!isNaN(dateObj.getTime())) {
-          formattedDate = dateObj.toISOString().split("T")[0];
-        }
-      } catch {
-        // Keep original date string
-      }
-
-      const desc = `[Imported] ${entry.description}`;
-      return {
-        transaction_id: `import_pdf_${Date.now()}_${index}`,
-        booking_date: formattedDate,
-        transaction_amount: {
-          currency: currentCurrency,
-          amount: entry.amount.toString(),
-        },
-        remittance_information: [desc],
-        creditor: {
-          name: entry.amount < 0 ? entry.description : "Self",
-        },
-        debtor: {
-          name: entry.amount > 0 ? entry.description : "Self",
-        },
-      } as unknown as Transaction;
-    });
-
-  return transactions;
+  return {
+    transactions,
+    bank: data.bank,
+    iban: data.iban,
+    period: data.period,
+    oldBalance: data.oldBalance,
+    newBalance: data.newBalance,
+    parseWarning: data.parseWarning,
+    pdfBase64: base64,
+  };
 }

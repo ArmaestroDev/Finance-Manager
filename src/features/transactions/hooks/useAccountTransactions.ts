@@ -29,14 +29,15 @@ export function useAccountTransactions({
   i18n,
 }: UseAccountTransactionsParams) {
   const { filterDateFrom, filterDateTo, applyDateFilter, applyPreset } = useDateFilter();
-  const { 
-    transactionsByAccount, 
-    isLoading: globalLoading, 
+  const {
+    transactionsByAccount,
+    isLoading: globalLoading,
     refreshTransactions,
     addManualTransaction,
     updateManualTransaction,
     deleteManualTransaction,
     importBankStatement,
+    deleteTransactionsByIds,
   } = useTransactionsContext();
 
   const [category, setCategory] = useState<AccountCategory>("Giro");
@@ -116,8 +117,15 @@ export function useAccountTransactions({
     }
   };
 
+  // CSV / one-off imports (not tracked as a "bank statement" — no source file
+  // to manage). Statement-based PDF imports go through the ImportQueue and
+  // call importBankStatement with a statementId directly.
   const handleImportBankStatement = async (newTxs: Transaction[]) => {
     await importBankStatement(id, newTxs, type === "manual");
+  };
+
+  const handleDeleteStatementTransactions = async (txIds: string[]) => {
+    await deleteTransactionsByIds(id, txIds, type === "manual");
   };
 
   // ── Account Category ──
@@ -202,6 +210,7 @@ export function useAccountTransactions({
     handleUpdateTransaction,
     handleDeleteTransaction,
     handleImportBankStatement,
+    handleDeleteStatementTransactions,
     updateCategoryValue,
     handleDeleteAccount,
   };

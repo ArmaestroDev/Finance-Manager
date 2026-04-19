@@ -4,11 +4,15 @@ const jwt = require("jsonwebtoken");
 const fs = require("fs");
 const path = require("path");
 const cors = require("cors");
+const { parseStatement, UnsupportedBankError } = require("./parseStatement");
+// Require pdf-parse's library file directly to skip the package's top-level
+// debug side-effect that tries to read a bundled sample PDF.
+const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
 const app = express();
 app.use(cors());
 app.options("*", cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 // Configuration
 const APP_ID =
@@ -201,6 +205,34 @@ app.get("/api/accounts/:accountId/transactions", async (req, res) => {
   } catch (err) {
     console.error("Error fetching transactions:", err);
     res.status(err.status || 500).json(err.data || { error: "Internal error" });
+  }
+});
+
+// POST /api/parse-statement - Extract transactions from a bank statement PDF
+app.post("/api/parse-statement", async (req, res) => {
+  try {
+    const { base64, fileName } = req.body || {};
+    if (!base64 || typeof base64 !== "string") {
+      return res.status(400).json({ error: "Missing base64 PDF payload" });
+    }
+    const buffer = Buffer.from(base64, "base64");
+    const pdfData = await pdfParse(buffer);
+    const result = parseStatement(pdfData.text);
+    res.json({
+      ...result,
+      fileName: fileName || null,
+      pageCount: pdfData.numpages,
+    });
+  } catch (err) {
+    if (err instanceof UnsupportedBankError) {
+      return res
+        .status(422)
+        .json({ error: err.message, code: "UNSUPPORTED_BANK" });
+    }
+    console.error("parse-statement error:", err);
+    res
+      .status(500)
+      .json({ error: err.message || "Failed to parse PDF statement" });
   }
 });
 
