@@ -1,25 +1,38 @@
-import { Ionicons } from "@expo/vector-icons";
 import { Stack, useRouter } from "expo-router";
-import { useState } from "react";
+import React, { useState } from "react";
 import {
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
-import { useSettings } from "../src/shared/context/SettingsContext";
-import { useThemeColor } from "../src/shared/hooks/use-theme-color";
-import { useAccounts } from "../src/features/accounts/context/AccountsContext";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { FMColors, FMFonts, ThemePalette } from "@/src/constants/theme";
+import { DesktopShell } from "@/src/shared/components/DesktopShell";
+import { MobileHeader } from "@/src/shared/components/MobileHeader";
+import {
+  Button,
+  IconBack,
+  IconChevR,
+  Label,
+  Rule,
+  useFMTheme,
+} from "@/src/shared/design";
+import { useSettings } from "@/src/shared/context/SettingsContext";
+import { useAccounts } from "@/src/features/accounts/context/AccountsContext";
 
 export default function SettingsScreen() {
+  const t = useFMTheme();
   const router = useRouter();
-  const backgroundColor = useThemeColor({}, "background");
-  const textColor = useThemeColor({}, "text");
-  const tintColor = useThemeColor({}, "tint");
+  const insets = useSafeAreaInsets();
+  const isWeb = Platform.OS === "web";
 
   const {
     isBalanceHidden,
@@ -27,14 +40,16 @@ export default function SettingsScreen() {
     setPin,
     toggleBalanceHidden,
     verifyPin,
-    geminiApiKey,
-    setGeminiApiKey,
     language,
     setLanguage,
     mainAccountId,
     setMainAccountId,
     theme,
     setTheme,
+    palette,
+    setPalette,
+    geminiApiKey,
+    setGeminiApiKey,
     i18n,
   } = useSettings();
 
@@ -46,15 +61,12 @@ export default function SettingsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [isChangingPin, setIsChangingPin] = useState(false);
 
-  const [isKeyModalVisible, setKeyModalVisible] = useState(false);
-  const [keyInput, setKeyInput] = useState("");
-  const [isLangModalVisible, setLangModalVisible] = useState(false);
   const [isMainAccModalVisible, setMainAccModalVisible] = useState(false);
-  const [isThemeModalVisible, setThemeModalVisible] = useState(false);
 
-  const activeMainAccount = accounts.find(a => a.id === mainAccountId) || 
-                          accounts.find(a => a.category === "Giro") || 
-                          accounts[0];
+  const activeMainAccount =
+    accounts.find((a) => a.id === mainAccountId) ||
+    accounts.find((a) => a.category === "Giro") ||
+    accounts[0];
 
   const handleToggleBalance = async () => {
     if (isBalanceHidden) {
@@ -83,7 +95,6 @@ export default function SettingsScreen() {
       setError("PIN must be 5 digits");
       return;
     }
-
     try {
       if (pinMode === "verify") {
         const isValid = verifyPin(pinInput);
@@ -91,23 +102,18 @@ export default function SettingsScreen() {
           setError("Incorrect PIN");
           return;
         }
-
         if (isChangingPin) {
           setPinMode("create");
           setPinInput("");
           setError(null);
         } else {
           const success = await toggleBalanceHidden(pinInput);
-          if (success) {
-            setPinModalVisible(false);
-          }
+          if (success) setPinModalVisible(false);
         }
       } else {
         await setPin(pinInput);
         setPinModalVisible(false);
-        if (!isChangingPin) {
-          await toggleBalanceHidden(pinInput);
-        }
+        if (!isChangingPin) await toggleBalanceHidden(pinInput);
         setIsChangingPin(false);
       }
     } catch (err: any) {
@@ -115,164 +121,85 @@ export default function SettingsScreen() {
     }
   };
 
-  return (
-    <View style={[styles.container, { backgroundColor }]}>
-      <Stack.Screen
-        options={{ title: i18n.settings_title, headerBackTitle: "Home" }}
-      />
+  const sections = (
+    <>
+      <SettingsSection title={i18n.dashboard_section} desc="Defaults that drive the Overview screen.">
+        <SettingsRow
+          label={i18n.main_account}
+          value={activeMainAccount ? activeMainAccount.name : i18n.not_set}
+          onPress={() => setMainAccModalVisible(true)}
+        />
+      </SettingsSection>
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>
-            {i18n.dashboard_section}
-          </Text>
-          <TouchableOpacity
-            style={[styles.row, { borderBottomColor: textColor + "20" }]}
-            onPress={() => setMainAccModalVisible(true)}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowLabel, { color: textColor }]}>
-                {i18n.main_account}
-              </Text>
-              <Text style={[styles.rowSubLabel, { color: textColor }]}>
-                {activeMainAccount ? activeMainAccount.name : i18n.not_set}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
-          </TouchableOpacity>
-        </View>
+      <SettingsSection title={i18n.language} desc="App language and regional formatting.">
+        <SegmentedToggle
+          options={[
+            { label: i18n.german, value: "de" },
+            { label: i18n.english, value: "en" },
+          ]}
+          active={language}
+          onSelect={(v) => setLanguage(v as "en" | "de")}
+        />
+      </SettingsSection>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>
-            {i18n.language}
-          </Text>
-          <TouchableOpacity
-            style={[styles.row, { borderBottomColor: textColor + "20" }]}
-            onPress={() => setLangModalVisible(true)}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowLabel, { color: textColor }]}>
-                {language === "en" ? i18n.english : i18n.german}
-              </Text>
-              <Text style={[styles.rowSubLabel, { color: textColor }]}>
-                {i18n.language_sub}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
-          </TouchableOpacity>
-        </View>
+      <SettingsSection title={i18n.appearance} desc={i18n.appearance_sub}>
+        <SegmentedToggle
+          options={[
+            { label: i18n.theme_system, value: "system" },
+            { label: i18n.theme_light, value: "light" },
+            { label: i18n.theme_dark, value: "dark" },
+          ]}
+          active={theme}
+          onSelect={(v) => setTheme(v as "system" | "light" | "dark")}
+        />
+        <PaletteSwatchRow
+          label={i18n.palette}
+          active={palette}
+          onSelect={setPalette}
+        />
+      </SettingsSection>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>
-            {i18n.appearance}
-          </Text>
-          <TouchableOpacity
-            style={[styles.row, { borderBottomColor: textColor + "20" }]}
-            onPress={() => setThemeModalVisible(true)}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowLabel, { color: textColor }]}>
-                {theme === "system" ? i18n.theme_system : theme === "dark" ? i18n.theme_dark : i18n.theme_light}
-              </Text>
-              <Text style={[styles.rowSubLabel, { color: textColor }]}>
-                {i18n.appearance_sub}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
-          </TouchableOpacity>
-        </View>
+      <SettingsSection title={i18n.ai_section} desc={i18n.ai_gemini_explainer}>
+        <GeminiKeyRow apiKey={geminiApiKey} onSave={setGeminiApiKey} />
+      </SettingsSection>
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>
-            {i18n.ai_integration}
-          </Text>
-          <TouchableOpacity
-            style={[styles.row, { borderBottomColor: textColor + "20" }]}
-            onPress={() => {
-              setKeyInput(geminiApiKey || "");
-              setKeyModalVisible(true);
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowLabel, { color: textColor }]}>
-                {i18n.gemini_api_key}
-              </Text>
-              <Text
-                style={[
-                  styles.rowSubLabel,
-                  { color: textColor, opacity: geminiApiKey ? 1 : 0.6 },
-                ]}
-                numberOfLines={1}
-                ellipsizeMode="middle"
-              >
-                {geminiApiKey
-                  ? "••••••••" + geminiApiKey.slice(-4)
-                  : i18n.not_set}
-              </Text>
-            </View>
-            <Ionicons name="create-outline" size={20} color={textColor + "80"} />
-          </TouchableOpacity>
-        </View>
+      <SettingsSection title={i18n.privacy} desc="Mask balances and protect with a PIN.">
+        <SettingsToggle
+          label={i18n.hide_total}
+          desc={i18n.hide_total_sub}
+          value={isBalanceHidden}
+          onChange={handleToggleBalance}
+        />
+        <SettingsRow
+          label={userPin ? i18n.change_pin : i18n.set_privacy_pin}
+          value={userPin ? i18n.update_pin_sub : i18n.protect_balances_sub}
+          onPress={() => {
+            if (userPin) {
+              setPinMode("verify");
+              setIsChangingPin(true);
+            } else {
+              setPinMode("create");
+              setIsChangingPin(false);
+            }
+            setPinInput("");
+            setPinModalVisible(true);
+          }}
+        />
+      </SettingsSection>
+    </>
+  );
 
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: textColor }]}>
-            {i18n.privacy}
-          </Text>
-
-          <View style={[styles.row, { borderBottomColor: textColor + "20" }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowLabel, { color: textColor }]}>
-                {i18n.hide_total}
-              </Text>
-              <Text style={[styles.rowSubLabel, { color: textColor }]}>
-                {i18n.hide_total_sub}
-              </Text>
-            </View>
-            <Switch
-              value={isBalanceHidden}
-              onValueChange={handleToggleBalance}
-              trackColor={{ false: "#767577", true: tintColor }}
-              thumbColor={"#f4f3f4"}
-            />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.row, { borderBottomColor: textColor + "20" }]}
-            onPress={() => {
-              if (userPin) {
-                setPinMode("verify");
-                setIsChangingPin(true);
-              } else {
-                setPinMode("create");
-                setIsChangingPin(false);
-              }
-              setPinInput("");
-              setPinModalVisible(true);
-            }}
-          >
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.rowLabel, { color: textColor }]}>
-                {userPin ? i18n.change_pin : i18n.set_privacy_pin}
-              </Text>
-              <Text style={[styles.rowSubLabel, { color: textColor }]}>
-                {userPin ? i18n.update_pin_sub : i18n.protect_balances_sub}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={textColor + "80"} />
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-
-      {/* PIN Modal */}
+  const modals = (
+    <>
       <Modal
         visible={isPinModalVisible}
         transparent
-        animationType="slide"
+        animationType={isWeb ? "fade" : "slide"}
         onRequestClose={() => setPinModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor }]}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>
+          <View style={[styles.modalCard, { backgroundColor: t.surface, borderColor: t.lineStrong }]}>
+            <Text style={{ fontFamily: FMFonts.display, fontSize: 22, color: t.ink, letterSpacing: -0.3 }}>
               {pinMode === "create"
                 ? isChangingPin
                   ? i18n.enter_new_pin
@@ -281,11 +208,10 @@ export default function SettingsScreen() {
                   ? i18n.enter_current_pin
                   : i18n.enter_pin}
             </Text>
-
             <TextInput
               style={[
                 styles.pinInput,
-                { color: textColor, borderColor: tintColor },
+                { color: t.ink, borderColor: error ? t.neg : t.lineStrong, backgroundColor: t.bg, fontFamily: FMFonts.sansSemibold },
               ]}
               value={pinInput}
               onChangeText={(text) => {
@@ -299,325 +225,527 @@ export default function SettingsScreen() {
               secureTextEntry
               autoFocus
             />
-
-            {error && (
-              <Text style={{ color: "red", marginBottom: 16 }}>{error}</Text>
-            )}
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                onPress={() => setPinModalVisible(false)}
-                style={styles.modalButton}
-              >
-                <Text style={{ color: textColor }}>{i18n.cancel}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handlePinSubmit}
-                style={[styles.modalButton, { backgroundColor: tintColor }]}
-              >
-                <Text style={{ color: backgroundColor, fontWeight: "600" }}>
-                  {pinMode === "create" ? i18n.set_pin_btn : i18n.confirm_btn}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Gemini API Key Modal */}
-      <Modal
-        visible={isKeyModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setKeyModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor }]}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>
-              {i18n.gemini_api_key}
-            </Text>
-
-            <TextInput
-              style={[
-                styles.pinInput,
-                {
-                  color: textColor,
-                  borderColor: tintColor,
-                  fontSize: 16,
-                  textAlign: "left",
-                  letterSpacing: 0,
-                  height: 100,
-                },
-              ]}
-              multiline
-              value={keyInput}
-              onChangeText={setKeyInput}
-              autoCorrect={false}
-              autoCapitalize="none"
-              placeholder="Paste API Key here..."
-              placeholderTextColor={textColor + "50"}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                onPress={() => setKeyModalVisible(false)}
-                style={styles.modalButton}
-              >
-                <Text style={{ color: textColor }}>{i18n.cancel}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={async () => {
-                  await setGeminiApiKey(keyInput.trim());
-                  setKeyModalVisible(false);
-                }}
-                style={[styles.modalButton, { backgroundColor: tintColor }]}
-              >
-                <Text style={{ color: backgroundColor, fontWeight: "600" }}>
-                  {i18n.save_key_btn}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Language Selection Modal */}
-      <Modal
-        visible={isLangModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setLangModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor }]}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>
-              {i18n.language}
-            </Text>
-
-            <TouchableOpacity
-              style={[
-                styles.selectionRow,
-                {
-                  borderBottomColor: textColor + "10",
-                },
-              ]}
-              onPress={() => {
-                setLanguage("de");
-                setLangModalVisible(false);
-              }}
-            >
-              <Text style={{ color: textColor, fontSize: 18 }}>
-                {i18n.german} {language === "de" && "✓"}
+            {error ? (
+              <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.neg, marginTop: 8 }}>
+                {error}
               </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.selectionRow,
-                {
-                  borderBottomColor: textColor + "10",
-                },
-              ]}
-              onPress={() => {
-                setLanguage("en");
-                setLangModalVisible(false);
-              }}
-            >
-              <Text style={{ color: textColor, fontSize: 18 }}>
-                {i18n.english} {language === "en" && "✓"}
-              </Text>
-            </TouchableOpacity>
-
-            <View style={[styles.modalButtons, { marginTop: 24 }]}>
-              <TouchableOpacity
-                onPress={() => setLangModalVisible(false)}
-                style={styles.modalButton}
-              >
-                <Text style={{ color: textColor }}>{i18n.cancel}</Text>
-              </TouchableOpacity>
+            ) : null}
+            <View style={styles.modalActions}>
+              <Button variant="ghost" onPress={() => setPinModalVisible(false)}>
+                {i18n.cancel}
+              </Button>
+              <Button variant="primary" onPress={handlePinSubmit}>
+                {pinMode === "create" ? i18n.set_pin_btn : i18n.confirm_btn}
+              </Button>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* Main Account Selection Modal */}
       <Modal
         visible={isMainAccModalVisible}
         transparent
-        animationType="slide"
+        animationType={isWeb ? "fade" : "slide"}
         onRequestClose={() => setMainAccModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor }]}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>
+          <View style={[styles.modalCard, { backgroundColor: t.surface, borderColor: t.lineStrong }]}>
+            <Text style={{ fontFamily: FMFonts.display, fontSize: 22, color: t.ink, letterSpacing: -0.3 }}>
               {i18n.select_main_account}
             </Text>
-
-            <ScrollView style={{ width: "100%", maxHeight: 300 }}>
-              {accounts.map((acc) => (
-                <TouchableOpacity
-                  key={acc.id}
-                  style={[
-                    styles.selectionRow,
-                    {
-                      borderBottomColor: textColor + "10",
-                    },
-                  ]}
-                  onPress={async () => {
-                    await setMainAccountId(acc.id);
-                    setMainAccModalVisible(false);
-                  }}
-                >
-                  <View>
-                    <Text style={{ color: textColor, fontSize: 16, fontWeight: "600" }}>
-                      {acc.name} {activeMainAccount?.id === acc.id && "✓"}
-                    </Text>
-                    <Text style={{ color: textColor, opacity: 0.6, fontSize: 12 }}>
-                      {acc.bankName} • {acc.category}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-              {accounts.length === 0 && (
-                <Text style={{ color: textColor, opacity: 0.5, textAlign: "center", padding: 20 }}>
+            <ScrollView style={{ width: "100%", maxHeight: 320, marginTop: 12 }}>
+              {accounts.length === 0 ? (
+                <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkMuted, textAlign: "center", padding: 20 }}>
                   {i18n.no_accounts}
                 </Text>
+              ) : (
+                accounts.map((acc, i) => {
+                  const isActive = activeMainAccount?.id === acc.id;
+                  return (
+                    <Pressable
+                      key={acc.id}
+                      onPress={async () => {
+                        await setMainAccountId(acc.id);
+                        setMainAccModalVisible(false);
+                      }}
+                      style={({ pressed }) => [
+                        styles.selectionRow,
+                        {
+                          borderTopColor: i === 0 ? "transparent" : t.line,
+                          borderTopWidth: i === 0 ? 0 : 1,
+                          backgroundColor: isActive ? t.accentSoft : "transparent",
+                          opacity: pressed ? 0.85 : 1,
+                        },
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink }}>
+                          {acc.name}
+                        </Text>
+                        <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkMuted, marginTop: 2 }}>
+                          {acc.bankName} · {acc.category}
+                        </Text>
+                      </View>
+                      {isActive ? (
+                        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: t.accent }}>
+                          ✓
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  );
+                })
               )}
             </ScrollView>
-
-            <View style={[styles.modalButtons, { marginTop: 24 }]}>
-              <TouchableOpacity
-                onPress={() => setMainAccModalVisible(false)}
-                style={styles.modalButton}
-              >
-                <Text style={{ color: textColor }}>{i18n.cancel}</Text>
-              </TouchableOpacity>
+            <View style={[styles.modalActions, { marginTop: 14 }]}>
+              <Button variant="ghost" full onPress={() => setMainAccModalVisible(false)}>
+                {i18n.cancel}
+              </Button>
             </View>
           </View>
         </View>
       </Modal>
+    </>
+  );
 
-      {/* Theme Selection Modal */}
-      <Modal
-        visible={isThemeModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setThemeModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor }]}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>
-              {i18n.appearance}
+  if (isWeb) {
+    return (
+      <DesktopShell breadcrumb={i18n.settings_title} activeId="overview">
+        <Stack.Screen options={{ headerShown: false }} />
+        <ScrollView contentContainerStyle={[styles.desktopPage, { backgroundColor: t.bg }]} showsVerticalScrollIndicator={false}>
+          <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
+            <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkMuted, marginBottom: 4 }}>
+              ← {i18n.tab_home ?? "Overview"}
             </Text>
+          </Pressable>
+          <Text style={{ fontFamily: FMFonts.display, fontSize: 30, color: t.ink, letterSpacing: -0.5, lineHeight: 32 }}>
+            {i18n.settings_title}
+          </Text>
+          <View style={{ marginTop: 18 }}>{sections}</View>
+        </ScrollView>
+        {modals}
+      </DesktopShell>
+    );
+  }
 
-            <TouchableOpacity
-              style={[
-                styles.selectionRow,
-                {
-                  borderBottomColor: textColor + "10",
-                },
-              ]}
-              onPress={() => {
-                setTheme("system");
-                setThemeModalVisible(false);
-              }}
-            >
-              <Text style={{ color: textColor, fontSize: 18 }}>
-                {i18n.theme_system} {theme === "system" && "✓"}
-              </Text>
-            </TouchableOpacity>
+  return (
+    <View style={[styles.root, { backgroundColor: t.bg, paddingTop: insets.top + 12 }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <View style={styles.backRow}>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}>
+          <IconBack size={15} color={t.inkSoft} />
+        </Pressable>
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.inkSoft, marginLeft: 4 }}>
+          {i18n.tab_home ?? "Overview"}
+        </Text>
+      </View>
+      <MobileHeader title={i18n.settings_title} />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {sections}
+        <Text style={{ textAlign: "center", fontFamily: FMFonts.sans, color: t.inkMuted, fontSize: 10, marginTop: 8 }}>
+          Finance Manager · all data on this device
+        </Text>
+      </ScrollView>
+      {modals}
+    </View>
+  );
+}
 
-            <TouchableOpacity
-              style={[
-                styles.selectionRow,
-                {
-                  borderBottomColor: textColor + "10",
-                },
-              ]}
-              onPress={() => {
-                setTheme("light");
-                setThemeModalVisible(false);
-              }}
-            >
-              <Text style={{ color: textColor, fontSize: 18 }}>
-                {i18n.theme_light} {theme === "light" && "✓"}
-              </Text>
-            </TouchableOpacity>
+interface SettingsSectionProps {
+  title: string;
+  desc?: string;
+  children: React.ReactNode;
+}
 
-            <TouchableOpacity
-              style={[
-                styles.selectionRow,
-                {
-                  borderBottomColor: textColor + "10",
-                },
-              ]}
-              onPress={() => {
-                setTheme("dark");
-                setThemeModalVisible(false);
-              }}
-            >
-              <Text style={{ color: textColor, fontSize: 18 }}>
-                {i18n.theme_dark} {theme === "dark" && "✓"}
-              </Text>
-            </TouchableOpacity>
+function SettingsSection({ title, desc, children }: SettingsSectionProps) {
+  const t = useFMTheme();
+  const isWeb = Platform.OS === "web";
 
-            <View style={[styles.modalButtons, { marginTop: 24 }]}>
-              <TouchableOpacity
-                onPress={() => setThemeModalVisible(false)}
-                style={styles.modalButton}
-              >
-                <Text style={{ color: textColor }}>{i18n.cancel}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+  if (isWeb) {
+    return (
+      <View style={[styles.desktopSection, { borderTopColor: t.line }]}>
+        <View style={{ width: 240 }}>
+          <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 15, color: t.ink }}>{title}</Text>
+          {desc ? (
+            <Text style={{ fontFamily: FMFonts.sans, fontSize: 12.5, color: t.inkMuted, marginTop: 6, lineHeight: 18 }}>
+              {desc}
+            </Text>
+          ) : null}
         </View>
-      </Modal>
+        <View style={{ flex: 1 }}>{children}</View>
+      </View>
+    );
+  }
+
+  const items = React.Children.toArray(children);
+  return (
+    <View style={{ marginBottom: 18 }}>
+      <Label style={{ marginBottom: 8, paddingHorizontal: 2, fontSize: 12 }}>{title}</Label>
+      <View style={[styles.sectionList, { backgroundColor: t.surface, borderColor: t.line }]}>
+        {items.map((c, i) => (
+          <View key={i}>
+            {c}
+            {i < items.length - 1 ? <Rule style={{ marginLeft: 16 }} /> : null}
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+interface SettingsRowProps {
+  label: string;
+  value?: string;
+  onPress?: () => void;
+  mono?: boolean;
+  icon?: React.ReactNode;
+}
+
+function SettingsRow({ label, value, onPress, mono, icon }: SettingsRowProps) {
+  const t = useFMTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, { opacity: pressed ? 0.85 : 1 }]}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>
+          {label}
+        </Text>
+      </View>
+      {value ? (
+        <Text
+          style={{
+            fontFamily: mono ? FMFonts.mono : FMFonts.sans,
+            fontSize: 13.5,
+            color: t.inkSoft,
+            marginRight: 8,
+            ...(mono ? { fontVariant: ["tabular-nums"] as any } : {}),
+          }}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+      ) : null}
+      {icon ?? <IconChevR size={13} color={t.inkMuted} />}
+    </Pressable>
+  );
+}
+
+interface SettingsToggleProps {
+  label: string;
+  desc?: string;
+  value: boolean;
+  onChange: () => void;
+}
+
+function SettingsToggle({ label, desc, value, onChange }: SettingsToggleProps) {
+  const t = useFMTheme();
+  return (
+    <View style={styles.row}>
+      <View style={{ flex: 1, paddingRight: 12 }}>
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>{label}</Text>
+        {desc ? (
+          <Text style={{ fontFamily: FMFonts.sans, fontSize: 12.5, color: t.inkMuted, marginTop: 3, lineHeight: 17 }}>
+            {desc}
+          </Text>
+        ) : null}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ false: t.lineStrong, true: t.accent }}
+        thumbColor="#fff"
+        ios_backgroundColor={t.lineStrong}
+      />
+    </View>
+  );
+}
+
+interface PaletteSwatchRowProps {
+  label: string;
+  active: ThemePalette;
+  onSelect: (p: ThemePalette) => Promise<void>;
+}
+
+type PaletteLabelKey =
+  | "palette_mulberry"
+  | "palette_red"
+  | "palette_purple"
+  | "palette_green"
+  | "palette_turquoise";
+
+const PALETTE_ORDER: { value: ThemePalette; labelKey: PaletteLabelKey }[] = [
+  { value: "mulberry", labelKey: "palette_mulberry" },
+  { value: "red", labelKey: "palette_red" },
+  { value: "purple", labelKey: "palette_purple" },
+  { value: "green", labelKey: "palette_green" },
+  { value: "turquoise", labelKey: "palette_turquoise" },
+];
+
+function PaletteSwatchRow({ label, active, onSelect }: PaletteSwatchRowProps) {
+  const t = useFMTheme();
+  const { i18n } = useSettings();
+  return (
+    <View style={[styles.row, { flexWrap: "wrap", gap: 12 }]}>
+      <View style={{ flex: 1, minWidth: 120 }}>
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>
+          {label}
+        </Text>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 14 }}>
+        {PALETTE_ORDER.map((opt) => {
+          const swatchColor = FMColors[opt.value].light.accent;
+          const isActive = active === opt.value;
+          return (
+            <Pressable
+              key={opt.value}
+              onPress={() => {
+                onSelect(opt.value);
+              }}
+              style={({ pressed }) => [
+                styles.swatchWrap,
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel={i18n[opt.labelKey] as string}
+              accessibilityState={{ selected: isActive }}
+            >
+              <View
+                style={[
+                  styles.swatchDot,
+                  {
+                    backgroundColor: swatchColor,
+                    borderColor: isActive ? t.ink : "transparent",
+                  },
+                ]}
+              />
+              <Text
+                style={{
+                  fontFamily: isActive ? FMFonts.sansSemibold : FMFonts.sans,
+                  fontSize: 11,
+                  color: isActive ? t.ink : t.inkMuted,
+                  marginTop: 6,
+                  textAlign: "center",
+                }}
+                numberOfLines={1}
+              >
+                {i18n[opt.labelKey] as string}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+interface SegmentedToggleProps<T extends string> {
+  options: { label: string; value: T }[];
+  active: T;
+  onSelect: (value: T) => void | Promise<void>;
+}
+
+function SegmentedToggle<T extends string>({ options, active, onSelect }: SegmentedToggleProps<T>) {
+  const t = useFMTheme();
+  return (
+    <View style={styles.segmentedRow}>
+      {options.map((opt) => {
+        const isActive = active === opt.value;
+        return (
+          <Pressable
+            key={opt.value}
+            onPress={() => onSelect(opt.value)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: isActive }}
+            style={({ pressed }) => [
+              styles.segment,
+              {
+                backgroundColor: isActive ? t.accentSoft : t.surface,
+                borderColor: isActive ? t.accent : t.lineStrong,
+                opacity: pressed ? 0.85 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                fontFamily: isActive ? FMFonts.sansSemibold : FMFonts.sansMedium,
+                fontSize: 15,
+                color: isActive ? t.accentInk : t.ink,
+                textAlign: "center",
+              }}
+              numberOfLines={1}
+            >
+              {opt.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function GeminiKeyRow({
+  apiKey,
+  onSave,
+}: {
+  apiKey: string | null;
+  onSave: (key: string) => Promise<void>;
+}) {
+  const t = useFMTheme();
+  const { i18n } = useSettings();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const masked = apiKey ? apiKey.slice(0, 4) + "•••••••" + apiKey.slice(-4) : null;
+
+  const startEdit = () => {
+    setDraft(apiKey ?? "");
+    setEditing(true);
+  };
+  const cancel = () => {
+    setEditing(false);
+    setDraft("");
+  };
+  const save = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    try {
+      await onSave(trimmed);
+      setEditing(false);
+      setDraft("");
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <View style={styles.aiBlock}>
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>
+          {i18n.ai_gemini_key_label}
+        </Text>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="AIza…"
+          placeholderTextColor={t.inkMuted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry={false}
+          style={{
+            marginTop: 10,
+            paddingHorizontal: 12,
+            paddingVertical: 12,
+            borderWidth: 1,
+            borderColor: t.line,
+            borderRadius: 8,
+            fontFamily: FMFonts.mono,
+            fontSize: 14,
+            color: t.ink,
+            backgroundColor: t.surface,
+          }}
+        />
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+          <Button variant="primary" disabled={!draft.trim() || saving} onPress={save}>
+            {saving ? "…" : i18n.ai_gemini_key_save}
+          </Button>
+          <Button variant="ghost" onPress={cancel}>
+            {i18n.cancel}
+          </Button>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.aiBlock}>
+      <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>
+        {i18n.ai_gemini_key_label}
+      </Text>
+      <Text style={{ fontFamily: FMFonts.sans, fontSize: 12.5, color: t.inkMuted, marginTop: 6, lineHeight: 17 }}>
+        {i18n.ai_gemini_explainer}
+      </Text>
+      {masked ? (
+        <Text
+          style={{
+            fontFamily: FMFonts.mono,
+            fontSize: 13.5,
+            color: t.inkSoft,
+            marginTop: 10,
+            fontVariant: ["tabular-nums"],
+          }}
+        >
+          {masked}
+        </Text>
+      ) : null}
+      <View style={{ marginTop: 12, alignSelf: "flex-start" }}>
+        <Button variant={apiKey ? "secondary" : "primary"} onPress={startEdit}>
+          {apiKey ? i18n.ai_gemini_key_update : i18n.ai_gemini_key_set}
+        </Button>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 20,
+  root: { flex: 1 },
+  backRow: {
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingBottom: 8,
   },
-  section: {
-    marginBottom: 32,
-    paddingHorizontal: 20,
+  iconBtn: { padding: 6 },
+  scrollContent: {
+    paddingHorizontal: 18,
+    paddingBottom: 32,
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    textTransform: "uppercase",
-    opacity: 0.6,
-    marginBottom: 8,
-    marginLeft: 8,
+  desktopPage: {
+    padding: 24,
+  },
+  desktopSection: {
+    flexDirection: "row",
+    gap: 32,
+    paddingVertical: 24,
+    borderTopWidth: 1,
+  },
+  sectionList: {
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: "hidden",
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  rowLabel: {
-    fontSize: 16,
-    fontWeight: "500",
-  },
-  rowSubLabel: {
-    fontSize: 12,
-    opacity: 0.6,
-    marginTop: 2,
-    paddingRight: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
   selectionRow: {
     width: "100%",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  segmentedRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  segment: {
+    flex: 1,
     paddingVertical: 16,
     paddingHorizontal: 12,
-    borderBottomWidth: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  // Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -625,44 +753,43 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
-  modalContent: {
+  modalCard: {
     width: "100%",
-    maxWidth: 320,
-    borderRadius: 24,
-    padding: 24,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    marginBottom: 24,
+    maxWidth: 400,
+    padding: 22,
+    borderRadius: 14,
+    borderWidth: 1,
+    alignItems: "stretch",
   },
   pinInput: {
     width: "100%",
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     fontSize: 24,
     textAlign: "center",
     letterSpacing: 8,
-    marginBottom: 16,
+    marginTop: 14,
   },
-  modalButtons: {
+  modalActions: {
     flexDirection: "row",
-    gap: 12,
-    width: "100%",
+    gap: 8,
+    marginTop: 14,
+    justifyContent: "flex-end",
   },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 999,
+  swatchWrap: {
     alignItems: "center",
-    justifyContent: "center",
+    width: 52,
+  },
+  swatchDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+  },
+  aiBlock: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
   },
 });

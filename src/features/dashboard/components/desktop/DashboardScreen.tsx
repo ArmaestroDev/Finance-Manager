@@ -1,67 +1,456 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { BalanceCard } from "./BalanceCard";
-import { DateFilterModal } from "../../../../shared/components/DateFilterModal";
-import { StatsOverview } from "./StatsOverview";
-import { useCategories } from "../../../transactions/context/CategoriesContext";
-import { useSettings } from "../../../../shared/context/SettingsContext";
-import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
+import { Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+
+import { FMFonts } from "@/src/constants/theme";
+import { DesktopShell } from "@/src/shared/components/DesktopShell";
+import { DateFilterModal } from "@/src/shared/components/DateFilterModal";
+import {
+  Balance,
+  Button,
+  Donut,
+  IconAI,
+  IconWarn,
+  Label,
+  Money,
+  PrivacyHint,
+  Spark,
+  formatEUR,
+  splitForHero,
+  useFMTheme,
+} from "@/src/shared/design";
+import { useDateFilter } from "@/src/shared/context/DateFilterContext";
+import { useSettings } from "@/src/shared/context/SettingsContext";
+import { useCategories } from "@/src/features/transactions/context/CategoriesContext";
+import { DebtsSummaryCard } from "@/src/features/debts/components/desktop/DebtsSummaryCard";
+import {
+  getStableTxId,
+  getTransactionAmount,
+  pickTransactionTitle,
+} from "@/src/features/transactions/utils/transactions";
 import { useFinanceData } from "../../hooks/useFinanceData";
 import { useFinanceStats } from "../../hooks/useFinanceStats";
-import { formatAmount } from "../../../../shared/utils/financeHelpers";
-import { useDateFilter } from "../../../../shared/context/DateFilterContext";
 
 export function DashboardScreen() {
-  const backgroundColor = useThemeColor({}, "background");
-  const textColor = useThemeColor({}, "text");
-  const tintColor = useThemeColor({}, "tint");
+  const t = useFMTheme();
   const router = useRouter();
   const { isBalanceHidden, i18n, mainAccountId } = useSettings();
   const { categories, transactionCategoryMap } = useCategories();
-
-  const { allTransactions, statsLoading, filterDateFrom, filterDateTo, accounts, cashBalance, refreshAccounts, loadAllTransactions, applyDateFilter } = useFinanceData();
-  const { totalAssets, totalLiabilities, totalIncome, totalExpenses, categoryBreakdown, pieData } = useFinanceStats({ allTransactions, accounts, cashBalance, categories, transactionCategoryMap });
   const { setSelectedCategoryId } = useDateFilter();
 
-  const handleCategoryPress = (categoryId: string) => {
-    setSelectedCategoryId(categoryId);
-    let targetAccount = null;
-    if (mainAccountId) targetAccount = accounts.find(a => a.id === mainAccountId);
-    if (!targetAccount) targetAccount = accounts.find(a => a.category === "Giro") || accounts[0];
-    if (targetAccount) router.push({ pathname: `/account/${targetAccount.id}` as any, params: { name: targetAccount.name, type: targetAccount.type } });
-  };
+  const {
+    allTransactions,
+    statsLoading,
+    filterDateFrom,
+    filterDateTo,
+    accounts,
+    cashBalance,
+    refreshAccounts,
+    loadAllTransactions,
+    applyDateFilter,
+  } = useFinanceData();
+
+  const {
+    totalAssets,
+    totalLiabilities,
+    totalIncome,
+    totalExpenses,
+    categoryBreakdown,
+  } = useFinanceStats({
+    allTransactions,
+    accounts,
+    cashBalance,
+    categories,
+    transactionCategoryMap,
+  });
+
+  const masked = isBalanceHidden;
+  const netWorth = totalAssets - totalLiabilities;
+  const netCashflow = totalIncome - totalExpenses;
+  const heroParts = splitForHero(netWorth, masked);
+
+  const slices = categoryBreakdown.map((c) => ({
+    id: c.categoryId,
+    amount: c.amount,
+    color: c.color,
+  }));
+  const totalExp = slices.reduce((s, x) => s + x.amount, 0);
+
+  const uncategorized = allTransactions.filter(
+    (tx) => !transactionCategoryMap[getStableTxId(tx)],
+  );
+  const uncategorizedAmount = uncategorized.reduce(
+    (s, tx) => s + Math.abs(getTransactionAmount(tx)),
+    0,
+  );
+
+  const recent = allTransactions.slice(0, 5);
 
   const [isDateModalVisible, setDateModalVisible] = useState(false);
   const [tempFrom, setTempFrom] = useState("");
   const [tempTo, setTempTo] = useState("");
 
-  const openDateModal = () => { setTempFrom(filterDateFrom); setTempTo(filterDateTo); setDateModalVisible(true); };
-  const handleApplyDateFilter = (from: string, to: string) => { applyDateFilter(from, to); setDateModalVisible(false); };
+  const openDateModal = () => {
+    setTempFrom(filterDateFrom);
+    setTempTo(filterDateTo);
+    setDateModalVisible(true);
+  };
+  const handleApplyDateFilter = (from: string, to: string) => {
+    applyDateFilter(from, to);
+    setDateModalVisible(false);
+  };
+
+  const handleCategoryPress = (categoryId: string) => {
+    setSelectedCategoryId(categoryId);
+    let target = mainAccountId ? accounts.find((a) => a.id === mainAccountId) : null;
+    if (!target) target = accounts.find((a) => a.category === "Giro") ?? accounts[0] ?? null;
+    if (target) router.push({ pathname: `/account/${target.id}` as never, params: { name: target.name, type: target.type } } as never);
+  };
+
+  const onRefresh = () => {
+    refreshAccounts();
+    loadAllTransactions();
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor }]}>
-      {/* Top header bar */}
-      <View style={[styles.topBar, { borderBottomColor: textColor + "10" }]}>
-        <View>
-          <Text style={[styles.pageTitle, { color: textColor }]}>{i18n.overview_title}</Text>
-          <Text style={[styles.pageSubtitle, { color: textColor, opacity: 0.5 }]}>{i18n.overview_subtitle}</Text>
-        </View>
-        <View style={styles.topActions}>
-          <TouchableOpacity onPress={openDateModal} style={[styles.topBtn, { backgroundColor: textColor + "10" }]}>
-            <Ionicons name="calendar-outline" size={18} color={textColor} />
-            <Text style={{ color: textColor, fontSize: 13, fontWeight: "600" }}>
-              {filterDateFrom} – {filterDateTo}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => { refreshAccounts(); loadAllTransactions(); }} style={[styles.topBtn, { backgroundColor: tintColor + "15" }]}>
-            <Ionicons name="refresh" size={18} color={tintColor} />
-            <Text style={{ color: tintColor, fontSize: 13, fontWeight: "600" }}>Refresh</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => router.push("/settings")} style={[styles.topBtn, { backgroundColor: textColor + "10" }]}>
-            <Ionicons name="settings-outline" size={18} color={textColor} />
-          </TouchableOpacity>
+    <DesktopShell onRefresh={onRefresh}>
+      <View style={[styles.page, { backgroundColor: t.bg }]}>
+        {masked ? (
+          <View style={{ marginBottom: 12 }}>
+            <PrivacyHint />
+          </View>
+        ) : null}
+
+        <View style={styles.grid}>
+          {/* Row 1: hero + cashflow */}
+          <View style={[styles.hero, { backgroundColor: t.surface, borderColor: t.line }]}>
+            <View style={{ flex: 1 }}>
+              <Label>{`${i18n.net_worth} · ${rangeLabel(filterDateFrom, filterDateTo)}`}</Label>
+              <View style={styles.heroRow}>
+                <Text
+                  style={{
+                    fontFamily: FMFonts.display,
+                    fontSize: 56,
+                    color: t.ink,
+                    lineHeight: 58,
+                    letterSpacing: -1,
+                  }}
+                >
+                  {heroParts.sign}
+                  {heroParts.integer}
+                  <Text style={{ color: t.inkMuted }}>{heroParts.fraction}</Text>
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: FMFonts.display,
+                    fontSize: 26,
+                    color: t.inkSoft,
+                    marginLeft: 8,
+                  }}
+                >
+                  €
+                </Text>
+              </View>
+
+              <View style={styles.heroSplit}>
+                <SplitItem label={i18n.total_assets} value={totalAssets} masked={masked} />
+                <SplitItem label={i18n.total_liabilities} value={-totalLiabilities} masked={masked} />
+                <SplitItem label="Cash on hand" value={cashBalance} masked={masked} />
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.cashflowGrid}>
+            <CashflowCard label={i18n.income_label} value={totalIncome} masked={masked} />
+            <CashflowCard label={i18n.expenses_label} value={-totalExpenses} masked={masked} />
+            <CashflowCard label="Net" value={netCashflow} masked={masked} total />
+          </View>
+
+          {/* Row 2: donut + midSide */}
+          <View style={[styles.donutCard, { backgroundColor: t.surface, borderColor: t.line }]}>
+            <View style={styles.donutHeader}>
+              <View>
+                <Text style={{ fontFamily: FMFonts.display, fontSize: 22, color: t.ink, letterSpacing: -0.3, lineHeight: 24 }}>
+                  Where it went
+                </Text>
+                <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkSoft, marginTop: 2 }}>
+                  Categorized expenses, {rangeLabel(filterDateFrom, filterDateTo).toLowerCase()}
+                </Text>
+              </View>
+              <Pressable
+                onPress={openDateModal}
+                style={({ pressed }) => [
+                  styles.dateChip,
+                  { backgroundColor: t.surface, borderColor: t.lineStrong, opacity: pressed ? 0.8 : 1 },
+                ]}
+              >
+                <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.inkSoft }}>
+                  {rangeLabel(filterDateFrom, filterDateTo)}
+                </Text>
+              </Pressable>
+            </View>
+
+            {slices.length > 0 ? (
+              <View style={styles.donutBody}>
+                <View style={{ position: "relative", width: 180, height: 180 }}>
+                  <Donut slices={slices} size={180} thick={26} masked={masked} />
+                  <View style={styles.donutCenter}>
+                    <Label>Total</Label>
+                    <Text
+                      style={{
+                        fontFamily: FMFonts.monoSemibold,
+                        fontSize: 18,
+                        color: t.ink,
+                        marginTop: 2,
+                      }}
+                    >
+                      {formatEUR(totalExp, { masked })}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={{ flex: 1, marginLeft: 24, gap: 6 }}>
+                  {slices.map((s) => {
+                    const cat = categoryBreakdown.find((c) => c.categoryId === s.id);
+                    if (!cat) return null;
+                    const pct = totalExp > 0 ? s.amount / totalExp : 0;
+                    return (
+                      <Pressable
+                        key={s.id}
+                        onPress={() => handleCategoryPress(s.id)}
+                        style={({ pressed }) => [styles.legendRow, pressed && { opacity: 0.7 }]}
+                      >
+                        <View style={{ width: 8, height: 8, borderRadius: 5, backgroundColor: s.color }} />
+                        <Text
+                          style={{
+                            flex: 1,
+                            marginLeft: 8,
+                            fontFamily: FMFonts.sansMedium,
+                            fontSize: 12,
+                            color: t.ink,
+                          }}
+                          numberOfLines={1}
+                        >
+                          {cat.name}
+                        </Text>
+                        <View
+                          style={{
+                            width: 80,
+                            height: 4,
+                            backgroundColor: t.surfaceAlt,
+                            borderRadius: 2,
+                            marginRight: 12,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <View
+                            style={{
+                              width: `${pct * 100}%` as `${number}%`,
+                              height: "100%",
+                              backgroundColor: s.color,
+                              opacity: 0.7,
+                            }}
+                          />
+                        </View>
+                        <View style={{ width: 80, alignItems: "flex-end" }}>
+                          <Balance value={-s.amount} masked={masked} size={11.5} />
+                        </View>
+                        <Text
+                          style={{
+                            width: 36,
+                            textAlign: "right",
+                            fontFamily: FMFonts.mono,
+                            fontSize: 11,
+                            color: t.inkMuted,
+                          }}
+                        >
+                          {masked ? "··" : `${Math.round(pct * 100)}%`}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : (
+              <View style={{ paddingVertical: 36, alignItems: "center" }}>
+                <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkMuted }}>
+                  {statsLoading ? "Loading…" : "No categorized expenses for this range yet."}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.midSide}>
+            {uncategorized.length > 0 ? (
+              <View style={[styles.uncategorized, { backgroundColor: t.surface, borderColor: t.line }]}>
+                <View style={[styles.uncategorizedIcon, { backgroundColor: t.warnSoft }]}>
+                  <IconWarn size={15} color={t.warn} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink }}>
+                    {uncategorized.length} {i18n.uncategorized.toLowerCase()} · {formatEUR(uncategorizedAmount, { masked })}
+                  </Text>
+                  <Text style={{ fontFamily: FMFonts.sans, fontSize: 11.5, color: t.inkSoft, marginTop: 4, lineHeight: 17 }}>
+                    These are excluded from totals and the chart. Categorize manually, or run AI auto-categorization.
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 6, marginTop: 10 }}>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={<IconAI size={11} />}
+                      onPress={() => {
+                        const target = accounts.find((a) => a.category === "Giro") ?? accounts[0];
+                        if (target) router.push(`/account/${target.id}` as never);
+                      }}
+                    >
+                      {i18n.auto_categorize}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onPress={() => {
+                        const target = accounts.find((a) => a.category === "Giro") ?? accounts[0];
+                        if (target) router.push(`/account/${target.id}` as never);
+                      }}
+                    >
+                      Review manually
+                    </Button>
+                  </View>
+                </View>
+              </View>
+            ) : null}
+
+            <View style={[styles.recent, { backgroundColor: t.surface, borderColor: t.line }]}>
+              <View style={styles.recentHeader}>
+                <Label>Recent</Label>
+                <Pressable
+                  onPress={() => {
+                    const target = accounts.find((a) => a.category === "Giro") ?? accounts[0];
+                    if (target) router.push(`/account/${target.id}` as never);
+                  }}
+                >
+                  <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.accent }}>View all</Text>
+                </Pressable>
+              </View>
+              {recent.length === 0 ? (
+                <Text style={{ fontFamily: FMFonts.sans, fontSize: 11.5, color: t.inkMuted, paddingVertical: 18 }}>
+                  No recent transactions.
+                </Text>
+              ) : (
+                recent.map((tx, i) => {
+                  const catId = transactionCategoryMap[getStableTxId(tx)];
+                  const cat = catId ? categories.find((c) => c.id === catId) : null;
+                  const amount = getTransactionAmount(tx);
+                  const title = pickTransactionTitle(tx);
+                  const date = tx.booking_date || tx.value_date || "";
+                  return (
+                    <View
+                      key={(tx.transaction_id ?? "") + i}
+                      style={[
+                        styles.recentRow,
+                        i > 0 && { borderTopWidth: 1, borderTopColor: t.line },
+                      ]}
+                    >
+                      <View
+                        style={{
+                          width: 7,
+                          height: 7,
+                          borderRadius: 4,
+                          backgroundColor: cat ? cat.color : "transparent",
+                          borderWidth: cat ? 0 : 1.5,
+                          borderStyle: cat ? "solid" : "dashed",
+                          borderColor: t.inkMuted,
+                          marginRight: 10,
+                        }}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.ink }}
+                          numberOfLines={1}
+                        >
+                          {title}
+                        </Text>
+                        <Text style={{ fontFamily: FMFonts.sans, fontSize: 10, color: t.inkMuted, marginTop: 1 }}>
+                          {dayMonth(date)} ·{" "}
+                          {cat ? (
+                            cat.name
+                          ) : (
+                            <Text style={{ color: t.warn, fontFamily: FMFonts.sansSemibold }}>
+                              {i18n.uncategorized}
+                            </Text>
+                          )}
+                        </Text>
+                      </View>
+                      <Money value={amount} masked={masked} size={12} />
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          </View>
+
+          {/* Row 3: debts + accounts */}
+          <DebtsSummaryCard
+            masked={masked}
+            onManage={() => router.push("/(tabs)/debts" as never)}
+            style={styles.debtsCardOuter}
+          />
+          <View style={[styles.accountsStripHalf, { backgroundColor: t.surface, borderColor: t.line }]}>
+            <View style={styles.accountsHeader}>
+              <Label>{`Accounts · ${accounts.length}`}</Label>
+              <Pressable onPress={() => router.push("/(tabs)/accounts" as never)}>
+                <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.accent }}>Manage →</Text>
+              </Pressable>
+            </View>
+            <View style={{ gap: 8, marginTop: 10 }}>
+              {accounts.slice(0, 4).map((a) => (
+                <Pressable
+                  key={a.id}
+                  onPress={() => router.push(`/account/${a.id}` as never)}
+                  style={({ pressed }) => [
+                    styles.accountRow,
+                    { backgroundColor: t.surfaceAlt, borderColor: t.line, opacity: pressed ? 0.8 : 1 },
+                  ]}
+                >
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: a.type === "connected" ? t.pos : t.inkMuted,
+                    }}
+                  />
+                  <Text
+                    style={{
+                      fontFamily: FMFonts.sansMedium,
+                      fontSize: 10,
+                      color: t.inkMuted,
+                      marginLeft: 8,
+                      width: 70,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {a.bankName || "Manual"}
+                  </Text>
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontFamily: FMFonts.sansSemibold,
+                      fontSize: 12,
+                      color: t.ink,
+                      marginLeft: 10,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {a.name}
+                  </Text>
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Balance value={a.balance ?? 0} masked={masked} size={12} />
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          </View>
         </View>
       </View>
 
@@ -74,72 +463,207 @@ export function DashboardScreen() {
         onTempToChange={setTempTo}
         onApply={handleApplyDateFilter}
         onCancel={() => setDateModalVisible(false)}
-        backgroundColor={backgroundColor}
-        textColor={textColor}
-        tintColor={tintColor}
+        backgroundColor={t.bg}
+        textColor={t.ink}
+        tintColor={t.accent}
         i18n={i18n}
       />
-      {/* Two-column desktop layout */}
-      <View style={styles.twoColumn}>
-        {/* Left column: balance cards */}
-        <View style={styles.leftPanel}>
-          <Text style={[styles.sectionLabel, { color: textColor, opacity: 0.5 }]}>{i18n.overview_title.toUpperCase()}</Text>
-          <BalanceCard
-            title={i18n.total_assets}
-            amount={isBalanceHidden ? "*****" : formatAmount(totalAssets)}
-            backgroundColor={tintColor}
-            textColor={backgroundColor}
-          />
-          {totalLiabilities > 0 && (
-            <BalanceCard
-              title={i18n.total_liabilities}
-              amount={isBalanceHidden ? "*****" : `-${formatAmount(totalLiabilities)}`}
-              backgroundColor="#ffcccc"
-              textColor="#cc0000"
-            />
-          )}
-          {isBalanceHidden && (
-            <Text style={{ color: textColor, opacity: 0.4, fontSize: 12, textAlign: "center", marginTop: 8 }}>
-              {i18n.balances_hidden}
-            </Text>
-          )}
-        </View>
+    </DesktopShell>
+  );
+}
 
-        {/* Right column: stats */}
-        <View style={styles.rightPanel}>
-          <View style={styles.statsSectionHeader}>
-            <Text style={[styles.sectionLabel, { color: textColor, opacity: 0.5 }]}>{i18n.statistics_title?.toUpperCase()}</Text>
-          </View>
-          <StatsOverview
-            statsLoading={statsLoading}
-            hasTransactions={allTransactions.length > 0}
-            totalIncome={totalIncome}
-            totalExpenses={totalExpenses}
-            categoryBreakdown={categoryBreakdown}
-            pieData={pieData}
-            isBalanceHidden={isBalanceHidden}
-            backgroundColor={backgroundColor}
-            textColor={textColor}
-            tintColor={tintColor}
-            onCategoryPress={handleCategoryPress}
-            i18n={i18n}
-          />
-        </View>
+interface SplitItemProps {
+  label: string;
+  value: number;
+  masked: boolean;
+}
+
+function SplitItem({ label, value, masked }: SplitItemProps) {
+  return (
+    <View style={{ marginRight: 28 }}>
+      <Label>{label}</Label>
+      <View style={{ marginTop: 4 }}>
+        <Balance value={value} masked={masked} size={13} />
       </View>
     </View>
   );
 }
 
+interface CashflowCardProps {
+  label: string;
+  value: number;
+  masked: boolean;
+  total?: boolean;
+}
+
+function CashflowCard({ label, value, masked, total }: CashflowCardProps) {
+  const t = useFMTheme();
+  return (
+    <View style={[styles.cashflowCard, { backgroundColor: t.surface, borderColor: t.line }]}>
+      <Label>{label}</Label>
+      <View style={{ marginTop: 8 }}>
+        <Balance value={value} masked={masked} size={18} total={total} />
+      </View>
+      <View style={{ marginTop: 12, height: 18 }}>
+        <Spark data={[5, 8, 12, 7, 14, 9, Math.max(1, Math.abs(value) / 200)]} width={140} height={18} neg={value < 0} />
+      </View>
+    </View>
+  );
+}
+
+function dayMonth(iso: string): string {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  } catch {
+    return iso;
+  }
+}
+
+function rangeLabel(from: string, to: string): string {
+  if (!from || !to) return "All time";
+  return `${from} → ${to}`;
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  topBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 32, paddingVertical: 20, borderBottomWidth: 1 },
-  pageTitle: { fontSize: 26, fontWeight: "800" },
-  pageSubtitle: { fontSize: 13, marginTop: 2 },
-  topActions: { flexDirection: "row", gap: 10, alignItems: "center" },
-  topBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },
-  twoColumn: { flex: 1, flexDirection: "row" },
-  leftPanel: { width: 300, padding: 24, borderRightWidth: 1, borderRightColor: "rgba(128,128,128,0.1)", gap: 0 },
-  rightPanel: { flex: 1, padding: 24, overflow: "scroll" as any },
-  sectionLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 1, marginBottom: 16 },
-  statsSectionHeader: { marginBottom: 16 },
+  page: {
+    padding: 24,
+    flexGrow: 1,
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 1fr)",
+    gap: 16,
+  } as unknown as ViewStyle,
+  hero: {
+    minWidth: 0,
+    overflow: "hidden",
+    paddingHorizontal: 30,
+    paddingVertical: 28,
+    borderWidth: 1,
+    borderRadius: 14,
+    flexDirection: "row",
+    alignItems: "flex-end",
+  },
+  heroRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 8,
+  },
+  heroSplit: {
+    flexDirection: "row",
+    marginTop: 14,
+  },
+  cashflowGrid: {
+    minWidth: 0,
+    overflow: "hidden",
+    flexDirection: "row",
+    gap: 8,
+  },
+  cashflowCard: {
+    flex: 1,
+    minWidth: 0,
+    overflow: "hidden",
+    padding: 16,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  donutCard: {
+    minWidth: 0,
+    overflow: "hidden",
+    padding: 22,
+    borderWidth: 1,
+    borderRadius: 14,
+  },
+  donutHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginBottom: 16,
+  },
+  dateChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  donutBody: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  donutCenter: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  legendRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  midSide: {
+    minWidth: 0,
+    overflow: "hidden",
+    flexDirection: "column",
+    gap: 12,
+  },
+  uncategorized: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    padding: 16,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  uncategorizedIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recent: {
+    flex: 1,
+    padding: 16,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  recentHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  recentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 7,
+  },
+  debtsCardOuter: {
+    minWidth: 0,
+    overflow: "hidden",
+  },
+  accountsStripHalf: {
+    minWidth: 0,
+    overflow: "hidden",
+    padding: 22,
+    borderWidth: 1,
+    borderRadius: 14,
+  },
+  accountsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  accountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
 });

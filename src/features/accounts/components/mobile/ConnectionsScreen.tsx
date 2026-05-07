@@ -1,127 +1,333 @@
+import { Stack, useRouter } from "expo-router";
 import React from "react";
-import { ActivityIndicator, FlatList, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { useSettings } from "../../../../shared/context/SettingsContext";
-import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
+import {
+  ActivityIndicator,
+  FlatList,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+
+import { FMFonts } from "@/src/constants/theme";
+import { MobileHeader } from "@/src/shared/components/MobileHeader";
+import {
+  Button,
+  Chip,
+  IconBack,
+  IconLink,
+  IconWarn,
+  Label,
+  useFMTheme,
+} from "@/src/shared/design";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import { useBankConnections, type StoredSession } from "../../hooks/useBankConnections";
 import { BankSelectionModal } from "../BankSelectionModal";
 
 export function ConnectionsScreen() {
-  const backgroundColor = useThemeColor({}, "background");
-  const textColor = useThemeColor({}, "text");
-  const tintColor = useThemeColor({}, "tint");
+  const t = useFMTheme();
+  const router = useRouter();
   const { i18n } = useSettings();
 
-  const { sessions, connecting, manualCode, setManualCode, showManualInput, setShowManualInput,
-    filteredBanks, isBankModalVisible, setBankModalVisible, searchQuery, loadingBanks,
-    handleSearch, handleAuthCode, openBankSelection, handleSelectBank, removeSession } = useBankConnections();
+  const {
+    sessions,
+    connecting,
+    manualCode,
+    setManualCode,
+    showManualInput,
+    setShowManualInput,
+    filteredBanks,
+    isBankModalVisible,
+    setBankModalVisible,
+    searchQuery,
+    loadingBanks,
+    handleSearch,
+    handleAuthCode,
+    openBankSelection,
+    handleSelectBank,
+    removeSession,
+  } = useBankConnections();
 
-  const renderSession = ({ item }: { item: StoredSession }) => (
-    <View style={[styles.sessionCard, { backgroundColor: tintColor + "12" }]}>
-      <View style={styles.sessionHeader}>
-        <Text style={[styles.bankName, { color: textColor }]}>🏦 {item.bankName}</Text>
-        <TouchableOpacity onPress={() => removeSession(item.sessionId)}>
-          <Text style={[styles.removeText, { color: "#FF6B6B" }]}>{i18n.remove}</Text>
-        </TouchableOpacity>
-      </View>
-      <Text style={[styles.accountCount, { color: textColor, opacity: 0.6 }]}>
-        {i18n.connected_account_count.replace("{count}", item.accounts.length.toString())}
-      </Text>
-      {item.accounts.map((acc: any, i: number) => (
-        <View key={i} style={styles.accountItem}>
-          <Text style={[styles.iban, { color: textColor, opacity: 0.8 }]}>{acc.account_id?.iban || acc.name || "Account"}</Text>
-          {acc.currency && <Text style={[styles.currency, { color: tintColor }]}>{acc.currency}</Text>}
+  const renderSession = ({ item, index }: { item: StoredSession; index: number }) => {
+    const isFirst = index === 0;
+    return (
+      <View
+        style={[
+          styles.row,
+          {
+            backgroundColor: t.surface,
+            borderColor: t.line,
+            borderTopWidth: isFirst ? 1 : 0,
+            borderTopLeftRadius: isFirst ? 10 : 0,
+            borderTopRightRadius: isFirst ? 10 : 0,
+            borderBottomLeftRadius: index === sessions.length - 1 ? 10 : 0,
+            borderBottomRightRadius: index === sessions.length - 1 ? 10 : 0,
+          },
+        ]}
+      >
+        <View style={[styles.avatar, { backgroundColor: t.surfaceAlt, borderColor: t.line }]}>
+          <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: t.inkSoft }}>
+            {item.bankName.charAt(0).toUpperCase()}
+          </Text>
         </View>
-      ))}
-      <Text style={[styles.connectedDate, { color: textColor, opacity: 0.4 }]}>
-        {i18n.connected_date.replace("{date}", new Date(item.connectedAt).toLocaleDateString())}
-      </Text>
-    </View>
-  );
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink }} numberOfLines={1}>
+            {item.bankName}
+          </Text>
+          <Text style={{ fontFamily: FMFonts.sans, fontSize: 10.5, color: t.inkMuted, marginTop: 2 }}>
+            {i18n.connected_account_count.replace("{count}", item.accounts.length.toString())} ·{" "}
+            {i18n.connected_date.replace("{date}", new Date(item.connectedAt).toLocaleDateString("en-GB"))}
+          </Text>
+        </View>
+        <View style={styles.liveTag}>
+          <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: t.pos }} />
+          <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 9, color: t.pos, marginLeft: 4, letterSpacing: 0.5 }}>
+            LIVE
+          </Text>
+        </View>
+        <Pressable onPress={() => removeSession(item.sessionId)} hitSlop={8}>
+          <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.neg, marginLeft: 12 }}>
+            {i18n.remove}
+          </Text>
+        </Pressable>
+      </View>
+    );
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor }]}>
-      <BankSelectionModal visible={isBankModalVisible} onClose={() => setBankModalVisible(false)}
-        loadingBanks={loadingBanks} filteredBanks={filteredBanks} searchQuery={searchQuery}
-        onSearch={handleSearch} onSelectBank={handleSelectBank}
-        textColor={textColor} backgroundColor={backgroundColor} tintColor={tintColor} i18n={i18n}
-      />
-      <Text style={[styles.title, { color: textColor }]}>{i18n.connections_title}</Text>
-      <Text style={[styles.subtitle, { color: textColor, opacity: 0.6 }]}>{i18n.connections_subtitle}</Text>
-      <View style={{ marginBottom: 16 }}>
-        <Text style={{ color: textColor, fontWeight: "700", fontSize: 13, textTransform: "uppercase", opacity: 0.5 }}>
-          {i18n.connected_accounts}
-        </Text>
+    <View style={[styles.root, { backgroundColor: t.bg }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+
+      <View style={styles.backRow}>
+        <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}>
+          <IconBack size={15} color={t.inkSoft} />
+        </Pressable>
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.inkSoft, marginLeft: 4 }}>Back</Text>
       </View>
-      {sessions.length > 0 && (
-        <FlatList data={sessions} renderItem={renderSession} keyExtractor={(item) => item.sessionId}
-          style={styles.list} contentContainerStyle={styles.listContent} />
-      )}
-      {sessions.length === 0 && !connecting && (
-        <View style={styles.emptyState}>
-          <Text style={[styles.emptyText, { color: textColor, opacity: 0.5 }]}>{i18n.no_connections}</Text>
-        </View>
-      )}
-      {connecting && !showManualInput ? (
-        <View style={styles.connectingContainer}>
-          <View style={{ alignItems: "center", justifyContent: "center", padding: 20 }}>
-            <ActivityIndicator size="large" color={tintColor} />
-            <Text style={[styles.connectingText, { color: textColor, marginTop: 10 }]}>{i18n.connecting}</Text>
-            {Platform.OS === "web" && (
-              <Text style={{ color: textColor, opacity: 0.6, fontSize: 12, textAlign: "center", marginTop: 10 }}>
-                Waiting for bank authorization in popup...
-              </Text>
-            )}
+
+      <MobileHeader title={i18n.connections_title} sub={i18n.connections_subtitle} />
+
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Connect-a-bank CTA card */}
+        <View style={[styles.ctaCard, { backgroundColor: t.surface, borderColor: t.line }]}>
+          <View style={[styles.ctaIcon, { backgroundColor: t.accentSoft }]}>
+            <IconLink size={18} color={t.accent} />
           </View>
-          <TouchableOpacity onPress={() => setShowManualInput(true)} style={{ marginTop: 20 }}>
-            <Text style={{ color: tintColor, fontSize: 14, fontWeight: "500" }}>{i18n.have_code_btn}</Text>
-          </TouchableOpacity>
+          <View style={{ flex: 1, marginLeft: 12 }}>
+            <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink }}>
+              {i18n.connect_bank_btn}
+            </Text>
+            <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkSoft, marginTop: 2 }}>
+              300+ German &amp; EU institutions
+            </Text>
+          </View>
+          <Button variant="primary" size="sm" onPress={openBankSelection}>
+            Add
+          </Button>
         </View>
-      ) : (
-        <View>
-          <TouchableOpacity style={[styles.connectButton, { backgroundColor: tintColor }]} onPress={openBankSelection}>
-            <Text style={[styles.connectButtonText, { color: backgroundColor }]}>{i18n.connect_bank_btn}</Text>
-          </TouchableOpacity>
-          {showManualInput && (
-            <View style={styles.manualInputContainer}>
-              <Text style={[styles.manualHint, { color: textColor }]}>{i18n.manual_code_hint}</Text>
-              <TextInput style={[styles.input, { color: textColor, borderColor: tintColor }]}
-                placeholder="Paste code here..." placeholderTextColor="#999" value={manualCode} onChangeText={setManualCode} />
-              <TouchableOpacity style={[styles.submitButton, { backgroundColor: tintColor }]}
-                onPress={() => handleAuthCode(manualCode)} disabled={!manualCode}>
-                <Text style={[styles.submitButtonText, { color: backgroundColor }]}>{i18n.submit_code}</Text>
-              </TouchableOpacity>
+
+        {/* Connecting indicator */}
+        {connecting && !showManualInput ? (
+          <View style={[styles.connecting, { backgroundColor: t.surface, borderColor: t.line }]}>
+            <ActivityIndicator size="small" color={t.accent} />
+            <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.ink, marginLeft: 8, flex: 1 }}>
+              {i18n.connecting}
+            </Text>
+            <Pressable onPress={() => setShowManualInput(true)}>
+              <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.accent }}>
+                {i18n.have_code_btn}
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {/* Connected list */}
+        {sessions.length > 0 ? (
+          <>
+            <Label style={{ marginBottom: 6, paddingHorizontal: 2 }}>
+              {i18n.connected_accounts} · {sessions.length}
+            </Label>
+            <FlatList
+              data={sessions}
+              renderItem={renderSession}
+              keyExtractor={(item) => item.sessionId}
+              scrollEnabled={false}
+            />
+          </>
+        ) : !connecting ? (
+          <View style={[styles.empty, { backgroundColor: t.surface, borderColor: t.lineStrong }]}>
+            <View style={[styles.emptyCircle, { backgroundColor: t.surfaceAlt, borderColor: t.lineStrong }]}>
+              <IconLink size={28} color={t.inkMuted} />
+            </View>
+            <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 14, color: t.ink, marginTop: 14 }}>
+              {i18n.no_connections}
+            </Text>
+            <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 4, textAlign: "center" }}>
+              Connect a bank to import balances and transactions automatically.
+            </Text>
+            <View style={{ marginTop: 14 }}>
+              <Button variant="primary" icon={<IconLink size={11} color={t.bg} />} onPress={openBankSelection}>
+                {i18n.connect_bank_btn}
+              </Button>
+            </View>
+          </View>
+        ) : null}
+
+        {/* Manual code fallback */}
+        <View style={[styles.fallback, { backgroundColor: t.surfaceAlt, borderColor: t.lineStrong }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+            <IconWarn size={13} color={t.inkSoft} />
+            <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: t.ink, marginLeft: 8 }}>
+              OAuth redirect didn&apos;t work?
+            </Text>
+          </View>
+          <Text style={{ fontFamily: FMFonts.sans, fontSize: 10.5, color: t.inkMuted, marginLeft: 21 }}>
+            Paste the auth code manually.
+          </Text>
+          {showManualInput ? (
+            <View style={{ marginTop: 10 }}>
+              <TextInput
+                value={manualCode}
+                onChangeText={setManualCode}
+                placeholder="Paste code here…"
+                placeholderTextColor={t.inkMuted}
+                style={[
+                  styles.input,
+                  {
+                    color: t.ink,
+                    borderColor: t.lineStrong,
+                    backgroundColor: t.surface,
+                  },
+                ]}
+              />
+              <Button
+                variant="primary"
+                full
+                onPress={() => handleAuthCode(manualCode)}
+                disabled={!manualCode}
+              >
+                {i18n.submit_code}
+              </Button>
+            </View>
+          ) : (
+            <View style={{ marginTop: 10, alignSelf: "flex-start" }}>
+              <Chip onPress={() => setShowManualInput(true)}>Enter code</Chip>
             </View>
           )}
         </View>
-      )}
+      </ScrollView>
+
+      <BankSelectionModal
+        visible={isBankModalVisible}
+        onClose={() => setBankModalVisible(false)}
+        loadingBanks={loadingBanks}
+        filteredBanks={filteredBanks}
+        searchQuery={searchQuery}
+        onSearch={handleSearch}
+        onSelectBank={handleSelectBank}
+        textColor={t.ink}
+        backgroundColor={t.bg}
+        tintColor={t.accent}
+        i18n={i18n}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, paddingTop: 60 },
-  title: { fontSize: 28, fontWeight: "700", marginBottom: 4 },
-  subtitle: { fontSize: 15, marginBottom: 24 },
-  list: { flex: 1 },
-  listContent: { gap: 12 },
-  sessionCard: { borderRadius: 16, padding: 16 },
-  sessionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-  bankName: { fontSize: 18, fontWeight: "600" },
-  removeText: { fontSize: 14, fontWeight: "500" },
-  accountCount: { fontSize: 13, marginBottom: 12 },
-  accountItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(128,128,128,0.2)" },
-  iban: { fontSize: 14, fontFamily: "monospace" },
-  currency: { fontSize: 13, fontWeight: "600" },
-  connectedDate: { fontSize: 12, marginTop: 8 },
-  emptyState: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyText: { fontSize: 16 },
-  connectingContainer: { alignItems: "center", paddingVertical: 20, gap: 12 },
-  connectingText: { fontSize: 15 },
-  connectButton: { borderRadius: 14, paddingVertical: 16, alignItems: "center", marginTop: 12, marginBottom: 20 },
-  connectButtonText: { fontSize: 17, fontWeight: "600" },
-  manualInputContainer: { marginTop: 20, padding: 16, borderRadius: 12, backgroundColor: "rgba(150, 150, 150, 0.1)" },
-  manualHint: { fontSize: 14, marginBottom: 12, opacity: 0.8 },
-  input: { borderWidth: 1, borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 16 },
-  submitButton: { borderRadius: 8, paddingVertical: 12, alignItems: "center" },
-  submitButtonText: { fontSize: 16, fontWeight: "600" },
+  root: { flex: 1 },
+  backRow: {
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  iconBtn: { padding: 6 },
+  scrollContent: {
+    paddingHorizontal: 18,
+    paddingBottom: 96,
+  },
+  ctaCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 14,
+  },
+  ctaIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  connecting: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 14,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  liveTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  empty: {
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderRadius: 12,
+    alignItems: "center",
+    marginVertical: 8,
+  },
+  emptyCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fallback: {
+    marginTop: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderRadius: 10,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    marginBottom: 10,
+    fontFamily: FMFonts.mono,
+    fontSize: 13,
+    fontVariant: ["tabular-nums"],
+  },
 });

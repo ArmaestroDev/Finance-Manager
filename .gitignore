@@ -55,3 +55,8 @@ pipeline/
 GEMINI.md
 CLAUDE.md
 import_functionality.md
+DATABASE.md
+cloud-sql-proxy.exe 
+implementation_plan.md
+open_questions.md
+redesign/

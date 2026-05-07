@@ -1,9 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { Strings } from "../../constants/Strings";
+import type { ThemePalette } from "../../constants/theme";
 
 type Language = "en" | "de";
 export type ThemeAppearance = "system" | "light" | "dark";
+
+const VALID_PALETTES: readonly ThemePalette[] = [
+  "mulberry",
+  "red",
+  "purple",
+  "green",
+  "turquoise",
+];
 
 interface SettingsContextType {
   isBalanceHidden: boolean;
@@ -12,6 +21,7 @@ interface SettingsContextType {
   language: Language;
   mainAccountId: string | null;
   theme: ThemeAppearance;
+  palette: ThemePalette;
   toggleBalanceHidden: (pin?: string) => Promise<boolean>;
   setPin: (newPin: string) => Promise<void>;
   verifyPin: (pin: string) => boolean;
@@ -19,6 +29,7 @@ interface SettingsContextType {
   setLanguage: (lang: Language) => Promise<void>;
   setMainAccountId: (id: string) => Promise<void>;
   setTheme: (newTheme: ThemeAppearance) => Promise<void>;
+  setPalette: (newPalette: ThemePalette) => Promise<void>;
   i18n: typeof Strings.de;
 }
 
@@ -33,6 +44,7 @@ const STORAGE_KEYS = {
   LANGUAGE: "settings_language",
   MAIN_ACCOUNT_ID: "settings_main_account_id",
   THEME: "settings_theme",
+  PALETTE: "settings_palette",
 };
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
@@ -42,6 +54,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>("de");
   const [mainAccountId, setMainAccountIdState] = useState<string | null>(null);
   const [theme, setThemeState] = useState<ThemeAppearance>("system");
+  const [palette, setPaletteState] = useState<ThemePalette>("mulberry");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -50,14 +63,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const loadSettings = async () => {
     try {
-      const [hidden, pin, apiKey, lang, mainAcc, storedTheme] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.BALANCE_HIDDEN),
-        AsyncStorage.getItem(STORAGE_KEYS.USER_PIN),
-        AsyncStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY),
-        AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
-        AsyncStorage.getItem(STORAGE_KEYS.MAIN_ACCOUNT_ID),
-        AsyncStorage.getItem(STORAGE_KEYS.THEME),
-      ]);
+      const [hidden, pin, apiKey, lang, mainAcc, storedTheme, storedPalette] =
+        await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.BALANCE_HIDDEN),
+          AsyncStorage.getItem(STORAGE_KEYS.USER_PIN),
+          AsyncStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY),
+          AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
+          AsyncStorage.getItem(STORAGE_KEYS.MAIN_ACCOUNT_ID),
+          AsyncStorage.getItem(STORAGE_KEYS.THEME),
+          AsyncStorage.getItem(STORAGE_KEYS.PALETTE),
+        ]);
       setIsBalanceHidden(hidden === "true");
       setUserPin(pin);
       setGeminiApiKeyState(apiKey);
@@ -67,6 +82,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setMainAccountIdState(mainAcc);
       if (storedTheme === "system" || storedTheme === "light" || storedTheme === "dark") {
         setThemeState(storedTheme as ThemeAppearance);
+      }
+      if (storedPalette && (VALID_PALETTES as readonly string[]).includes(storedPalette)) {
+        setPaletteState(storedPalette as ThemePalette);
       }
     } catch (e) {
       console.error("Failed to load settings", e);
@@ -103,6 +121,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setThemeState(newTheme);
   };
 
+  const setPalette = async (newPalette: ThemePalette) => {
+    await AsyncStorage.setItem(STORAGE_KEYS.PALETTE, newPalette);
+    setPaletteState(newPalette);
+  };
+
   const verifyPin = (pin: string) => {
     return userPin === pin;
   };
@@ -136,6 +159,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         language,
         mainAccountId,
         theme,
+        palette,
         toggleBalanceHidden,
         setPin,
         verifyPin,
@@ -143,6 +167,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setLanguage,
         setMainAccountId,
         setTheme,
+        setPalette,
         i18n: Strings[language],
       }}
     >

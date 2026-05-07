@@ -62,22 +62,18 @@ export function useFinanceStats({
       let expenses = 0;
       const catAmounts: Record<string, number> = {};
 
-      let debugCount = 0;
       allTransactions.forEach((tx) => {
         const amount = getTransactionAmount(tx);
         if (isNaN(amount)) return;
-
-        if (debugCount < 5) {
-          console.log(`[STATS COMPUTE] tx: indicator=${tx.credit_debit_indicator}, rawAmount=${tx.transaction_amount.amount}, computedAmount=${amount}, creditor=${tx.creditor?.name}, debtor=${tx.debtor?.name}`);
-          debugCount++;
-        }
 
         const txId = getStableTxId(tx);
         const catId = transactionCategoryMap[txId];
         const cat = categories.find((c) => c.id === catId);
 
         // Explicitly exclude uncategorized transactions from stats
-        if (!catId || !cat) return; 
+        if (!catId || !cat) return;
+        // Exclude system "Ignore" category (self-transfers, investment buys)
+        if (cat.system === "ignore") return;
 
         if (amount >= 0) {
           income += amount;
@@ -86,8 +82,6 @@ export function useFinanceStats({
           catAmounts[catId] = (catAmounts[catId] || 0) + Math.abs(amount);
         }
       });
-
-      console.log(`[STATS COMPUTE] Total income=${income}, expenses=${expenses}, txCount=${allTransactions.length}, categories assigned=${Object.keys(catAmounts).length}`);
 
       // Build breakdown list
       const breakdown: CategoryBreakdownItem[] = [];

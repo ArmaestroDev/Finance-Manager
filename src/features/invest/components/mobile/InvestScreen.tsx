@@ -1,45 +1,84 @@
-import React, { useState } from "react";
-import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
-import { useColorScheme } from "../../../../shared/hooks/use-color-scheme";
-import { LineChart } from "react-native-gifted-charts";
-import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
-import { useSettings } from "../../../../shared/context/SettingsContext";
-import { useInvestCalculator, type Profile } from "../../hooks/useInvestCalculator";
-import { InputGroup } from "../../../../shared/components/InputGroup";
+import { Stack } from "expo-router";
+import React, { useMemo, useState } from "react";
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from "react-native";
+
+import { FMFonts } from "@/src/constants/theme";
+import { MobileHeader } from "@/src/shared/components/MobileHeader";
+import {
+  Balance,
+  Chip,
+  GrowthChart,
+  IconPlus,
+  IconRefresh,
+  IconSliders,
+  Label,
+  Money,
+  formatEUR,
+  splitForHero,
+  useFMTheme,
+} from "@/src/shared/design";
+import { useSettings } from "@/src/shared/context/SettingsContext";
+import {
+  type Profile,
+  useInvestCalculator,
+} from "../../hooks/useInvestCalculator";
 import { InvestProfileModal } from "../InvestProfileModal";
 import { ManageProfilesModal } from "../ManageProfilesModal";
 
 export function InvestScreen() {
-  const colorScheme = useColorScheme();
-  const backgroundColor = useThemeColor({}, "background");
-  const textColor = useThemeColor({}, "text");
-  const { i18n } = useSettings();
+  const t = useFMTheme();
+  const { i18n, isBalanceHidden } = useSettings();
+  const masked = isBalanceHidden;
   const { width: windowWidth } = useWindowDimensions();
-  const cardColor = colorScheme === "dark" ? "#1c1c1e" : "#f5f5f5";
 
   const {
-    initialInvestment, setInitialInvestment,
-    monthlyInvestment, setMonthlyInvestment,
-    years, setYears,
-    interestRate, setInterestRate,
-    profiles, editingProfileId, setEditingProfileId,
-    calculateData, currentDisplay,
-    saveProfile, applyProfile, deleteProfile, handleReset,
+    initialInvestment,
+    setInitialInvestment,
+    monthlyInvestment,
+    setMonthlyInvestment,
+    years,
+    setYears,
+    interestRate,
+    setInterestRate,
+    profiles,
+    editingProfileId,
+    setEditingProfileId,
+    calculateData,
+    currentDisplay,
+    saveProfile,
+    applyProfile,
+    deleteProfile,
+    handleReset,
   } = useInvestCalculator();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [manageModalVisible, setManageModalVisible] = useState(false);
 
-  const chartWidth = windowWidth - 40;
-  const numPoints = calculateData.dataTotalValue.length;
-  const usableWidth = chartWidth - 10 - 20;
-  const calculatedSpacing = numPoints > 1 ? usableWidth / (numPoints - 1) : 40;
+  const series = useMemo(
+    () =>
+      calculateData.dataTotalValue.map((p, i) => ({
+        value: p.value,
+        contributed: calculateData.dataTotalInvested[i]?.value ?? 0,
+      })),
+    [calculateData],
+  );
 
-  const formatYLabel = (startVal: string) => {
-    const val = parseFloat(startVal);
-    if (val >= 1000) return `${Math.round(val / 1000)}k`;
-    return val.toString();
-  };
+  const finalValue = currentDisplay.value;
+  const finalInvested = currentDisplay.invested;
+  const gain = currentDisplay.gain;
+
+  const heroParts = splitForHero(finalValue, masked);
+  const chartWidth = Math.min(windowWidth - 36 - 32, 560);
 
   const openEditModal = (profile: Profile) => {
     setEditingProfileId(profile.id);
@@ -47,130 +86,330 @@ export function InvestScreen() {
     setModalVisible(true);
   };
 
+  const handleProfileLongPress = (profile: Profile) => {
+    if (Platform.OS === "web") {
+      const choice = window.confirm(
+        `${i18n.edit_profile_title} ${profile.name}?\nOK to Edit, Cancel to Delete.`,
+      );
+      if (choice) {
+        openEditModal(profile);
+      } else if (
+        window.confirm((i18n.delete_profile_msg ?? "Delete {name}?").replace("{name}", profile.name))
+      ) {
+        deleteProfile(profile.id);
+      }
+    } else {
+      Alert.alert(i18n.edit_profile_title, profile.name, [
+        { text: i18n.cancel, style: "cancel" },
+        { text: i18n.edit, onPress: () => openEditModal(profile) },
+        {
+          text: i18n.delete,
+          style: "destructive",
+          onPress: () => deleteProfile(profile.id),
+        },
+      ]);
+    }
+  };
+
   return (
-    <ScrollView style={[styles.container, { backgroundColor }]} contentContainerStyle={styles.contentContainer} scrollEnabled={true}>
-      <View style={styles.profilesContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={styles.profilesScroll} persistentScrollbar={true} keyboardShouldPersistTaps="handled">
-          <TouchableOpacity style={[styles.addProfileBtn, { borderColor: textColor }]} onPress={() => setManageModalVisible(true)}>
-            <Text style={[styles.addProfileText, { color: textColor }]}>⚙️ {i18n.manage_profiles}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.addProfileBtn, { borderColor: textColor }]} onPress={() => { setEditingProfileId(null); setModalVisible(true); }}>
-            <Text style={[styles.addProfileText, { color: textColor }]}>+ {i18n.save}</Text>
-          </TouchableOpacity>
-          {profiles.map((profile) => (
-            <TouchableOpacity
-              key={profile.id}
-              style={[styles.profileChip, { backgroundColor: profile.color }]}
-              onPress={() => applyProfile(profile)}
-              onLongPress={() => {
-                if (Platform.OS === "web") {
-                  const choice = window.confirm(`${i18n.edit_profile_title} ${profile.name}?\nOK to Edit, Cancel to Delete.`);
-                  if (choice) { openEditModal(profile); }
-                  else if (window.confirm(i18n.delete_profile_msg.replace("{name}", profile.name))) { deleteProfile(profile.id); }
-                } else {
-                  Alert.alert(i18n.edit_profile_title, profile.name, [
-                    { text: i18n.cancel, style: "cancel" },
-                    { text: i18n.edit, onPress: () => openEditModal(profile) },
-                    { text: i18n.delete, style: "destructive", onPress: () => deleteProfile(profile.id) },
-                  ]);
-                }
+    <View style={[styles.root, { backgroundColor: t.bg }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <MobileHeader
+        title={i18n.invest_title}
+        sub="ETF compound simulator"
+        right={
+          <>
+            <Chip onPress={handleReset} icon={<IconRefresh size={11} color={t.inkSoft} />}>
+              {i18n.reset}
+            </Chip>
+            <Chip onPress={() => setManageModalVisible(true)} icon={<IconSliders size={11} color={t.inkSoft} />}>
+              {i18n.manage_profiles}
+            </Chip>
+          </>
+        }
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Result hero */}
+        <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.line }]}>
+          <View style={styles.cardHeader}>
+            <Label>In {years} years</Label>
+            <Text style={{ fontFamily: FMFonts.sans, fontSize: 10, color: t.inkMuted }}>
+              @ {interestRate}% p.a.
+            </Text>
+          </View>
+          <View style={styles.heroRow}>
+            <Text
+              style={{
+                fontFamily: FMFonts.display,
+                fontSize: 36,
+                color: t.accent,
+                lineHeight: 38,
+                letterSpacing: -0.5,
               }}
             >
-              <Text style={styles.profileChipText}>{profile.name}</Text>
-            </TouchableOpacity>
+              {heroParts.sign}
+              {heroParts.integer}
+              <Text style={{ color: t.inkMuted }}>{heroParts.fraction}</Text>
+            </Text>
+            <Text
+              style={{
+                fontFamily: FMFonts.display,
+                fontSize: 18,
+                color: t.inkSoft,
+                marginLeft: 4,
+              }}
+            >
+              €
+            </Text>
+          </View>
+
+          <View style={{ marginTop: 10 }}>
+            <GrowthChart data={series} width={chartWidth} height={92} masked={masked} />
+          </View>
+
+          <View style={styles.legendRow}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.legendItem}>
+                <View style={{ width: 8, height: 1.5, backgroundColor: t.inkMuted }} />
+                <Text style={[styles.legendLabel, { color: t.inkMuted }]}>{i18n.total_invested}</Text>
+              </View>
+              <View style={{ marginTop: 2 }}>
+                <Balance value={finalInvested} masked={masked} size={12} />
+              </View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={styles.legendItem}>
+                <View style={{ width: 8, height: 1.5, backgroundColor: t.accent }} />
+                <Text style={[styles.legendLabel, { color: t.inkMuted }]}>{i18n.total_gain}</Text>
+              </View>
+              <Text
+                style={{
+                  fontFamily: FMFonts.sansSemibold,
+                  fontSize: 12,
+                  color: t.accent,
+                  marginTop: 2,
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {masked ? "••••" : `+${formatEUR(gain).replace(" €", "")} €`}
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* Inputs */}
+        <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.line }]}>
+          <Label style={{ marginBottom: 10 }}>Inputs</Label>
+          <InputRow
+            label={i18n.initial_inv}
+            value={initialInvestment}
+            onChange={setInitialInvestment}
+            suffix="€"
+          />
+          <InputRow
+            label={i18n.monthly_inv}
+            value={monthlyInvestment}
+            onChange={setMonthlyInvestment}
+            suffix="€/mo"
+          />
+          <InputRow
+            label={i18n.duration}
+            value={years}
+            onChange={setYears}
+            suffix={i18n.years_suffix ?? "yrs"}
+          />
+          <InputRow
+            label={i18n.est_return}
+            value={interestRate}
+            onChange={setInterestRate}
+            suffix="%"
+            isLast
+          />
+        </View>
+
+        {/* Profiles */}
+        <Label style={{ marginBottom: 6, paddingHorizontal: 2 }}>
+          {i18n.manage_profiles ?? "Profiles"}
+        </Label>
+        <View style={styles.profilesRow}>
+          <Pressable
+            onPress={() => {
+              setEditingProfileId(null);
+              setModalVisible(true);
+            }}
+            style={({ pressed }) => [
+              styles.profileCard,
+              {
+                backgroundColor: t.surface,
+                borderColor: t.lineStrong,
+                borderStyle: "dashed",
+                opacity: pressed ? 0.85 : 1,
+              },
+            ]}
+          >
+            <IconPlus size={13} color={t.inkSoft} />
+            <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.inkSoft, marginTop: 4 }}>
+              {i18n.save}
+            </Text>
+          </Pressable>
+          {profiles.map((p) => (
+            <Pressable
+              key={p.id}
+              onPress={() => applyProfile(p)}
+              onLongPress={() => handleProfileLongPress(p)}
+              style={({ pressed }) => [
+                styles.profileCard,
+                {
+                  backgroundColor: t.surface,
+                  borderColor: t.line,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: p.color }} />
+                <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: t.ink }}>
+                  {p.name}
+                </Text>
+              </View>
+              <Text
+                style={{
+                  fontFamily: FMFonts.sans,
+                  fontSize: 9.5,
+                  color: t.inkMuted,
+                  marginTop: 3,
+                  fontVariant: ["tabular-nums"],
+                }}
+              >
+                {p.returnVal}% · {p.years}y
+              </Text>
+            </Pressable>
           ))}
-        </ScrollView>
-      </View>
-
-      <View style={styles.headerRow}>
-        <Text style={[styles.headerTitle, { color: textColor }]}>{i18n.invest_title}</Text>
-        <TouchableOpacity onPress={handleReset} style={styles.resetButton}>
-          <Text style={[styles.resetButtonText, { color: textColor }]}>{i18n.reset}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.inputsRow}>
-        <InputGroup label={i18n.initial_inv} subLabel={i18n.initial_inv_sub} value={initialInvestment} onChange={setInitialInvestment} prefix="€" textColor={textColor} backgroundColor={cardColor} />
-        <InputGroup label={i18n.monthly_inv} subLabel={i18n.monthly_inv_sub} value={monthlyInvestment} onChange={setMonthlyInvestment} prefix="€" textColor={textColor} backgroundColor={cardColor} />
-      </View>
-      <View style={styles.inputsRow}>
-        <InputGroup label={i18n.duration} subLabel={i18n.duration_sub} value={years} onChange={setYears} suffix={i18n.years_suffix} textColor={textColor} backgroundColor={cardColor} />
-        <InputGroup label={i18n.est_return} subLabel={i18n.est_return_sub} value={interestRate} onChange={setInterestRate} suffix="%" textColor={textColor} backgroundColor={cardColor} />
-      </View>
-
-      <View style={[styles.resultsContainer, { backgroundColor: cardColor, shadowColor: textColor }]}>
-        <View style={styles.resultItem}>
-          <Text style={[styles.resultLabel, { color: textColor }]}>{i18n.total_value}</Text>
-          <Text style={[styles.resultValue, { color: "#00afdb" }]}>€{currentDisplay.value.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
         </View>
-        <View style={styles.resultItem}>
-          <Text style={[styles.resultLabel, { color: textColor }]}>{i18n.total_invested}</Text>
-          <Text style={[styles.resultValue, { color: "#e6b800" }]}>€{currentDisplay.invested.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-        </View>
-        <View style={styles.resultItem}>
-          <Text style={[styles.resultLabel, { color: textColor }]}>{i18n.total_gain}</Text>
-          <Text style={[styles.resultValue, { color: "#4caf50" }]}>+€{currentDisplay.gain.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
-        </View>
-      </View>
-
-      <View style={[styles.chartContainer, { height: 320, overflow: "hidden" }]}>
-        <LineChart
-          data={calculateData.dataTotalValue} data2={calculateData.dataTotalInvested}
-          height={300} width={chartWidth} spacing={calculatedSpacing > 0 ? calculatedSpacing : 20}
-          initialSpacing={20} color1="#8E1E5E" color2="#9CA3AF"
-          textColor1={textColor} dataPointsColor1="#8E1E5E" dataPointsColor2="#9CA3AF"
-          dataPointsShape1="circular" dataPointsShape2="circular"
-          dataPointsRadius1={4} dataPointsRadius2={4} thickness={3}
-          startFillColor1="#8E1E5E" endFillColor1="#8E1E5E" startOpacity1={0.15} endOpacity1={0.0} areaChart1
-          yAxisTextStyle={{ color: "gray", fontSize: 11 }} yAxisLabelWidth={40}
-          formatYLabel={formatYLabel} noOfSections={5}
-          showStripOnFocus={false} showTextOnFocus={false}
-          xAxisColor={textColor} xAxisThickness={1} xAxisIndicesHeight={5}
-          xAxisIndicesColor={textColor} xAxisLabelTextStyle={{ color: textColor, fontSize: 10, width: 60 }}
-          hideRules={false} rulesColor="#E5E7EB" showVerticalLines={false}
-          yAxisColor={textColor} yAxisThickness={1}
-        />
-        <Text style={[styles.note, { color: textColor }]}>{i18n.growth_chart || "Growth chart"} ({i18n.graph_note.replace("{years}", years)})</Text>
-      </View>
+      </ScrollView>
 
       <InvestProfileModal
         visible={modalVisible}
         isEditing={!!editingProfileId}
-        onSave={(name, color) => { saveProfile(name, color); setModalVisible(false); }}
+        onSave={(name, color) => {
+          saveProfile(name, color);
+          setModalVisible(false);
+        }}
         onClose={() => setModalVisible(false)}
-        textColor={textColor} cardColor={cardColor} i18n={i18n}
+        textColor={t.ink}
+        cardColor={t.surface}
+        i18n={i18n}
       />
       <ManageProfilesModal
         visible={manageModalVisible}
         profiles={profiles}
         onEdit={openEditModal}
         onDelete={deleteProfile}
-        onCreateNew={() => { setEditingProfileId(null); setModalVisible(true); }}
+        onCreateNew={() => {
+          setEditingProfileId(null);
+          setModalVisible(true);
+        }}
         onClose={() => setManageModalVisible(false)}
-        textColor={textColor} cardColor={cardColor} i18n={i18n}
+        textColor={t.ink}
+        cardColor={t.surface}
+        i18n={i18n}
       />
-    </ScrollView>
+    </View>
+  );
+}
+
+interface InputRowProps {
+  label: string;
+  value: string;
+  onChange: (s: string) => void;
+  suffix: string;
+  isLast?: boolean;
+}
+
+function InputRow({ label, value, onChange, suffix, isLast }: InputRowProps) {
+  const t = useFMTheme();
+  return (
+    <View style={[styles.inputRow, !isLast && { borderBottomColor: t.line, borderBottomWidth: 1 }]}>
+      <Text style={{ flex: 1, fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.inkSoft }}>
+        {label}
+      </Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        keyboardType="decimal-pad"
+        style={{
+          fontFamily: FMFonts.sansSemibold,
+          fontSize: 13,
+          color: t.ink,
+          textAlign: "right",
+          minWidth: 80,
+          fontVariant: ["tabular-nums"],
+        }}
+      />
+      <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkMuted, marginLeft: 6 }}>
+        {suffix}
+      </Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  contentContainer: { paddingTop: 80, paddingHorizontal: 24, paddingBottom: 64 },
-  profilesContainer: { marginTop: 0, marginBottom: 24 },
-  profilesScroll: { alignItems: "center", paddingHorizontal: 0, paddingVertical: 4 },
-  addProfileBtn: { borderWidth: 1, borderColor: "transparent", borderRadius: 999, paddingHorizontal: 20, paddingVertical: 12, marginRight: 12, backgroundColor: "rgba(142, 30, 94, 0.1)" },
-  addProfileText: { fontWeight: "600", fontSize: 15 },
-  profileChip: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 999, marginRight: 12 },
-  profileChipText: { color: "#fff", fontWeight: "600", fontSize: 15 },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 32 },
-  headerTitle: { fontSize: 32, fontWeight: "800" },
-  resetButton: { padding: 12, backgroundColor: "rgba(0,0,0,0.05)", borderRadius: 999 },
-  resetButtonText: { fontSize: 14, fontWeight: "600" },
-  inputsRow: { flexDirection: "row", gap: 16, marginBottom: 0 },
-  resultsContainer: { flexDirection: "row", justifyContent: "space-between", borderRadius: 24, padding: 24, marginVertical: 32, shadowColor: "#8E1E5E", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.04, shadowRadius: 12, elevation: 2 },
-  resultItem: { alignItems: "center" },
-  resultLabel: { fontSize: 12, marginBottom: 8, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: "500" },
-  resultValue: { fontSize: 18, fontWeight: "800" },
-  chartContainer: { marginTop: 16, justifyContent: "center", alignItems: "center" },
-  note: { marginTop: 24, fontSize: 13, fontStyle: "italic", textAlign: "center", opacity: 0.6 },
+  root: { flex: 1 },
+  scrollContent: { paddingHorizontal: 18, paddingBottom: 96 },
+  card: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+  },
+  heroRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 4,
+  },
+  legendRow: {
+    flexDirection: "row",
+    marginTop: 10,
+    gap: 12,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  legendLabel: {
+    fontFamily: FMFonts.sansSemibold,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+  },
+  profilesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  profileCard: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    minWidth: 90,
+  },
 });

@@ -1,67 +1,76 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import { useImportQueue } from "../../../import/context/ImportQueueContext";
-import { StatementsModal } from "../../../import/components/StatementsModal";
-import { CsvMappingModal } from "../../../import/components/CsvMappingModal";
-import { Ionicons } from "@expo/vector-icons";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Modal,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   SectionList,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
-import type { Transaction } from "../../../../services/enableBanking";
-import { useDateFilter } from "../../../../shared/context/DateFilterContext";
-import { useSettings } from "../../../../shared/context/SettingsContext";
-import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { FMFonts } from "@/src/constants/theme";
+import {
+  Balance,
+  Button,
+  IconAI,
+  IconBack,
+  IconChevD,
+  IconDoc,
+  IconMore,
+  IconPlus,
+  IconRefresh,
+  IconTrash,
+  IconUpload,
+  Label,
+  Money,
+  Pill,
+  formatEUR,
+  splitForHero,
+  useFMTheme,
+} from "@/src/shared/design";
+import { CategoryFilterBar } from "@/src/shared/components/CategoryFilterBar";
+import { DateFilterModal } from "@/src/shared/components/DateFilterModal";
+import { useDateFilter } from "@/src/shared/context/DateFilterContext";
+import { useSettings } from "@/src/shared/context/SettingsContext";
+import { useImportQueue } from "@/src/features/import/context/ImportQueueContext";
+import { StatementsModal } from "@/src/features/import/components/StatementsModal";
+import { CsvMappingModal } from "@/src/features/import/components/CsvMappingModal";
 import {
   CATEGORY_COLORS,
   useCategories,
-} from "../../../transactions/context/CategoriesContext";
+} from "@/src/features/transactions/context/CategoriesContext";
+import { AddTransactionModal } from "@/src/features/transactions/components/AddTransactionModal";
+import { CategoryManageModal } from "@/src/features/transactions/components/CategoryManageModal";
+import { EditTransactionModal } from "@/src/features/transactions/components/EditTransactionModal";
+import { TransactionDetailModal } from "@/src/features/transactions/components/TransactionDetailModal";
+import { useAccountTransactions } from "@/src/features/transactions/hooks/useAccountTransactions";
+import { useAutoCategorize } from "@/src/features/transactions/hooks/useAutoCategorize";
+import { getStableTxId, getTransactionAmount, pickTransactionTitle } from "@/src/features/transactions/utils/transactions";
+import type { Transaction } from "@/src/services/enableBanking";
 import { useAccounts } from "../../context/AccountsContext";
-
-// ── Hooks ──
-import { useAccountTransactions } from "../../../transactions/hooks/useAccountTransactions";
-import { useAutoCategorize } from "../../../transactions/hooks/useAutoCategorize";
 import { useAccountStats } from "../../hooks/useAccountStats";
-
-// ── Components ──
-import { CategoryFilterBar } from "../../../../shared/components/CategoryFilterBar";
-import { TransactionStatsSummary } from "../../../../shared/components/TransactionStatsSummary";
-import { DateFilterModal } from "../../../../shared/components/DateFilterModal";
-import { AddTransactionModal } from "../../../transactions/components/AddTransactionModal";
-import { CategoryManageModal } from "../../../transactions/components/CategoryManageModal";
-import { EditTransactionModal } from "../../../transactions/components/EditTransactionModal";
-import { TransactionDetailModal } from "../../../transactions/components/TransactionDetailModal";
-import { TransactionItem } from "../../../transactions/components/TransactionItem";
 import { AccountCategoryModal } from "../AccountCategoryModal";
 
-// ── Utils ──
-import { getStableTxId } from "../../../transactions/utils/transactions";
-
 export function AccountDetailScreen() {
+  const t = useFMTheme();
+  const insets = useSafeAreaInsets();
   const { id, name, type } = useLocalSearchParams<{
     id: string;
     name: string;
     type: "connected" | "manual";
   }>();
-  const backgroundColor = useThemeColor({}, "background");
-  const textColor = useThemeColor({}, "text");
-  const tintColor = useThemeColor({}, "tint");
-  const surfaceColor = useThemeColor({}, "surface");
   const router = useRouter();
   const { isBalanceHidden, geminiApiKey, i18n, language } = useSettings();
-  const { deleteManualAccount, refreshAccounts, updateAccount, accounts } =
-    useAccounts();
+  const { deleteManualAccount, refreshAccounts, updateAccount, accounts } = useAccounts();
   const {
     categories,
     addCategory,
@@ -71,14 +80,11 @@ export function AccountDetailScreen() {
     bulkAssignCategories,
     bulkAddCategories,
     getCategoryForTransaction,
-    transactionCategoryMap,
   } = useCategories();
-
   const {
     filterDateFrom,
     filterDateTo,
     applyDateFilter,
-    applyPreset,
     selectedCategoryId,
     setSelectedCategoryId,
   } = useDateFilter();
@@ -137,14 +143,10 @@ export function AccountDetailScreen() {
   const [isCatManageModalVisible, setCatManageModalVisible] = useState(false);
   const [isAICatModalVisible, setAICatModalVisible] = useState(false);
   const [isStatementsModalVisible, setStatementsModalVisible] = useState(false);
-  const [csvQueue, setCsvQueue] = useState<
-    { fileName: string; content: string }[]
-  >([]);
+  const [csvQueue, setCsvQueue] = useState<{ fileName: string; content: string }[]>([]);
 
   const [tempFrom, setTempFrom] = useState("");
   const [tempTo, setTempTo] = useState("");
-
-  const categoriesScrollRef = useRef<ScrollView>(null);
 
   const filteredTransactions = selectedCategoryId
     ? transactions.filter((tx) => {
@@ -155,26 +157,28 @@ export function AccountDetailScreen() {
     : transactions;
 
   const groupedTransactions = useMemo(() => {
-    const groups: { [key: string]: Transaction[] } = {};
+    const groups: Record<string, Transaction[]> = {};
     filteredTransactions.forEach((tx) => {
       const dateStr = tx.booking_date || tx.value_date || "";
-      const date = dateStr
-        ? new Date(dateStr).toLocaleDateString()
-        : "Unknown Date";
+      const date = dateStr || "Unknown";
       if (!groups[date]) groups[date] = [];
       groups[date].push(tx);
     });
-    return Object.keys(groups).map((date) => ({
-      title: date,
-      data: groups[date],
-    }));
+    return Object.keys(groups)
+      .sort()
+      .reverse()
+      .map((date) => ({ title: date, data: groups[date] }));
   }, [filteredTransactions]);
 
   const currentAccount = accounts.find((a) => a.id === id);
-  const currentBalance = currentAccount?.balance || 0;
+  const currentBalance = currentAccount?.balance ?? 0;
   const currentCurrency = currentAccount?.currency || "EUR";
-  const currentBankName = currentAccount?.bankName || name || "Account";
+  const currentBankName = currentAccount?.bankName || (typeof name === "string" ? name : "Account");
   const currentIban = currentAccount?.iban;
+  const accountName = currentAccount?.name || (typeof name === "string" ? name : "Account");
+  const masked = isBalanceHidden;
+  const heroParts = splitForHero(currentBalance, masked);
+  const net = accountIncome - accountExpenses;
 
   const openDateModal = () => {
     setTempFrom(filterDateFrom);
@@ -197,10 +201,6 @@ export function AccountDetailScreen() {
     setEditModalVisible(true);
   };
 
-  const handleAutoCategorizePress = () => {
-    setAICatModalVisible(true);
-  };
-
   const { addFiles } = useImportQueue();
 
   const handleImportPress = async () => {
@@ -210,18 +210,13 @@ export function AccountDetailScreen() {
         multiple: true,
         copyToCacheDirectory: true,
       });
-
       if (result.canceled || result.assets.length === 0) return;
 
       const pdfAssets = result.assets.filter(
-        (a) =>
-          a.uri.toLowerCase().endsWith(".pdf") ||
-          a.mimeType === "application/pdf",
+        (a) => a.uri.toLowerCase().endsWith(".pdf") || a.mimeType === "application/pdf",
       );
       const csvAssets = result.assets.filter(
-        (a) =>
-          !a.uri.toLowerCase().endsWith(".pdf") &&
-          a.mimeType !== "application/pdf",
+        (a) => !a.uri.toLowerCase().endsWith(".pdf") && a.mimeType !== "application/pdf",
       );
 
       if (pdfAssets.length > 0) {
@@ -273,11 +268,11 @@ export function AccountDetailScreen() {
 
   if (loading && transactions.length === 0) {
     return (
-      <View style={[styles.container, styles.centered, { backgroundColor }]}>
+      <View style={[styles.center, { backgroundColor: t.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <ActivityIndicator size="large" color={tintColor} />
-        <Text style={{ color: textColor, opacity: 0.5, marginTop: 12, fontSize: 14 }}>
-          Loading transactions...
+        <ActivityIndicator size="large" color={t.accent} />
+        <Text style={{ fontFamily: FMFonts.sans, fontSize: 13, color: t.inkSoft, marginTop: 12 }}>
+          Loading transactions…
         </Text>
       </View>
     );
@@ -285,26 +280,254 @@ export function AccountDetailScreen() {
 
   if (error && transactions.length === 0) {
     return (
-      <View style={[styles.container, styles.centered, { backgroundColor }]}>
+      <View style={[styles.center, { backgroundColor: t.bg }]}>
         <Stack.Screen options={{ headerShown: false }} />
-        <Text style={{ fontSize: 48 }}>⚠️</Text>
-        <Text style={{ color: textColor, fontSize: 16, marginTop: 12, textAlign: "center" }}>
+        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 16, color: t.ink, textAlign: "center" }}>
           {error}
         </Text>
-        <TouchableOpacity
-          onPress={() => loadTransactions()}
-          style={[styles.retryButton, { backgroundColor: tintColor }]}
-        >
-          <Text style={{ color: backgroundColor, fontWeight: "600" }}>Retry</Text>
-        </TouchableOpacity>
+        <View style={{ marginTop: 16 }}>
+          <Button variant="primary" onPress={() => loadTransactions()}>Retry</Button>
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor }]}>
+    <View style={[styles.root, { backgroundColor: t.bg, paddingTop: insets.top + 12 }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
+      {/* Back row */}
+      <View style={styles.backRow}>
+        <Pressable
+          onPress={() => router.back()}
+          style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}
+        >
+          <IconBack size={15} color={t.inkSoft} />
+        </Pressable>
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.inkSoft, marginLeft: 4 }}>
+          Accounts
+        </Text>
+        <View style={{ flex: 1 }} />
+        <Pressable
+          onPress={() => loadTransactions()}
+          style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}
+        >
+          <IconRefresh size={15} color={t.inkSoft} />
+        </Pressable>
+        {type === "manual" ? (
+          <Pressable
+            onPress={() => handleDeleteAccount(deleteManualAccount, () => router.back())}
+            style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}
+          >
+            <IconTrash size={15} color={t.neg} />
+          </Pressable>
+        ) : null}
+        <Pressable
+          onPress={() => setCatManageModalVisible(true)}
+          style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}
+        >
+          <IconMore size={15} color={t.inkSoft} />
+        </Pressable>
+      </View>
+
+      <SectionList
+        sections={groupedTransactions}
+        keyExtractor={(item, i) => getStableTxId(item) + i}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={() => loadTransactions()} tintColor={t.accent} />
+        }
+        ListHeaderComponent={
+          <View style={{ marginBottom: 10 }}>
+            {/* Title + pills */}
+            <Text
+              style={{
+                fontFamily: FMFonts.display,
+                fontSize: 28,
+                color: t.ink,
+                lineHeight: 30,
+                letterSpacing: -0.4,
+                marginBottom: 8,
+              }}
+              numberOfLines={1}
+            >
+              {accountName}
+            </Text>
+            <View style={styles.pillRow}>
+              <Pill onPress={() => setCatModalVisible(true)}>{currentBankName}</Pill>
+              <Pill onPress={() => setCatModalVisible(true)}>{category}</Pill>
+              {currentIban ? (
+                <Text
+                  style={{
+                    fontFamily: FMFonts.sans,
+                    fontSize: 10,
+                    color: t.inkMuted,
+                    fontVariant: ["tabular-nums"],
+                  }}
+                  numberOfLines={1}
+                >
+                  ·· {currentIban.slice(-9)}
+                </Text>
+              ) : null}
+            </View>
+
+            {/* Balance card with stats */}
+            <View style={[styles.balanceCard, { backgroundColor: t.surface, borderColor: t.line }]}>
+              <Label>Current balance</Label>
+              <View style={styles.balanceHero}>
+                <Text
+                  style={{
+                    fontFamily: FMFonts.display,
+                    fontSize: 30,
+                    color: t.ink,
+                    lineHeight: 32,
+                    letterSpacing: -0.4,
+                  }}
+                >
+                  {heroParts.sign}
+                  {heroParts.integer}
+                  <Text style={{ color: t.inkMuted }}>{heroParts.fraction}</Text>
+                </Text>
+                <Text style={{ fontFamily: FMFonts.display, fontSize: 18, color: t.inkSoft, marginLeft: 4 }}>
+                  {currencySymbol(currentCurrency)}
+                </Text>
+              </View>
+              <View style={styles.statsRow}>
+                <StatCell label={i18n.income_label} value={accountIncome} masked={masked} />
+                <StatCell label={i18n.expenses_label} value={-accountExpenses} masked={masked} />
+                <StatCell label="Net" value={net} masked={masked} total />
+              </View>
+            </View>
+
+            {/* Action chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.actionsRow}
+            >
+              {type === "manual" ? (
+                <ActionChip icon={<IconPlus size={11} />} label="Add" onPress={() => setTxModalVisible(true)} />
+              ) : null}
+              <ActionChip icon={<IconUpload size={11} />} label="Import" onPress={handleImportPress} />
+              <ActionChip
+                icon={<IconAI size={11} />}
+                label={i18n.auto_categorize}
+                onPress={() => setAICatModalVisible(true)}
+              />
+              <ActionChip
+                icon={<IconDoc size={11} />}
+                label={i18n.stmt_title ?? "Statements"}
+                onPress={() => setStatementsModalVisible(true)}
+              />
+              <ActionChip label={dateRangeLabel(filterDateFrom, filterDateTo)} onPress={openDateModal} />
+            </ScrollView>
+
+            {/* Category filter strip — keep existing component */}
+            <View style={{ marginTop: 8 }}>
+              <CategoryFilterBar
+                categories={categories}
+                transactions={transactions}
+                getCategoryForTransaction={getCategoryForTransaction}
+                selectedFilter={selectedCategoryId}
+                onSelectFilter={setSelectedCategoryId}
+                accountIncome={accountIncome}
+                accountExpenses={accountExpenses}
+                isBalanceHidden={isBalanceHidden}
+                textColor={t.ink}
+                tintColor={t.accent}
+                i18n={i18n}
+                showStats={false}
+              />
+            </View>
+          </View>
+        }
+        renderSectionHeader={({ section: { title, data } }) => (
+          <View style={[styles.sectionHeader, { backgroundColor: t.bg }]}>
+            <Text style={[styles.sectionTitle, { color: t.inkMuted }]}>{formatGroupHeader(title)}</Text>
+            <Text style={[styles.sectionSubtotal, { color: t.inkSoft }]}>
+              {formatEUR(data.reduce((s, x) => s + getTransactionAmount(x), 0), { showSign: true, masked })}
+            </Text>
+          </View>
+        )}
+        renderItem={({ item, section, index }) => {
+          const isFirst = index === 0;
+          const isLast = index === section.data.length - 1;
+          const txId = getStableTxId(item);
+          const cat = getCategoryForTransaction(txId);
+          const amount = getTransactionAmount(item);
+          const title = pickTransactionTitle(item);
+          return (
+            <Pressable
+              onPress={() => handleTransactionPress(item)}
+              style={({ pressed }) => [
+                styles.txRow,
+                {
+                  backgroundColor: t.surface,
+                  borderColor: t.line,
+                  borderTopLeftRadius: isFirst ? 10 : 0,
+                  borderTopRightRadius: isFirst ? 10 : 0,
+                  borderBottomLeftRadius: isLast ? 10 : 0,
+                  borderBottomRightRadius: isLast ? 10 : 0,
+                  borderTopWidth: isFirst ? 1 : 0,
+                  borderBottomWidth: 1,
+                  borderLeftWidth: 1,
+                  borderRightWidth: 1,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+            >
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: cat ? cat.color : "transparent",
+                  borderWidth: cat ? 0 : 1.5,
+                  borderStyle: cat ? "solid" : "dashed",
+                  borderColor: t.inkMuted,
+                }}
+              />
+              <View style={{ flex: 1, marginLeft: 10, minWidth: 0 }}>
+                <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.ink }} numberOfLines={1}>
+                  {title}
+                </Text>
+                <Text style={{ fontFamily: FMFonts.sans, fontSize: 10, color: t.inkMuted, marginTop: 1 }}>
+                  {cat ? (
+                    cat.name
+                  ) : (
+                    <Text style={{ color: t.warn, fontFamily: FMFonts.sansSemibold }}>
+                      {i18n.uncategorized}
+                    </Text>
+                  )}
+                </Text>
+              </View>
+              <Money value={amount} masked={masked} size={12} />
+            </Pressable>
+          );
+        }}
+        ItemSeparatorComponent={() => <View style={{ height: 0 }} />}
+        SectionSeparatorComponent={() => <View style={{ height: 8 }} />}
+        ListEmptyComponent={
+          <View style={[styles.empty, { backgroundColor: t.surface, borderColor: t.line }]}>
+            <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 14, color: t.ink }}>
+              No transactions
+            </Text>
+            <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkSoft, marginTop: 4 }}>
+              {filterDateFrom} – {filterDateTo}
+            </Text>
+          </View>
+        }
+        ListFooterComponent={
+          <Text style={{ textAlign: "center", fontFamily: FMFonts.sans, color: t.inkMuted, fontSize: 11, paddingVertical: 24 }}>
+            {filteredTransactions.length} transaction
+            {filteredTransactions.length === 1 ? "" : "s"}
+          </Text>
+        }
+        stickySectionHeadersEnabled
+      />
+
+      {/* ── Modals ── */}
       <DateFilterModal
         visible={isFilterModalVisible}
         title={i18n.filter_by_date}
@@ -314,9 +537,9 @@ export function AccountDetailScreen() {
         onTempToChange={setTempTo}
         onApply={handleApplyDateFilter}
         onCancel={() => setFilterModalVisible(false)}
-        backgroundColor={backgroundColor}
-        textColor={textColor}
-        tintColor={tintColor}
+        backgroundColor={t.bg}
+        textColor={t.ink}
+        tintColor={t.accent}
         i18n={i18n}
       />
 
@@ -324,27 +547,31 @@ export function AccountDetailScreen() {
         visible={isDetailModalVisible}
         transaction={detailTx}
         categories={categories}
+        categoryColors={CATEGORY_COLORS}
         getCategoryForTransaction={getCategoryForTransaction}
         onAssignCategory={assignCategory}
+        onCreateCategory={addCategory}
         onClose={() => setDetailModalVisible(false)}
         onEdit={type === "manual" ? openEditModal : undefined}
         type={type as "connected" | "manual"}
-        backgroundColor={backgroundColor}
-        textColor={textColor}
-        tintColor={tintColor}
+        backgroundColor={t.bg}
+        textColor={t.ink}
+        tintColor={t.accent}
       />
 
       <CategoryManageModal
         visible={isCatManageModalVisible}
         categories={categories}
         categoryColors={CATEGORY_COLORS}
-        onAdd={async (catName, color) => { await addCategory(catName, color); }}
+        onAdd={async (catName, color) => {
+          await addCategory(catName, color);
+        }}
         onUpdate={async (catId, updates) => updateCategoryCtx(catId, updates)}
         onDelete={async (catId) => deleteCategoryCtx(catId)}
         onClose={() => setCatManageModalVisible(false)}
-        backgroundColor={backgroundColor}
-        textColor={textColor}
-        tintColor={tintColor}
+        backgroundColor={t.bg}
+        textColor={t.ink}
+        tintColor={t.accent}
       />
 
       <AccountCategoryModal
@@ -352,9 +579,9 @@ export function AccountDetailScreen() {
         currentCategory={category}
         onSelect={updateCategoryValue}
         onClose={() => setCatModalVisible(false)}
-        backgroundColor={backgroundColor}
-        textColor={textColor}
-        tintColor={tintColor}
+        backgroundColor={t.bg}
+        textColor={t.ink}
+        tintColor={t.accent}
       />
 
       <AddTransactionModal
@@ -364,9 +591,9 @@ export function AccountDetailScreen() {
           setTxModalVisible(false);
         }}
         onClose={() => setTxModalVisible(false)}
-        backgroundColor={backgroundColor}
-        textColor={textColor}
-        tintColor={tintColor}
+        backgroundColor={t.bg}
+        textColor={t.ink}
+        tintColor={t.accent}
         i18n={i18n}
       />
 
@@ -382,215 +609,43 @@ export function AccountDetailScreen() {
           setEditModalVisible(false);
         }}
         onClose={() => setEditModalVisible(false)}
-        backgroundColor={backgroundColor}
-        textColor={textColor}
-        tintColor={tintColor}
+        backgroundColor={t.bg}
+        textColor={t.ink}
+        tintColor={t.accent}
         i18n={i18n}
       />
 
-      {/* ── Header ── */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={textColor} />
-        </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: textColor }]} numberOfLines={1}>
-            {currentBankName}
-          </Text>
-          {currentIban && (
-            <Text style={[styles.headerIban, { color: textColor, opacity: 0.5 }]}>
-              {currentIban}
-            </Text>
-          )}
-        </View>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            onPress={() => loadTransactions()}
-            style={styles.headerBtn}
-          >
-            <Ionicons name="reload" size={20} color={textColor} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setCatManageModalVisible(true)} style={styles.headerBtn}>
-            <Ionicons name="pricetags-outline" size={20} color={textColor} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleAutoCategorizePress} style={styles.headerBtn}>
-            <Ionicons name="sparkles" size={20} color={tintColor} />
-          </TouchableOpacity>
-          {type === "manual" && (
-            <TouchableOpacity
-              onPress={() => handleDeleteAccount(deleteManualAccount, () => router.back())}
-              style={styles.headerBtn}
-            >
-              <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* ── Top Stats ── */}
-      <TransactionStatsSummary
-        income={accountIncome}
-        expenses={accountExpenses}
-        isBalanceHidden={isBalanceHidden}
-        textColor={textColor}
-        i18n={i18n}
-        style={{ marginBottom: 24 }}
-      />
-
-      {/* ── Balance Card ── */}
-      <View style={[styles.balanceCard, { backgroundColor: surfaceColor }]}>
-        <Text style={[styles.balanceLabel, { color: textColor, opacity: 0.6 }]}>Balance</Text>
-        <Text style={[styles.balanceAmount, { color: textColor }]}>
-          {isBalanceHidden
-            ? "*****"
-            : new Intl.NumberFormat("de-DE", {
-                style: "currency",
-                currency: currentCurrency,
-              }).format(currentBalance)}
-        </Text>
-        <TouchableOpacity
-          onPress={() => setCatModalVisible(true)}
-          style={[styles.categoryBadge, { backgroundColor: tintColor + "15" }]}
-        >
-          <Text style={{ color: tintColor, fontSize: 12, fontWeight: "700" }}>{category}</Text>
-          <Ionicons name="chevron-down" size={12} color={tintColor} />
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Date Presets ── */}
-      <View style={styles.presetsRow}>
-        <TouchableOpacity
-          onPress={openDateModal}
-          style={[styles.presetBtn, { borderColor: "transparent", backgroundColor: tintColor + "15" }]}
-        >
-          <Ionicons name="calendar-outline" size={16} color={tintColor} />
-          <Text style={{ color: tintColor, fontSize: 13, fontWeight: "600" }}>{i18n.date_range || "Date range"}</Text>
-        </TouchableOpacity>
-        {type === "manual" && (
-          <TouchableOpacity
-            onPress={() => setTxModalVisible(true)}
-            style={[styles.presetBtn, { backgroundColor: tintColor, borderColor: "transparent" }]}
-          >
-            <Ionicons name="add" size={18} color={backgroundColor} />
-            <Text style={{ color: backgroundColor, fontSize: 13, fontWeight: "600" }}>Add</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          onPress={() => setStatementsModalVisible(true)}
-          style={[styles.presetBtn, { borderColor: "transparent", backgroundColor: tintColor + "15" }]}
-        >
-          <Ionicons name="folder-open-outline" size={16} color={tintColor} />
-          <Text style={{ color: tintColor, fontSize: 13, fontWeight: "600" }}>{i18n.stmt_title || "Statements"}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── Category Filter Bar ── */}
-      <CategoryFilterBar
-        categories={categories}
-        transactions={transactions}
-        getCategoryForTransaction={getCategoryForTransaction}
-        selectedFilter={selectedCategoryId}
-        onSelectFilter={setSelectedCategoryId}
-        accountIncome={accountIncome}
-        accountExpenses={accountExpenses}
-        isBalanceHidden={isBalanceHidden}
-        textColor={textColor}
-        tintColor={tintColor}
-        i18n={i18n}
-        showStats={false}
-      />
-
-      {/* ── Transaction List ── */}
-      <SectionList
-        sections={groupedTransactions}
-        renderItem={({ item }) => (
-          <TransactionItem
-            item={item}
-            textColor={textColor}
-            getCategoryForTransaction={getCategoryForTransaction}
-            onPress={handleTransactionPress}
-          />
-        )}
-        renderSectionHeader={({ section: { title } }) => (
-          <View style={[styles.sectionHeader, { backgroundColor }]}>
-            <Text style={[styles.sectionTitle, { color: textColor }]}>{title}</Text>
-          </View>
-        )}
-        keyExtractor={(item) =>
-          item.transaction_id ||
-          `gen_${item.booking_date || ""}_${item.transaction_amount?.amount ?? ""}_${item.creditor?.name || item.debtor?.name || ""}`
-        }
-        style={styles.list}
-        contentContainerStyle={styles.listContent}
-        stickySectionHeadersEnabled={true}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => loadTransactions()}
-            tintColor={tintColor}
-          />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={{ fontSize: 48 }}>📋</Text>
-            <Text style={[styles.emptyText, { color: textColor, opacity: 0.5 }]}>
-              No transactions found
-            </Text>
-            <Text style={{ color: textColor, opacity: 0.4, fontSize: 14, marginTop: 4 }}>
-              {filterDateFrom} – {filterDateTo}
-            </Text>
-          </View>
-        }
-        ListFooterComponent={
-          <Text style={{ textAlign: "center", color: textColor, opacity: 0.4, fontSize: 12, paddingVertical: 32 }}>
-            {filteredTransactions.length} transaction{filteredTransactions.length !== 1 ? "s" : ""}
-          </Text>
-        }
-      />
-
-      {/* ── AI Categorization Modal ── */}
+      {/* AI Categorization confirm */}
       <Modal visible={isAICatModalVisible} transparent animationType="fade">
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" }}>
-          <View style={{ backgroundColor, padding: 32, borderRadius: 24, width: "85%", maxWidth: 400 }}>
+        <View style={styles.modalScrim}>
+          <View style={[styles.aiModal, { backgroundColor: t.surface, borderColor: t.lineStrong }]}>
             {isCategorizing ? (
               <View style={{ alignItems: "center", paddingVertical: 20 }}>
-                <ActivityIndicator size="large" color={tintColor} />
-                <Text style={{ color: textColor, fontSize: 16, fontWeight: "600", marginTop: 24, textAlign: "center" }}>
-                  {i18n?.ai_processing || "Categorizing...\nThis might take a few moments."}
+                <ActivityIndicator size="large" color={t.accent} />
+                <Text style={{ fontFamily: FMFonts.sansMedium, color: t.ink, fontSize: 14, textAlign: "center", marginTop: 18 }}>
+                  {i18n.ai_processing ?? "Categorizing…\nThis might take a few moments."}
                 </Text>
               </View>
             ) : (
               <>
-                <Text style={{ fontSize: 24, color: textColor, fontWeight: "800", marginBottom: 12 }}>
-                  {i18n?.ai_categorization_title || "Categorization"}
+                <Text style={{ fontFamily: FMFonts.display, fontSize: 22, color: t.ink, letterSpacing: -0.3 }}>
+                  {i18n.ai_categorization_title ?? "Auto-categorize"}
                 </Text>
-                <Text style={{ fontSize: 16, color: textColor, opacity: 0.7, marginBottom: 32 }}>
-                  {i18n?.ai_categorization_desc || "Which transactions would you like the service to process?"}
+                <Text style={{ fontFamily: FMFonts.sans, fontSize: 13, color: t.inkSoft, marginTop: 8, lineHeight: 19 }}>
+                  {i18n.ai_categorization_desc ??
+                    "Pick which transactions to send to Gemini for categorization."}
                 </Text>
-                <TouchableOpacity
-                  style={{ backgroundColor: tintColor, paddingVertical: 16, borderRadius: 999, marginBottom: 16 }}
-                  onPress={() => autoCategorizeTransactions(false)}
-                >
-                  <Text style={{ color: backgroundColor, fontWeight: "600", textAlign: "center", fontSize: 16 }}>
-                    {i18n?.uncategorized_only || "Uncategorized Only"}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={{ backgroundColor: "#F43F5E", paddingVertical: 16, borderRadius: 999, marginBottom: 24 }}
-                  onPress={() => autoCategorizeTransactions(true)}
-                >
-                  <Text style={{ color: "#FFF", fontWeight: "600", textAlign: "center", fontSize: 16 }}>
-                    {i18n?.recategorize_all || "Recategorize All"}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={{ paddingVertical: 16, borderRadius: 999 }}
-                  onPress={() => setAICatModalVisible(false)}
-                >
-                  <Text style={{ color: textColor, opacity: 0.6, fontWeight: "600", textAlign: "center", fontSize: 16 }}>
-                    {i18n?.cancel || "Cancel"}
-                  </Text>
-                </TouchableOpacity>
+                <View style={{ marginTop: 18, gap: 8 }}>
+                  <Button variant="primary" full onPress={() => autoCategorizeTransactions(false)}>
+                    {i18n.uncategorized_only}
+                  </Button>
+                  <Button variant="secondary" full onPress={() => autoCategorizeTransactions(true)}>
+                    {i18n.recategorize_all}
+                  </Button>
+                  <Button variant="ghost" full onPress={() => setAICatModalVisible(false)}>
+                    {i18n.cancel ?? "Cancel"}
+                  </Button>
+                </View>
               </>
             )}
           </View>
@@ -605,54 +660,194 @@ export function AccountDetailScreen() {
         onImport={handleImportPress}
       />
 
-      {csvQueue.length > 0 && (
+      {csvQueue.length > 0 ? (
         <CsvMappingModal
           visible
           fileName={csvQueue[0].fileName}
           fileContent={csvQueue[0].content}
           currency={currentCurrency}
           onCancel={() => setCsvQueue((q) => q.slice(1))}
-          onConfirm={async (transactions) => {
+          onConfirm={async (txns) => {
             const fileName = csvQueue[0].fileName;
             setCsvQueue((q) => q.slice(1));
-            if (transactions.length > 0) {
-              await handleImportBankStatement(transactions);
+            if (txns.length > 0) {
+              await handleImportBankStatement(txns);
               Alert.alert(
                 "Imported",
-                `Added ${transactions.length} transaction${transactions.length === 1 ? "" : "s"} from ${fileName}.`,
+                `Added ${txns.length} transaction${txns.length === 1 ? "" : "s"} from ${fileName}.`,
               );
             }
           }}
         />
-      )}
+      ) : null}
     </View>
   );
 }
 
+interface StatCellProps {
+  label: string;
+  value: number;
+  masked: boolean;
+  total?: boolean;
+}
+
+function StatCell({ label, value, masked, total }: StatCellProps) {
+  const t = useFMTheme();
+  return (
+    <View style={{ flex: 1 }}>
+      <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 10, color: t.inkMuted, letterSpacing: 0.4, textTransform: "uppercase" }}>
+        {label}
+      </Text>
+      <View style={{ marginTop: 4 }}>
+        <Balance value={value} masked={masked} size={12} total={total} />
+      </View>
+    </View>
+  );
+}
+
+interface ActionChipProps {
+  icon?: React.ReactNode;
+  label: string;
+  onPress: () => void;
+}
+
+function ActionChip({ icon, label, onPress }: ActionChipProps) {
+  const t = useFMTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.actionChip,
+        {
+          backgroundColor: t.surface,
+          borderColor: t.lineStrong,
+          opacity: pressed ? 0.7 : 1,
+        },
+      ]}
+    >
+      {icon ? <View style={{ marginRight: 5 }}>{icon}</View> : null}
+      <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.inkSoft, letterSpacing: -0.1 }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function dateRangeLabel(from: string, to: string): string {
+  if (!from || !to) return "All time";
+  return `${from} → ${to}`;
+}
+
+function formatGroupHeader(iso: string): string {
+  if (!iso || iso === "Unknown") return "Unknown date";
+  try {
+    const d = new Date(iso);
+    const dayMonth = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+    const weekday = d.toLocaleDateString("en-GB", { weekday: "short" });
+    return `${dayMonth} · ${weekday}`;
+  } catch {
+    return iso;
+  }
+}
+
+function currencySymbol(currency: string): string {
+  if (currency === "EUR") return "€";
+  if (currency === "USD") return "$";
+  if (currency === "GBP") return "£";
+  return currency;
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, paddingTop: 80, paddingHorizontal: 24 },
-  centered: { justifyContent: "center", alignItems: "center" },
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 24, gap: 16 },
-  backButton: { padding: 8, marginLeft: -8 },
-  headerTitle: { fontSize: 24, fontWeight: "800" },
-  headerIban: { fontSize: 12, fontFamily: "monospace", marginTop: 4 },
-  headerActions: { flexDirection: "row", gap: 16 },
-  headerBtn: { padding: 8, marginRight: -8 },
-  balanceCard: {
-    borderRadius: 24, padding: 24, marginBottom: 24, alignItems: "center",
-    shadowColor: "#8E1E5E", shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04, shadowRadius: 12, elevation: 2,
+  root: { flex: 1 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
+  backRow: {
+    paddingHorizontal: 18,
+    paddingBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
   },
-  balanceLabel: { fontSize: 12, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5, fontWeight: "500" },
-  balanceAmount: { fontSize: 32, fontWeight: "800", marginBottom: 12 },
-  categoryBadge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999 },
-  presetsRow: { flexDirection: "row", gap: 12, marginBottom: 24, flexWrap: "wrap" },
-  presetBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
-  list: { flex: 1 },
-  listContent: { paddingBottom: 64 },
-  sectionHeader: { paddingVertical: 8, paddingHorizontal: 4, marginBottom: 8 },
-  sectionTitle: { fontSize: 14, fontWeight: "600", opacity: 0.6, textTransform: "uppercase", letterSpacing: 0.5 },
-  emptyState: { marginTop: 64, justifyContent: "center", alignItems: "center", gap: 12 },
-  emptyText: { fontSize: 18, fontWeight: "600" },
-  retryButton: { marginTop: 24, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 999 },
+  iconBtn: { padding: 6 },
+  scrollContent: {
+    paddingHorizontal: 18,
+    paddingBottom: 96,
+  },
+  pillRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 12,
+  },
+  balanceCard: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  balanceHero: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 4,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 10,
+  },
+  actionsRow: {
+    flexDirection: "row",
+    gap: 6,
+    paddingVertical: 4,
+  },
+  actionChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  sectionHeader: {
+    paddingTop: 8,
+    paddingBottom: 4,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+  },
+  sectionTitle: {
+    fontFamily: FMFonts.sansSemibold,
+    fontSize: 10,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
+  sectionSubtotal: {
+    fontFamily: FMFonts.sansMedium,
+    fontSize: 11,
+    fontVariant: ["tabular-nums"],
+  },
+  txRow: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  empty: {
+    padding: 24,
+    borderWidth: 1,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  modalScrim: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  aiModal: {
+    width: "85%",
+    maxWidth: 400,
+    padding: 22,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
 });

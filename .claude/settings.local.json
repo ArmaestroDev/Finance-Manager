@@ -5,7 +5,10 @@
       "Bash(node api/_test-parser.js)",
       "Bash(node *)",
       "Bash(npx tsc *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(npx eslint *)"
     ]
   }
 }

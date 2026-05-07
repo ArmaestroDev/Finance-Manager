@@ -5,14 +5,18 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
+import { Alert, Platform } from "react-native";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 
 // --- Types ---
 export interface TransactionCategory {
   id: string;
   name: string;
   color: string;
+  system?: "ignore";
 }
 
 // Map of transactionId -> categoryId
@@ -21,6 +25,10 @@ type TransactionCategoryMap = Record<string, string>;
 // --- Storage Keys ---
 const CATEGORIES_KEY = "tx_categories";
 const TX_CATEGORY_MAP_KEY = "tx_category_map";
+
+// --- System category IDs ---
+export const SYSTEM_IGNORE_ID = "cat_system_ignore";
+export const SYSTEM_IGNORE_COLOR = "#8a847a";
 
 // --- Default color palette ---
 export const CATEGORY_COLORS = [
@@ -68,13 +76,33 @@ const CategoriesContext = createContext<CategoriesContextType | undefined>(
 );
 
 export function CategoriesProvider({ children }: { children: ReactNode }) {
+  const { i18n } = useSettings();
   const [categories, setCategories] = useState<TransactionCategory[]>([]);
   const [transactionCategoryMap, setTransactionCategoryMap] =
     useState<TransactionCategoryMap>({});
+  const bootstrappedRef = useRef(false);
 
-  // Load from AsyncStorage on mount
+  // Refs mirror state so async callers always read the latest value, even when
+  // multiple awaited mutations run before React commits a re-render.
+  const categoriesRef = useRef<TransactionCategory[]>([]);
+  const mapRef = useRef<TransactionCategoryMap>({});
+
+  const commitCategories = (next: TransactionCategory[]) => {
+    categoriesRef.current = next;
+    setCategories(next);
+  };
+
+  const commitMap = (next: TransactionCategoryMap) => {
+    mapRef.current = next;
+    setTransactionCategoryMap(next);
+  };
+
+  // Load from AsyncStorage on mount (one-time bootstrap)
   useEffect(() => {
+    if (bootstrappedRef.current) return;
+    bootstrappedRef.current = true;
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
@@ -83,8 +111,33 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
         AsyncStorage.getItem(CATEGORIES_KEY),
         AsyncStorage.getItem(TX_CATEGORY_MAP_KEY),
       ]);
-      if (catData) setCategories(JSON.parse(catData));
-      if (mapData) setTransactionCategoryMap(JSON.parse(mapData));
+
+      let cats: TransactionCategory[] = catData ? JSON.parse(catData) : [];
+      let mutated = false;
+      const ignoreIdx = cats.findIndex((c) => c.id === SYSTEM_IGNORE_ID);
+      const ignoreName = i18n.cat_ignore ?? "Ignore";
+
+      if (ignoreIdx === -1) {
+        cats = [
+          {
+            id: SYSTEM_IGNORE_ID,
+            name: ignoreName,
+            color: SYSTEM_IGNORE_COLOR,
+            system: "ignore",
+          },
+          ...cats,
+        ];
+        mutated = true;
+      } else if (cats[ignoreIdx].system !== "ignore") {
+        cats = cats.map((c, i) =>
+          i === ignoreIdx ? { ...c, system: "ignore" as const } : c,
+        );
+        mutated = true;
+      }
+
+      commitCategories(cats);
+      if (mutated) await persistCategories(cats);
+      if (mapData) commitMap(JSON.parse(mapData));
     } catch (e) {
       console.error("Failed to load categories:", e);
     }
@@ -98,47 +151,35 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem(TX_CATEGORY_MAP_KEY, JSON.stringify(map));
   };
 
-  const addCategory = useCallback(
-    async (name: string, color: string) => {
-      const id = `cat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      const newCat: TransactionCategory = {
-        id,
-        name,
-        color,
-      };
-      const updated = [...categories, newCat];
-      setCategories(updated);
-      await persistCategories(updated);
-      return id;
-    },
-    [categories],
-  );
+  const addCategory = useCallback(async (name: string, color: string) => {
+    const id = `cat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const next = [...categoriesRef.current, { id, name, color }];
+    commitCategories(next);
+    await persistCategories(next);
+    return id;
+  }, []);
 
   const bulkAddCategories = useCallback(
     async (newCatsInput: { name: string; color: string }[]) => {
       const newCats: TransactionCategory[] = newCatsInput.map((Input) => ({
         id: `cat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${Math.random()
           .toString(36)
-          .slice(2, 4)}`, // Extra random to ensure uniqueness in fast loop
+          .slice(2, 4)}`,
         name: Input.name,
         color: Input.color,
       }));
 
-      // Calculate updated state based on CURRENT categories (from dependency)
-      // Note: This still relies on 'categories' dependency, so this function MUST be called once per batch
-      // to avoid stale state if called multiple times in parallel.
-      // But since we are doing "bulk", we call it once.
-      const updated = [...categories, ...newCats];
-      setCategories(updated);
-      await persistCategories(updated);
+      const next = [...categoriesRef.current, ...newCats];
+      commitCategories(next);
+      await persistCategories(next);
       return newCats;
     },
-    [categories],
+    [],
   );
 
   const updateCategory = useCallback(
     async (id: string, updates: { name?: string; color?: string }) => {
-      const updated = categories.map((cat) =>
+      const next = categoriesRef.current.map((cat) =>
         cat.id === id
           ? {
               ...cat,
@@ -147,21 +188,32 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
             }
           : cat,
       );
-      setCategories(updated);
-      await persistCategories(updated);
+      commitCategories(next);
+      await persistCategories(next);
     },
-    [categories],
+    [],
   );
 
   const deleteCategory = useCallback(
     async (id: string) => {
-      // Remove category
-      const updatedCats = categories.filter((cat) => cat.id !== id);
-      setCategories(updatedCats);
-      await persistCategories(updatedCats);
+      const target = categoriesRef.current.find((c) => c.id === id);
+      if (target?.system === "ignore") {
+        const msg =
+          i18n.system_category_delete_blocked ??
+          "System category — cannot be deleted.";
+        if (Platform.OS === "web") {
+          if (typeof window !== "undefined") window.alert(msg);
+        } else {
+          Alert.alert("Cannot delete", msg);
+        }
+        return;
+      }
 
-      // Remove all assignments to this category
-      const updatedMap = { ...transactionCategoryMap };
+      const nextCats = categoriesRef.current.filter((cat) => cat.id !== id);
+      commitCategories(nextCats);
+      await persistCategories(nextCats);
+
+      const updatedMap = { ...mapRef.current };
       let changed = false;
       for (const txId of Object.keys(updatedMap)) {
         if (updatedMap[txId] === id) {
@@ -170,53 +222,49 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
         }
       }
       if (changed) {
-        setTransactionCategoryMap(updatedMap);
+        commitMap(updatedMap);
         await persistMap(updatedMap);
       }
     },
-    [categories, transactionCategoryMap],
+    [i18n.system_category_delete_blocked],
   );
 
   const assignCategory = useCallback(
     async (transactionId: string, categoryId: string | null) => {
-      const updatedMap = { ...transactionCategoryMap };
+      const updatedMap = { ...mapRef.current };
       if (categoryId === null) {
+        if (updatedMap[transactionId] === undefined) return;
         delete updatedMap[transactionId];
       } else {
+        if (updatedMap[transactionId] === categoryId) return;
         updatedMap[transactionId] = categoryId;
       }
-      setTransactionCategoryMap(updatedMap);
+      commitMap(updatedMap);
       await persistMap(updatedMap);
     },
-    [transactionCategoryMap],
+    [],
   );
 
   const bulkAssignCategories = useCallback(
     async (assignments: Record<string, string | null>) => {
-      // Create a single updated map based on CURRENT state
-      const updatedMap = { ...transactionCategoryMap };
+      const updatedMap = { ...mapRef.current };
       let changed = false;
-
-      Object.entries(assignments).forEach(([txId, catId]) => {
+      for (const [txId, catId] of Object.entries(assignments)) {
         if (catId === null) {
-          if (updatedMap[txId]) {
+          if (updatedMap[txId] !== undefined) {
             delete updatedMap[txId];
             changed = true;
           }
-        } else {
-          if (updatedMap[txId] !== catId) {
-            updatedMap[txId] = catId;
-            changed = true;
-          }
+        } else if (updatedMap[txId] !== catId) {
+          updatedMap[txId] = catId;
+          changed = true;
         }
-      });
-
-      if (changed) {
-        setTransactionCategoryMap(updatedMap);
-        await persistMap(updatedMap);
       }
+      if (!changed) return;
+      commitMap(updatedMap);
+      await persistMap(updatedMap);
     },
-    [transactionCategoryMap],
+    [],
   );
 
   const getCategoryForTransaction = useCallback(

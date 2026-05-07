@@ -1,25 +1,40 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useMemo } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   RefreshControl,
-  SectionList,
+  ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
-import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
+
+import { FMFonts } from "@/src/constants/theme";
+import { MobileHeader } from "@/src/shared/components/MobileHeader";
+import {
+  Balance,
+  Chip,
+  IconEdit,
+  IconLink,
+  IconPlus,
+  IconRefresh,
+  Label,
+  Spark,
+  formatEUR,
+  splitForHero,
+  useFMTheme,
+} from "@/src/shared/design";
 import type { UnifiedAccount } from "../../context/AccountsContext";
-import { useAccountsScreen, type SectionData } from "../../hooks/useAccountsScreen";
+import { useAccountsScreen } from "../../hooks/useAccountsScreen";
 import { CashModal } from "../CashModal";
 import { AddAccountModal } from "../AddAccountModal";
 
+type Cat = "Giro" | "Savings" | "Stock";
+const CATS: readonly Cat[] = ["Giro", "Savings", "Stock"];
+
 export function AccountsScreen() {
-  const backgroundColor = useThemeColor({}, "background");
-  const textColor = useThemeColor({}, "text");
-  const tintColor = useThemeColor({}, "tint");
+  const t = useFMTheme();
   const router = useRouter();
 
   const {
@@ -30,7 +45,6 @@ export function AccountsScreen() {
     refreshAccounts,
     isBalanceHidden,
     i18n,
-    sections,
     isCashModalVisible,
     setCashModalVisible,
     tempCashValue,
@@ -47,122 +61,183 @@ export function AccountsScreen() {
     openCashModal,
     handleAddManualAccount,
     onRefresh,
-    formatAmount,
     totalBankBalance,
     totalNetWorth,
   } = useAccountsScreen();
 
-  const renderAccount = ({ item }: { item: UnifiedAccount }) => {
-    return (
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={() =>
-          router.push({
-            pathname: "/account/[id]",
-            params: { id: item.id, name: item.name, type: item.type },
-          })
-        }
-      >
-        <View style={[styles.accountCard, { backgroundColor: tintColor + "12" }]}>
-          <View style={styles.accountHeader}>
-            <View style={styles.accountInfo}>
-              <Text style={[styles.bankLabel, { color: tintColor }]}>
-                {item.type === "manual" ? "👤" : "🏦"} {item.bankName}
-              </Text>
-              <Text style={[styles.accountName, { color: textColor }]}>{item.name}</Text>
-              {item.iban && (
-                <Text style={[styles.iban, { color: textColor, opacity: 0.5 }]}>
-                  {item.iban}
-                </Text>
-              )}
-            </View>
-            <View style={styles.balanceContainer}>
-              {item.loading ? (
-                <ActivityIndicator size="small" color={tintColor} />
-              ) : item.error ? (
-                <Text style={[styles.errorText, { color: "#FF6B6B" }]}>Error</Text>
-              ) : (
-                <>
-                  <Text style={[styles.balanceAmount, { color: textColor }]}>
-                    {isBalanceHidden ? "*****" : formatAmount(item.balance, item.currency)}
-                  </Text>
-                  <Text style={[styles.balanceLabel, { color: textColor, opacity: 0.5 }]}>
-                    Balance
-                  </Text>
-                </>
-              )}
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  const masked = isBalanceHidden;
+  const heroParts = splitForHero(totalNetWorth, masked);
 
-  const renderSectionHeader = ({ section: { title } }: { section: SectionData }) => (
-    <View style={[styles.sectionHeader, { backgroundColor }]}>
-      <Text style={[styles.sectionTitle, { color: textColor }]}>{title}</Text>
-    </View>
-  );
-
-  const SummaryHeader = () => (
-    <View style={styles.summaryContainer}>
-      <Text style={[styles.totalLabel, { color: textColor, opacity: 0.6 }]}>
-        {i18n.net_worth}
-      </Text>
-      <Text style={[styles.totalAmount, { color: textColor }]}>
-        {isBalanceHidden ? "*****" : formatAmount(totalNetWorth)}
-      </Text>
-      <View style={styles.breakdownContainer}>
-        <View style={styles.breakdownItem}>
-          <Text style={[styles.breakdownLabel, { color: textColor }]}>{i18n.bank_assets}</Text>
-          <Text style={[styles.breakdownValue, { color: tintColor }]}>
-            {isBalanceHidden ? "*****" : formatAmount(totalBankBalance)}
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.breakdownItem} onPress={openCashModal} activeOpacity={0.6}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={[styles.breakdownLabel, { color: textColor }]}>{i18n.cash_at_hand}</Text>
-            <View style={[styles.editBadge, { backgroundColor: tintColor }]}>
-              <Text style={[styles.editBadgeText, { color: backgroundColor }]}>
-                {i18n.edit_cash}
-              </Text>
-            </View>
-          </View>
-          <Text style={[styles.breakdownValue, { color: "#2ecc71" }]}>
-            {formatAmount(cashBalance)}
-          </Text>
-        </TouchableOpacity>
-      </View>
-      <TouchableOpacity
-        style={[styles.addAccountButton, { borderColor: tintColor }]}
-        onPress={() => setAddAccountModalVisible(true)}
-      >
-        <Text style={[styles.addAccountText, { color: tintColor }]}>
-          {i18n.add_manual_account}
-        </Text>
-      </TouchableOpacity>
-    </View>
+  const sectioned = useMemo(
+    () =>
+      CATS.map((cat) => ({
+        cat,
+        accounts: accounts.filter((a) => a.category === cat),
+      })).filter((s) => s.accounts.length > 0),
+    [accounts],
   );
 
   if (initialLoading && accounts.length === 0) {
     return (
-      <View style={[styles.container, styles.centered, { backgroundColor }]}>
-        <ActivityIndicator size="large" color={tintColor} />
+      <View style={[styles.center, { backgroundColor: t.bg }]}>
+        <ActivityIndicator size="large" color={t.accent} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor }]}>
+    <View style={[styles.root, { backgroundColor: t.bg }]}>
+      <MobileHeader
+        title={i18n.accounts_title}
+        right={
+          <>
+            <Chip
+              icon={<IconPlus size={11} color={t.inkSoft} />}
+              onPress={() => setAddAccountModalVisible(true)}
+            >
+              New
+            </Chip>
+            <Pressable
+              onPress={() => router.push("/connections" as never)}
+              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 4 })}
+            >
+              <IconLink size={18} color={t.inkSoft} />
+            </Pressable>
+            <Pressable
+              onPress={() => refreshAccounts()}
+              disabled={isRefreshing}
+              style={({ pressed }) => ({
+                opacity: pressed ? 0.5 : isRefreshing ? 0.4 : 1,
+                padding: 4,
+              })}
+            >
+              <IconRefresh size={18} color={t.inkSoft} />
+            </Pressable>
+          </>
+        }
+      />
+
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={t.accent} />}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Net worth strip — inverted ink card */}
+        <View style={[styles.netCard, { backgroundColor: t.ink }]}>
+          <Label color={t.bg} style={{ opacity: 0.55 }}>{i18n.net_worth}</Label>
+          <View style={styles.heroRow}>
+            <Text
+              style={{
+                fontFamily: FMFonts.display,
+                fontSize: 30,
+                color: t.bg,
+                lineHeight: 32,
+                letterSpacing: -0.5,
+              }}
+            >
+              {heroParts.sign}
+              {heroParts.integer}
+              <Text style={{ color: t.bg, opacity: 0.55 }}>{heroParts.fraction}</Text>
+            </Text>
+            <Text
+              style={{
+                fontFamily: FMFonts.display,
+                fontSize: 18,
+                color: t.bg,
+                opacity: 0.7,
+                marginLeft: 4,
+              }}
+            >
+              €
+            </Text>
+          </View>
+          <View style={styles.netSplit}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.netSplitLabel, { color: t.bg, opacity: 0.55 }]}>
+                {i18n.bank_assets}
+              </Text>
+              <Text style={[styles.netSplitValue, { color: t.bg }]}>
+                {formatEUR(totalBankBalance, { masked })}
+              </Text>
+            </View>
+            <Pressable
+              onPress={openCashModal}
+              style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.7 : 1 })}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, opacity: 0.55 }}>
+                <Text style={[styles.netSplitLabel, { color: t.bg }]}>
+                  {i18n.cash_at_hand}
+                </Text>
+                <IconEdit size={9} color={t.bg} />
+              </View>
+              <Text style={[styles.netSplitValue, { color: t.bg }]}>
+                {formatEUR(cashBalance, { masked })}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+
+        {sectioned.length === 0 ? (
+          <EmptyState onAdd={() => setAddAccountModalVisible(true)} i18n={i18n} />
+        ) : (
+          sectioned.map((sec) => {
+            const subtotal = sec.accounts.reduce((s, a) => s + (a.balance ?? 0), 0);
+            return (
+              <View key={sec.cat} style={{ marginBottom: 14 }}>
+                <View style={styles.sectionHead}>
+                  <Label>{`${labelFor(sec.cat, i18n)} · ${sec.accounts.length}`}</Label>
+                  <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.inkSoft, fontVariant: ["tabular-nums"] }}>
+                    {formatEUR(subtotal, { masked })}
+                  </Text>
+                </View>
+                <View style={[styles.sectionList, { backgroundColor: t.surface, borderColor: t.line }]}>
+                  {sec.accounts.map((a, i) => (
+                    <AccountRow
+                      key={a.id}
+                      account={a}
+                      masked={masked}
+                      isFirst={i === 0}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/account/[id]",
+                          params: { id: a.id, name: a.name, type: a.type },
+                        })
+                      }
+                    />
+                  ))}
+                </View>
+              </View>
+            );
+          })
+        )}
+
+        <Pressable
+          onPress={() => setAddAccountModalVisible(true)}
+          style={({ pressed }) => [
+            styles.addButton,
+            {
+              borderColor: t.lineStrong,
+              backgroundColor: t.surface,
+              opacity: pressed ? 0.85 : 1,
+            },
+          ]}
+        >
+          <IconPlus size={13} color={t.ink} />
+          <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 13, color: t.ink, marginLeft: 6 }}>
+            {i18n.add_manual_account}
+          </Text>
+        </Pressable>
+      </ScrollView>
+
       <CashModal
         visible={isCashModalVisible}
         value={tempCashValue}
         onChangeText={setTempCashValue}
         onSave={handleSaveCash}
         onClose={() => setCashModalVisible(false)}
-        textColor={textColor}
-        backgroundColor={backgroundColor}
-        tintColor={tintColor}
+        textColor={t.ink}
+        backgroundColor={t.bg}
+        tintColor={t.accent}
         i18n={i18n}
       />
       <AddAccountModal
@@ -175,98 +250,218 @@ export function AccountsScreen() {
         setBalance={setNewAccountBalance}
         category={newAccountCategory}
         setCategory={setNewAccountCategory}
-        textColor={textColor}
-        backgroundColor={backgroundColor}
-        tintColor={tintColor}
+        textColor={t.ink}
+        backgroundColor={t.bg}
+        tintColor={t.accent}
         i18n={i18n}
-      />
-      <View style={styles.headerRow}>
-        <View>
-          <Text style={[styles.title, { color: textColor }]}>{i18n.accounts_title}</Text>
-          <Text style={[styles.subtitle, { color: textColor, opacity: 0.6 }]}>
-            {i18n.accounts_subtitle}
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={() => refreshAccounts()}
-          disabled={isRefreshing}
-          style={[styles.refreshButton, { backgroundColor: tintColor + "20" }]}
-        >
-          {isRefreshing ? (
-            <ActivityIndicator size="small" color={tintColor} />
-          ) : (
-            <Ionicons name="refresh" size={24} color={tintColor} />
-          )}
-        </TouchableOpacity>
-      </View>
-      <SectionList
-        sections={sections}
-        renderItem={renderAccount}
-        renderSectionHeader={renderSectionHeader}
-        keyExtractor={(item) => item.id}
-        style={styles.list}
-        contentContainerStyle={styles.listContent}
-        ListHeaderComponent={SummaryHeader}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={tintColor} />
-        }
-        ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={{ fontSize: 48 }}>🏦</Text>
-            <Text style={[styles.emptyText, { color: textColor, opacity: 0.5 }]}>
-              {i18n.no_accounts}
-            </Text>
-            <Text style={[styles.emptyHint, { color: textColor, opacity: 0.4 }]}>
-              {i18n.no_accounts_hint}
-            </Text>
-            <TouchableOpacity
-              style={[styles.addAccountButton, { backgroundColor: tintColor, marginTop: 32 }]}
-              onPress={() => setAddAccountModalVisible(true)}
-            >
-              <Text style={[styles.addAccountText, { color: backgroundColor }]}>
-                {i18n.add_manual_account}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        }
       />
     </View>
   );
 }
 
+interface AccountRowProps {
+  account: UnifiedAccount;
+  masked: boolean;
+  isFirst: boolean;
+  onPress: () => void;
+}
+
+function AccountRow({ account, masked, isFirst, onPress }: AccountRowProps) {
+  const t = useFMTheme();
+  const isConnected = account.type === "connected";
+  const initial = (account.bankName || account.name).charAt(0).toUpperCase();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.row,
+        {
+          borderTopColor: isFirst ? "transparent" : t.line,
+          borderTopWidth: isFirst ? 0 : 1,
+          opacity: pressed ? 0.85 : 1,
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.avatar,
+          { backgroundColor: t.surfaceAlt, borderColor: t.line },
+        ]}
+      >
+        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: t.inkSoft, letterSpacing: -0.3 }}>
+          {initial}
+        </Text>
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink, lineHeight: 16 }} numberOfLines={1}>
+          {account.name}
+        </Text>
+        <View style={styles.statusRow}>
+          <View
+            style={{
+              width: 5,
+              height: 5,
+              borderRadius: 3,
+              backgroundColor: isConnected ? t.pos : "transparent",
+              borderWidth: isConnected ? 0 : 1,
+              borderColor: t.inkMuted,
+            }}
+          />
+          <Text style={{ fontFamily: FMFonts.sans, fontSize: 10.5, color: t.inkMuted, marginLeft: 4 }} numberOfLines={1}>
+            {isConnected ? account.bankName : "Manual"}
+          </Text>
+        </View>
+      </View>
+      <View style={{ marginRight: 10 }}>
+        <Spark data={makePlaceholderSpark(account.balance ?? 0)} width={56} height={18} neg={(account.balance ?? 0) < 0} />
+      </View>
+      <View style={{ alignItems: "flex-end" }}>
+        {account.loading ? (
+          <ActivityIndicator size="small" color={t.accent} />
+        ) : account.error ? (
+          <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.neg }}>Error</Text>
+        ) : (
+          <Balance value={account.balance ?? 0} masked={masked} size={13} />
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+interface EmptyStateProps {
+  onAdd: () => void;
+  i18n: { no_accounts: string; no_accounts_hint: string; add_manual_account: string };
+}
+
+function EmptyState({ onAdd, i18n }: EmptyStateProps) {
+  const t = useFMTheme();
+  return (
+    <View style={styles.empty}>
+      <View style={[styles.emptyCircle, { backgroundColor: t.surfaceAlt, borderColor: t.lineStrong }]} />
+      <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 14, color: t.ink, marginTop: 14 }}>
+        {i18n.no_accounts}
+      </Text>
+      <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 4, textAlign: "center" }}>
+        {i18n.no_accounts_hint}
+      </Text>
+      <Pressable
+        onPress={onAdd}
+        style={({ pressed }) => [
+          styles.emptyBtn,
+          { backgroundColor: t.ink, opacity: pressed ? 0.85 : 1 },
+        ]}
+      >
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 13, color: t.bg }}>
+          {i18n.add_manual_account}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function labelFor(cat: Cat, i18n: any): string {
+  if (cat === "Giro") return i18n.cat_giro ?? "Giro";
+  if (cat === "Savings") return i18n.cat_savings ?? "Savings";
+  if (cat === "Stock") return i18n.cat_stock ?? "Stock";
+  return cat;
+}
+
+// Placeholder shape until real balance history is wired in (task #9).
+function makePlaceholderSpark(balance: number): number[] {
+  const sign = balance < 0 ? -1 : 1;
+  return [0.7, 0.85, 0.95, 0.9, 1, 0.97, 1].map((v) => v * sign);
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, paddingTop: 60 },
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 },
-  refreshButton: { padding: 8, borderRadius: 20 },
-  centered: { justifyContent: "center", alignItems: "center" },
-  title: { fontSize: 28, fontWeight: "700", marginBottom: 4 },
-  subtitle: { fontSize: 15, marginBottom: 20 },
-  summaryContainer: { marginBottom: 24, padding: 16, borderRadius: 16, backgroundColor: "rgba(128,128,128,0.08)" },
-  totalLabel: { fontSize: 14, fontWeight: "500", marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 },
-  totalAmount: { fontSize: 36, fontWeight: "800", marginBottom: 24 },
-  breakdownContainer: { gap: 16 },
-  breakdownItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  breakdownLabel: { fontSize: 16, fontWeight: "500" },
-  breakdownValue: { fontSize: 18, fontWeight: "600" },
-  editBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  editBadgeText: { fontSize: 10, fontWeight: "bold" },
-  addAccountButton: { marginTop: 24, padding: 12, borderRadius: 8, borderWidth: 1, alignItems: "center", borderStyle: "dashed" },
-  addAccountText: { fontWeight: "600", fontSize: 15 },
-  list: { flex: 1, overflow: "visible" },
-  listContent: { gap: 12, paddingBottom: 40 },
-  sectionHeader: { paddingVertical: 8, marginBottom: 8, marginTop: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: "700" },
-  accountCard: { borderRadius: 16, padding: 16, marginBottom: 12 },
-  accountHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
-  accountInfo: { flex: 1, marginRight: 12 },
-  bankLabel: { fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 },
-  accountName: { fontSize: 17, fontWeight: "600", marginBottom: 4 },
-  iban: { fontSize: 12, fontFamily: "monospace" },
-  balanceContainer: { alignItems: "flex-end" },
-  balanceAmount: { fontSize: 20, fontWeight: "700" },
-  balanceLabel: { fontSize: 12, marginTop: 2 },
-  errorText: { fontSize: 14, fontWeight: "500" },
-  emptyState: { marginTop: 40, justifyContent: "center", alignItems: "center", gap: 8 },
-  emptyText: { fontSize: 18, fontWeight: "600" },
-  emptyHint: { fontSize: 14 },
+  root: { flex: 1 },
+  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  scroll: { paddingHorizontal: 18, paddingBottom: 96 },
+  netCard: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  heroRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 4,
+  },
+  netSplit: {
+    flexDirection: "row",
+    marginTop: 10,
+    gap: 14,
+  },
+  netSplitLabel: {
+    fontFamily: FMFonts.sans,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
+  netSplitValue: {
+    fontFamily: FMFonts.sansMedium,
+    fontSize: 12,
+    marginTop: 2,
+    fontVariant: ["tabular-nums"],
+  },
+  sectionHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: 6,
+    paddingHorizontal: 2,
+  },
+  sectionList: {
+    borderWidth: 1,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  row: {
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  avatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 7,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 2,
+  },
+  addButton: {
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  empty: {
+    alignItems: "center",
+    paddingVertical: 40,
+  },
+  emptyCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 1,
+    borderStyle: "dashed",
+  },
+  emptyBtn: {
+    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 6,
+  },
 });

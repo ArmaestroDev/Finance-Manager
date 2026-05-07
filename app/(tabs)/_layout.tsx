@@ -1,82 +1,26 @@
 import { Tabs } from "expo-router";
-import React from "react";
+import { Platform } from "react-native";
 
-import { HapticTab } from "../../src/shared/components/haptic-tab";
-import { IconSymbol } from "../../src/shared/components/ui/icon-symbol";
-import { Colors } from "../../src/constants/theme";
-import { useSettings } from "../../src/shared/context/SettingsContext";
-import { useColorScheme } from "../../src/shared/hooks/use-color-scheme";
+import { BottomTabBar } from "@/src/shared/components/BottomTabBar";
 
+// On web we render the persistent DesktopShell from inside each (tabs) screen,
+// so the bottom tab bar is hidden by setting `tabBarStyle: { display: 'none' }`.
+// On native we replace the default tab bar with our 4-tab + center-"+" design.
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-  const theme = Colors[colorScheme ?? "light"];
-  const { i18n } = useSettings(); // Added hook
+  const isWeb = Platform.OS === "web";
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: theme.tint,
-        tabBarInactiveTintColor: theme.tabIconDefault,
         headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarShowLabel: false,
-        tabBarStyle: {
-          backgroundColor: theme.surface,
-          borderTopWidth: 0,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
+        tabBarStyle: isWeb ? { display: "none" } : undefined,
       }}
+      tabBar={isWeb ? () => null : (props) => <BottomTabBar {...props} />}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: i18n.tab_home,
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="house.fill" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="accounts"
-        options={{
-          title: i18n.tab_accounts,
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="creditcard.fill" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="debts"
-        options={{
-          title: i18n.tab_debts,
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="person.2.fill" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="invest"
-        options={{
-          title: "Invest",
-          tabBarIcon: ({ color }) => (
-            <IconSymbol
-              size={24}
-              name="chart.line.uptrend.xyaxis"
-              color={color}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="connections"
-        options={{
-          title: i18n.tab_connections,
-          tabBarIcon: ({ color }) => (
-            <IconSymbol size={24} name="link" color={color} />
-          ),
-        }}
-      />
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="accounts" />
+      <Tabs.Screen name="debts" />
+      <Tabs.Screen name="invest" />
     </Tabs>
   );
 }

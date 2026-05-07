@@ -6,6 +6,7 @@ interface TransactionCategory {
   id: string;
   name: string;
   color: string;
+  system?: "ignore";
 }
 
 interface UseAccountStatsParams {
@@ -26,6 +27,8 @@ export function useAccountStats({
       
       // Exclude uncategorized transactions from stats as requested
       if (!cat) return;
+      // Exclude system "Ignore" category (self-transfers, investment buys)
+      if (cat.system === "ignore") return;
 
       const amount = getTransactionAmount(tx);
       if (amount >= 0) {

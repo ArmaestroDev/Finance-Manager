@@ -1,165 +1,379 @@
-import { Ionicons } from "@expo/vector-icons";
 import { Stack } from "expo-router";
-import React, { useMemo, useState } from "react";
-import { Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useState } from "react";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+
+import { FMFonts } from "@/src/constants/theme";
+import { DesktopShell } from "@/src/shared/components/DesktopShell";
+import {
+  Balance,
+  Button,
+  IconPeople,
+  IconPlus,
+  Label,
+  Money,
+  formatEUR,
+  splitForHero,
+  useFMTheme,
+} from "@/src/shared/design";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import { DebtEntity, useDebts } from "../../context/DebtsContext";
-import { useSettings } from "../../../../shared/context/SettingsContext";
-import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
-import { AddDebtModal } from "./AddDebtModal";
-import { DebtDetailModal } from "./DebtDetailModal";
-import { ManagePeopleModal } from "./ManagePeopleModal";
+import { useDebtsSummary } from "../../hooks/useDebtsSummary";
+import { AddDebtModal } from "../AddDebtModal";
+import { DebtDetailModal } from "../DebtDetailModal";
+import { ManagePeopleModal } from "../ManagePeopleModal";
 
 export function DebtsScreen() {
+  const t = useFMTheme();
   const { entities, debts, addEntity, updateEntity, deleteEntity, addDebt, getNetBalance } = useDebts();
-  const backgroundColor = useThemeColor({}, "background");
-  const textColor = useThemeColor({}, "text");
-  const tintColor = useThemeColor({}, "tint");
-  const surfaceColor = useThemeColor({}, "surface");
-  const { i18n } = useSettings();
+  const { i18n, isBalanceHidden } = useSettings();
+  const masked = isBalanceHidden;
 
   const [isManageModalVisible, setManageModalVisible] = useState(false);
   const [isAddDebtModalVisible, setAddDebtModalVisible] = useState(false);
   const [isDetailModalVisible, setDetailModalVisible] = useState(false);
   const [detailEntity, setDetailEntity] = useState<DebtEntity | null>(null);
 
-  const entitiesWithBalance = useMemo(() => entities.map((e) => ({ ...e, netBalance: getNetBalance(e.id) })), [entities, debts, getNetBalance]);
-  const totalNet = useMemo(() => entitiesWithBalance.reduce((acc, e) => acc + e.netBalance, 0), [entitiesWithBalance]);
+  const {
+    entitiesWithBalance,
+    totalNet,
+    owedToYou,
+    youOwe,
+    activeCount,
+    settledCount,
+  } = useDebtsSummary();
 
-  const formatCurrency = (amount: number) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Math.abs(amount));
+  const heroParts = splitForHero(totalNet, masked);
+  const heroBg = totalNet < 0 ? t.negSoft : totalNet > 0 ? t.posSoft : t.surface;
+  const heroFg = totalNet > 0 ? t.pos : totalNet < 0 ? t.neg : t.ink;
 
-  const openDetail = (entity: DebtEntity) => { setDetailEntity(entity); setDetailModalVisible(true); };
+  const openDetail = (entity: DebtEntity) => {
+    setDetailEntity(entity);
+    setDetailModalVisible(true);
+  };
+
+  const handleAddPress = () => {
+    if (entities.length === 0) {
+      Alert.alert(
+        i18n.add_person_alert_title ?? "Add a person first",
+        i18n.add_person_alert_msg ?? "You need to add a person before tracking a debt.",
+        [
+          { text: i18n.cancel ?? "Cancel", style: "cancel" },
+          { text: i18n.add_person_btn ?? "Add person", onPress: () => setManageModalVisible(true) },
+        ],
+      );
+    } else {
+      setAddDebtModalVisible(true);
+    }
+  };
 
   return (
-    <View style={[styles.container, { backgroundColor }]}>
+    <DesktopShell>
       <Stack.Screen options={{ headerShown: false }} />
-
-      <ManagePeopleModal visible={isManageModalVisible} entities={entities} onAdd={async (name) => addEntity(name, "person")} onUpdate={async (id, name) => updateEntity(id, name)} onDelete={async (id) => deleteEntity(id)} onClose={() => setManageModalVisible(false)} backgroundColor={backgroundColor} textColor={textColor} tintColor={tintColor} i18n={i18n} />
-      <AddDebtModal visible={isAddDebtModalVisible} entities={entities} onAdd={addDebt} onClose={() => setAddDebtModalVisible(false)} backgroundColor={backgroundColor} textColor={textColor} tintColor={tintColor} i18n={i18n} />
-      <DebtDetailModal visible={isDetailModalVisible} entity={detailEntity} debts={debts} netBalance={detailEntity ? getNetBalance(detailEntity.id) : 0} onClose={() => setDetailModalVisible(false)} backgroundColor={backgroundColor} textColor={textColor} tintColor={tintColor} i18n={i18n} />
-
-      {/* Top bar */}
-      <View style={[styles.topBar, { borderBottomColor: textColor + "10" }]}>
-        <Text style={[styles.pageTitle, { color: textColor }]}>{i18n.debts_title}</Text>
-        <View style={styles.topActions}>
-          <TouchableOpacity
-            style={[styles.topBtn, { backgroundColor: tintColor }]}
-            onPress={() => {
-              if (entities.length === 0) {
-                Alert.alert(i18n.no_people_alert_title || "No People", i18n.add_person_alert_msg, [{ text: i18n.cancel, style: "cancel" }, { text: i18n.add_person_btn, onPress: () => setManageModalVisible(true) }]);
-              } else {
-                setAddDebtDebtModalVisible(true);
-              }
-            }}
-          >
-            <Ionicons name="add" size={18} color={backgroundColor} />
-            <Text style={{ color: backgroundColor, fontWeight: "600", fontSize: 13 }}>{i18n.add_debt_title}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.topBtn, { backgroundColor: textColor + "10" }]} onPress={() => setManageModalVisible(true)}>
-            <Ionicons name="people" size={18} color={textColor} />
-            <Text style={{ color: textColor, fontWeight: "600", fontSize: 13 }}>{i18n.manage_people}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Two-column: summary left, list right */}
-      <View style={styles.twoColumn}>
-        {/* Left: summary */}
-        <View style={[styles.leftPanel, { borderRightColor: textColor + "10" }]}>
-          <Text style={[styles.sectionLabel, { color: textColor }]}>{i18n.total_net_position.toUpperCase()}</Text>
-          <Text style={[styles.totalAmount, { color: totalNet >= 0 ? "#2ecc71" : "#e74c3c" }]}>
-            {totalNet < 0 ? "-" : "+"}{formatCurrency(totalNet)}
-          </Text>
-          <View style={[styles.summaryBreakdown, { backgroundColor: surfaceColor }]}>
-            <View style={styles.breakRow}>
-              <Text style={{ color: "#2ecc71", fontSize: 13, fontWeight: "600" }}>{i18n.they_owe_you}</Text>
-              <Text style={{ color: "#2ecc71", fontWeight: "700" }}>
-                +{formatCurrency(entitiesWithBalance.filter(e => e.netBalance > 0).reduce((s, e) => s + e.netBalance, 0))}
-              </Text>
-            </View>
-            <View style={[styles.breakDivider, { backgroundColor: textColor + "10" }]} />
-            <View style={styles.breakRow}>
-              <Text style={{ color: "#e74c3c", fontSize: 13, fontWeight: "600" }}>{i18n.you_owe}</Text>
-              <Text style={{ color: "#e74c3c", fontWeight: "700" }}>
-                -{formatCurrency(entitiesWithBalance.filter(e => e.netBalance < 0).reduce((s, e) => s + Math.abs(e.netBalance), 0))}
-              </Text>
-            </View>
+      <ScrollView contentContainerStyle={[styles.page, { backgroundColor: t.bg }]} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.pageTitle, { color: t.ink }]}>{i18n.debts_title}</Text>
+            <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 4 }}>
+              {activeCount} active · {settledCount} settled
+            </Text>
           </View>
-          <Text style={[styles.hint, { color: textColor }]}>
-            {entities.length === 1 ? i18n.person_tracked : i18n.people_tracked.replace("{count}", entities.length.toString())}
-          </Text>
+          <View style={{ flexDirection: "row", gap: 6 }}>
+            <Button
+              variant="secondary"
+              icon={<IconPeople size={12} color={t.ink} />}
+              onPress={() => setManageModalVisible(true)}
+            >
+              {i18n.manage_people}
+            </Button>
+            <Button
+              variant="primary"
+              icon={<IconPlus size={12} color={t.bg} />}
+              onPress={handleAddPress}
+            >
+              Add debt
+            </Button>
+          </View>
         </View>
 
-        {/* Right: entities table */}
-        <View style={styles.rightPanel}>
-          {/* Table header */}
-          <View style={[styles.tableHeader, { borderBottomColor: textColor + "15" }]}>
-            <Text style={[styles.th, { color: textColor }]}>{i18n.person_label}</Text>
-            <Text style={[styles.th, { color: textColor }]}>Status</Text>
-            <Text style={[styles.thRight, { color: textColor }]}>{i18n.net_balance}</Text>
-          </View>
-          <FlatList
-            data={entitiesWithBalance}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={{ paddingBottom: 40 }}
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <Text style={{ fontSize: 48 }}>🤝</Text>
-                <Text style={{ color: textColor, opacity: 0.5, marginTop: 12, fontSize: 15 }}>{i18n.no_people}</Text>
-                <TouchableOpacity onPress={() => setManageModalVisible(true)} style={{ marginTop: 12 }}>
-                  <Text style={{ color: tintColor, fontWeight: "600" }}>{i18n.manage_people}</Text>
-                </TouchableOpacity>
-              </View>
-            }
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[styles.entityRow, { borderBottomColor: textColor + "08" }]}
-                onPress={() => openDetail(item)}
-                activeOpacity={0.7}
+        <View style={styles.statsRow}>
+          <View style={[styles.netCard, { backgroundColor: heroBg, borderColor: t.line }]}>
+            <Label>{i18n.total_net_position}</Label>
+            <View style={styles.heroRow}>
+              <Text
+                style={{
+                  fontFamily: FMFonts.display,
+                  fontSize: 36,
+                  color: heroFg,
+                  letterSpacing: -0.5,
+                  lineHeight: 38,
+                }}
               >
-                <View style={styles.personCell}>
-                  <View style={[styles.avatar, { backgroundColor: tintColor }]}>
-                    <Text style={{ color: backgroundColor, fontWeight: "700" }}>{item.name.charAt(0).toUpperCase()}</Text>
-                  </View>
-                  <Text style={[styles.personName, { color: textColor }]}>{item.name}</Text>
-                </View>
-                <Text style={{ color: item.netBalance > 0 ? "#2ecc71" : item.netBalance < 0 ? "#e74c3c" : textColor, opacity: item.netBalance === 0 ? 0.4 : 1, fontSize: 13, fontWeight: "500" }}>
-                  {item.netBalance > 0 ? i18n.owes_me : item.netBalance < 0 ? i18n.i_owe : i18n.settled}
-                </Text>
-                <Text style={[styles.balanceCell, { color: item.netBalance >= 0 ? "#2ecc71" : "#e74c3c" }]}>
-                  {item.netBalance !== 0 ? `${item.netBalance > 0 ? "+" : "-"}${formatCurrency(item.netBalance)}` : "—"}
-                </Text>
-                <Ionicons name="chevron-forward" size={16} color={textColor + "30"} />
-              </TouchableOpacity>
-            )}
-          />
+                {totalNet > 0 ? "+" : ""}
+                {heroParts.sign}
+                {heroParts.integer}
+                <Text style={{ color: t.inkMuted }}>{heroParts.fraction}</Text>
+              </Text>
+              <Text
+                style={{
+                  fontFamily: FMFonts.display,
+                  fontSize: 20,
+                  color: t.inkSoft,
+                  marginLeft: 4,
+                }}
+              >
+                €
+              </Text>
+            </View>
+            <Text style={{ fontFamily: FMFonts.sans, fontSize: 11.5, color: t.inkSoft, marginTop: 6 }}>
+              {totalNet < 0
+                ? "You owe more than you are owed."
+                : totalNet > 0
+                  ? "You are owed more than you owe."
+                  : "Settled overall."}
+            </Text>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: t.surface, borderColor: t.line }]}>
+            <Label>They owe you</Label>
+            <View style={{ marginTop: 8 }}>
+              <Balance value={owedToYou} masked={masked} size={22} />
+            </View>
+          </View>
+          <View style={[styles.statCard, { backgroundColor: t.surface, borderColor: t.line }]}>
+            <Label>You owe</Label>
+            <View style={{ marginTop: 8 }}>
+              <Balance value={youOwe} masked={masked} size={22} />
+            </View>
+          </View>
         </View>
-      </View>
-    </View>
+
+        <View style={[styles.tableWrap, { backgroundColor: t.surface, borderColor: t.line }]}>
+          <View style={[styles.tableHead, { backgroundColor: t.surfaceAlt, borderBottomColor: t.line }]}>
+            <Label style={{ flex: 1 }}>Person / institution</Label>
+            <Label style={{ width: 110 }}>Type</Label>
+            <Label style={{ width: 110, textAlign: "right" }}>They owe</Label>
+            <Label style={{ width: 110, textAlign: "right" }}>You owe</Label>
+            <Label style={{ width: 130, textAlign: "right" }}>Net</Label>
+          </View>
+
+          {entitiesWithBalance.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 14, color: t.ink }}>
+                {i18n.no_people ?? "No people yet"}
+              </Text>
+              <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 4 }}>
+                Add people or institutions to track who owes whom.
+              </Text>
+              <View style={{ marginTop: 12 }}>
+                <Button variant="primary" icon={<IconPeople size={12} color={t.bg} />} onPress={() => setManageModalVisible(true)}>
+                  {i18n.manage_people}
+                </Button>
+              </View>
+            </View>
+          ) : (
+            entitiesWithBalance.map((p) => {
+              const settled = p.netBalance === 0;
+              const isInstitution = p.type === "institution";
+              const they = debts
+                .filter((d) => d.entityId === p.id && d.type === "OWES_ME")
+                .reduce((s, d) => s + d.amount, 0);
+              const you = debts
+                .filter((d) => d.entityId === p.id && d.type === "I_OWE")
+                .reduce((s, d) => s + d.amount, 0);
+              return (
+                <Pressable
+                  key={p.id}
+                  onPress={() => openDetail(p)}
+                  style={({ pressed }) => [
+                    styles.row,
+                    {
+                      borderTopColor: t.line,
+                      opacity: settled ? 0.55 : pressed ? 0.85 : 1,
+                    },
+                  ]}
+                >
+                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+                    <View
+                      style={[
+                        styles.avatar,
+                        {
+                          backgroundColor: isInstitution ? t.surfaceAlt : t.accentSoft,
+                          borderColor: t.line,
+                        },
+                      ]}
+                    >
+                      <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: isInstitution ? t.inkSoft : t.accent }}>
+                        {p.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink, marginLeft: 10 }} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                    {settled ? (
+                      <Text
+                        style={{
+                          fontFamily: FMFonts.sansSemibold,
+                          fontSize: 10,
+                          color: t.inkMuted,
+                          backgroundColor: t.surfaceAlt,
+                          paddingHorizontal: 6,
+                          paddingVertical: 2,
+                          marginLeft: 8,
+                          borderRadius: 3,
+                          letterSpacing: 0.4,
+                          textTransform: "uppercase",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {i18n.settled ?? "Settled"}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={[styles.cellText, { width: 110, color: t.inkSoft }]}>
+                    {isInstitution ? "Institution" : "Person"}
+                  </Text>
+                  <Text
+                    style={{
+                      width: 110,
+                      textAlign: "right",
+                      fontFamily: FMFonts.sansMedium,
+                      fontSize: 12,
+                      color: they > 0 ? t.pos : t.inkMuted,
+                      fontVariant: ["tabular-nums"],
+                    }}
+                  >
+                    {masked ? "··" : they ? formatEUR(they) : "—"}
+                  </Text>
+                  <Text
+                    style={{
+                      width: 110,
+                      textAlign: "right",
+                      fontFamily: FMFonts.sansMedium,
+                      fontSize: 12,
+                      color: you > 0 ? t.neg : t.inkMuted,
+                      fontVariant: ["tabular-nums"],
+                    }}
+                  >
+                    {masked ? "··" : you ? formatEUR(you) : "—"}
+                  </Text>
+                  <View style={{ width: 130, alignItems: "flex-end" }}>
+                    <Money value={p.netBalance} masked={masked} size={13} total={!settled} />
+                  </View>
+                </Pressable>
+              );
+            })
+          )}
+        </View>
+      </ScrollView>
+
+      <ManagePeopleModal
+        visible={isManageModalVisible}
+        entities={entities}
+        onAdd={async (name) => addEntity(name, "person")}
+        onUpdate={async (id, name) => updateEntity(id, name)}
+        onDelete={async (id) => deleteEntity(id)}
+        onClose={() => setManageModalVisible(false)}
+        backgroundColor={t.bg}
+        textColor={t.ink}
+        tintColor={t.accent}
+        i18n={i18n}
+      />
+      <AddDebtModal
+        visible={isAddDebtModalVisible}
+        entities={entities}
+        onAdd={addDebt}
+        onClose={() => setAddDebtModalVisible(false)}
+        backgroundColor={t.bg}
+        textColor={t.ink}
+        tintColor={t.accent}
+        i18n={i18n}
+      />
+      <DebtDetailModal
+        visible={isDetailModalVisible}
+        entity={detailEntity}
+        debts={debts}
+        netBalance={detailEntity ? getNetBalance(detailEntity.id) : 0}
+        onClose={() => setDetailModalVisible(false)}
+        backgroundColor={t.bg}
+        textColor={t.ink}
+        tintColor={t.accent}
+        i18n={i18n}
+      />
+    </DesktopShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  topBar: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 32, paddingVertical: 20, borderBottomWidth: 1 },
-  pageTitle: { fontSize: 26, fontWeight: "800" },
-  topActions: { flexDirection: "row", gap: 10 },
-  topBtn: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 999 },
-  twoColumn: { flex: 1, flexDirection: "row" },
-  leftPanel: { width: 280, padding: 24, borderRightWidth: 1 },
-  rightPanel: { flex: 1, paddingHorizontal: 24, paddingTop: 16 },
-  sectionLabel: { fontSize: 11, fontWeight: "700", letterSpacing: 1, opacity: 0.5, marginBottom: 8 },
-  totalAmount: { fontSize: 36, fontWeight: "800", marginBottom: 20 },
-  summaryBreakdown: { borderRadius: 14, padding: 16, gap: 12, marginBottom: 16 },
-  breakRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  breakDivider: { height: 1 },
-  hint: { opacity: 0.4, fontSize: 12 },
-  tableHeader: { flexDirection: "row", alignItems: "center", paddingVertical: 10, borderBottomWidth: 1, marginBottom: 4 },
-  th: { flex: 1, fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.5 },
-  thRight: { width: 120, textAlign: "right", fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.5 },
-  entityRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, gap: 16 },
-  personCell: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
-  avatar: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center" },
-  personName: { fontSize: 15, fontWeight: "600" },
-  balanceCell: { width: 120, textAlign: "right", fontSize: 15, fontWeight: "700" },
-  emptyState: { alignItems: "center", marginTop: 80 },
+  page: { padding: 24 },
+  header: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    marginBottom: 18,
+  },
+  pageTitle: {
+    fontFamily: FMFonts.display,
+    fontSize: 30,
+    lineHeight: 32,
+    letterSpacing: -0.5,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 16,
+  },
+  netCard: {
+    flex: 1.4,
+    padding: 18,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  statCard: {
+    flex: 1,
+    padding: 18,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  heroRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 8,
+  },
+  tableWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  tableHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    gap: 16,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    gap: 16,
+  },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  cellText: {
+    fontFamily: FMFonts.sans,
+    fontSize: 11,
+  },
+  empty: {
+    paddingHorizontal: 18,
+    paddingVertical: 40,
+    alignItems: "center",
+  },
 });

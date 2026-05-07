@@ -6,7 +6,7 @@ import React, {
     useEffect,
     useState,
 } from "react";
-import { getBalances, type Account } from "../../../services/enableBanking";
+import { getBalances, pickLatestBalance, type Account } from "../../../services/enableBanking";
 
 // --- Types (Re-used/Adapted from accounts.tsx) ---
 export type AccountCategory = "Giro" | "Savings" | "Stock";
@@ -165,10 +165,10 @@ export function AccountsProvider({ children }: { children: ReactNode }) {
           if (item.account) {
             try {
               const balanceData = await getBalances(item.account.uid);
-              const mainBalance =
-                balanceData.balances.find(
-                  (b) => b.balance_type === "CLAV" || b.balance_type === "XPCD",
-                ) || balanceData.balances[0];
+              const mainBalance = pickLatestBalance(balanceData.balances);
+              if (!mainBalance) {
+                return { ...item, loading: false };
+              }
 
               return {
                 ...item,

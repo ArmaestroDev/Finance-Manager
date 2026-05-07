@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Alert, ActivityIndicator, Modal, StyleSheet, View, Text } from "react-native";
-import { getTransactions, getBalances, type Transaction } from "../../../services/enableBanking";
+import { getTransactions, getBalances, pickLatestBalance, type Transaction } from "../../../services/enableBanking";
 import { toApiDate } from "../../../shared/utils/date";
 import { useDateFilter } from "../../../shared/context/DateFilterContext";
 import { useAccounts, type UnifiedAccount } from "../../accounts/context/AccountsContext";
@@ -186,10 +186,12 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
               await AsyncStorage.setItem(cacheKey, JSON.stringify(mergedTxs));
             }
             
-            // Check balance update
+            // Check balance update — always use the latest reported balance
+            // from Enable Banking (most recent reference_date), not a balance
+            // that's pinned to a specific type/date.
             if (apiTxs.length > 0) {
                getBalances(acc.id).then(balanceData => {
-                 const mainBalance = balanceData.balances.find((b: any) => b.balance_type === "CLAV" || b.balance_type === "XPCD") || balanceData.balances[0];
+                 const mainBalance = pickLatestBalance(balanceData.balances);
                  if (mainBalance) {
                     const newBalance = parseFloat(mainBalance.balance_amount.amount);
                     if (acc.balance !== newBalance) {

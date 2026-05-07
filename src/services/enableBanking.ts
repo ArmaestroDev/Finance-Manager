@@ -102,6 +102,20 @@ export async function getBalances(
   return response.json();
 }
 
+// Pick the most recently reported balance from an Enable Banking response.
+// The /balances endpoint returns multiple entries (e.g. CLAV closing-booked,
+// XPCD expected, ITAV interim available) — each with its own reference_date.
+// We always want the freshest figure regardless of type, so we sort by
+// reference_date desc and fall back to insertion order when dates are missing.
+export function pickLatestBalance(balances: Balance[]): Balance | undefined {
+  if (!balances || balances.length === 0) return undefined;
+  return [...balances].sort((a, b) => {
+    const da = a.reference_date || "";
+    const db = b.reference_date || "";
+    return db.localeCompare(da);
+  })[0];
+}
+
 // Get account transactions
 export async function getTransactions(
   accountId: string,
