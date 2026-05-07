@@ -27,7 +27,6 @@ export function TransactionItem({ item, getCategoryForTransaction, onPress }: Tr
   const amount = getTransactionAmount(item);
   const isNegative = amount < 0;
   const name = item.creditor?.name || item.debtor?.name || "Unknown Transaction";
-  const date = new Date(item.booking_date || item.value_date || "").toLocaleDateString();
   const reference = cleanRemittanceInfo(item.remittance_information);
   const txId = item.transaction_id || `gen_${item.booking_date || ""}_${item.transaction_amount.amount}_${item.creditor?.name || item.debtor?.name || ""}`;
   const txCat = getCategoryForTransaction(txId);

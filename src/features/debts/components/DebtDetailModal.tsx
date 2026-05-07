@@ -4,6 +4,7 @@ import { FlatList, StyleSheet, Text, View } from "react-native";
 import { FMFonts } from "@/src/constants/theme";
 import { Sheet } from "@/src/shared/components/Sheet";
 import { Button, Label, Money, formatEUR, splitForHero, useFMTheme } from "@/src/shared/design";
+import { formatDate } from "@/src/shared/utils/date";
 import type { DebtEntity, DebtItem } from "../context/DebtsContext";
 
 interface DebtDetailModalProps {
@@ -104,7 +105,7 @@ export function DebtDetailModal({
                 {item.description}
               </Text>
               <Text style={{ fontFamily: FMFonts.sans, fontSize: 10.5, color: t.inkMuted, marginTop: 2 }}>
-                {new Date(item.date).toLocaleDateString("en-GB")}
+                {formatDate(item.date)}
               </Text>
             </View>
             <Money

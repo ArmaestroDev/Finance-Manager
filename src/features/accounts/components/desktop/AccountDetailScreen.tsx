@@ -64,6 +64,7 @@ import type { Transaction } from "@/src/services/enableBanking";
 import { useAccounts } from "../../context/AccountsContext";
 import { useAccountStats } from "../../hooks/useAccountStats";
 import { AccountCategoryModal } from "../AccountCategoryModal";
+import { formatDate, formatWeekday } from "@/src/shared/utils/date";
 
 export function AccountDetailScreen() {
   const t = useFMTheme();
@@ -447,7 +448,7 @@ export function AccountDetailScreen() {
             {dateRangeLabel(filterDateFrom, filterDateTo)}
           </Chip>
           <Rule vertical style={{ marginHorizontal: 8, height: 14 }} />
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <CategoryFilterBar
               categories={categories}
               transactions={transactions}
@@ -910,14 +911,9 @@ function dateRangeLabel(from: string, to: string): string {
 
 function formatGroupHeader(iso: string): string {
   if (!iso || iso === "Unknown") return "Unknown date";
-  try {
-    const d = new Date(iso);
-    const dayMonth = d.toLocaleDateString("en-GB", { day: "2-digit", month: "long" });
-    const weekday = d.toLocaleDateString("en-GB", { weekday: "long" });
-    return `${iso} · ${weekday}`;
-  } catch {
-    return iso;
-  }
+  const date = formatDate(iso);
+  const weekday = formatWeekday(iso, true);
+  return weekday ? `${date} · ${weekday}` : date;
 }
 
 function currencySymbol(currency: string): string {

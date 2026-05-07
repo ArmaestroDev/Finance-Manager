@@ -37,6 +37,7 @@ import {
   Money,
   useFMTheme,
 } from "@/src/shared/design";
+import { formatDate } from "@/src/shared/utils/date";
 
 interface SearchContext {
   open: () => void;
@@ -256,7 +257,7 @@ function SearchSheet({ visible, onClose }: SearchSheetProps) {
                       const title = pickTransactionTitle(row.tx);
                       const amount = getTransactionAmount(row.tx);
                       const date = row.tx.booking_date || row.tx.value_date || "";
-                      const dateLabel = dayMonth(date);
+                      const dateLabel = formatDate(date);
                       const cat = row.category;
                       return (
                         <Pressable
@@ -327,16 +328,6 @@ function SearchSheet({ visible, onClose }: SearchSheetProps) {
       </Pressable>
     </Modal>
   );
-}
-
-function dayMonth(iso: string): string {
-  if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-  } catch {
-    return iso;
-  }
 }
 
 const styles = StyleSheet.create({

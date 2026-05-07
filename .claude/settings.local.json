@@ -8,7 +8,16 @@
       "Bash(npm run *)",
       "mcp__context7__resolve-library-id",
       "mcp__context7__query-docs",
-      "Bash(npx eslint *)"
+      "Bash(npx eslint *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(python -c \"from PIL import Image; print\\(Image.__version__\\)\")",
+      "PowerShell(python \"C:\\\\Users\\\\marma\\\\Documents\\\\Programming\\\\React Native\\\\finance-manager\\\\scripts\\\\process_logo.py\")",
+      "PowerShell(python -c \"from PIL import Image; im = Image.open\\(r'C:\\\\Users\\\\marma\\\\Documents\\\\Programming\\\\React Native\\\\finance-manager\\\\assets\\\\images\\\\logo.png'\\); print\\('mode:', im.mode, 'size:', im.size\\); a = im.split\\(\\)[3]; print\\('center alpha \\(256,256\\):', a.getpixel\\(\\(256,256\\)\\)\\); print\\('corner alpha \\(5,5\\):', a.getpixel\\(\\(5,5\\)\\)\\); print\\('gear edge alpha \\(50,256\\):', a.getpixel\\(\\(50,256\\)\\)\\)\")",
+      "PowerShell(npm run *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(python scripts/process_logo.py)",
+      "PowerShell(npx expo lint -- --quiet \"app/_layout.tsx\" \"src/constants/Strings.ts\" \"src/shared/components/DesktopShell.tsx\" 2>&1 | Select-Object -Last 20)",
+      "PowerShell(npx expo lint -- --quiet \"app/_layout.tsx\" \"src/constants/Strings.ts\" \"src/shared/components/DesktopShell.tsx\" 2>&1; \"ExitCode=$LASTEXITCODE\")"
     ]
   }
 }

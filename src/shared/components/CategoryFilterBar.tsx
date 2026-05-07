@@ -1,9 +1,18 @@
 import * as Haptics from "expo-haptics";
-import React, { useCallback } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useCallback, useRef, useState } from "react";
+import {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { FMFonts } from "@/src/constants/theme";
-import { useFMTheme } from "@/src/shared/design";
+import { IconChevR, useFMTheme } from "@/src/shared/design";
 import {
   getStableTxId,
   getTransactionAmount,
@@ -62,34 +71,86 @@ export function CategoryFilterBar({
     [onSelectFilter],
   );
 
+  const scrollRef = useRef<ScrollView>(null);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [scrollX, setScrollX] = useState(0);
+
+  const canScrollRight =
+    contentWidth > 0 &&
+    containerWidth > 0 &&
+    contentWidth - containerWidth - scrollX > 1;
+
+  const handleScrollRight = useCallback(() => {
+    if (!scrollRef.current || containerWidth === 0) return;
+    const targetX = Math.min(
+      scrollX + containerWidth * 0.7,
+      Math.max(0, contentWidth - containerWidth),
+    );
+    scrollRef.current.scrollTo({ x: targetX, animated: true });
+  }, [containerWidth, contentWidth, scrollX]);
+
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      setScrollX(e.nativeEvent.contentOffset.x);
+    },
+    [],
+  );
+
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.row}
-    >
-      <Pill
-        active={!selectedFilter}
-        onPress={() => handleSelect(null)}
+    <View style={styles.wrapper}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[
+          styles.row,
+          canScrollRight && { paddingRight: 28 },
+        ]}
+        onContentSizeChange={(w) => setContentWidth(w)}
+        onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
       >
-        {i18n.filter_all ?? "All"}
-      </Pill>
-      {categories
-        .filter((c) => usedCategoryIds.has(c.id))
-        .map((cat) => {
-          const isSelected = selectedFilter === cat.id;
-          return (
-            <Pill
-              key={cat.id}
-              active={isSelected}
-              color={cat.color}
-              onPress={() => handleSelect(isSelected ? null : cat.id)}
-            >
-              {cat.name}
-            </Pill>
-          );
-        })}
-    </ScrollView>
+        <Pill
+          active={!selectedFilter}
+          onPress={() => handleSelect(null)}
+        >
+          {i18n.filter_all ?? "All"}
+        </Pill>
+        {categories
+          .filter((c) => usedCategoryIds.has(c.id))
+          .map((cat) => {
+            const isSelected = selectedFilter === cat.id;
+            return (
+              <Pill
+                key={cat.id}
+                active={isSelected}
+                color={cat.color}
+                onPress={() => handleSelect(isSelected ? null : cat.id)}
+              >
+                {cat.name}
+              </Pill>
+            );
+          })}
+      </ScrollView>
+      {canScrollRight ? (
+        <Pressable
+          onPress={handleScrollRight}
+          style={({ pressed }) => [
+            styles.scrollArrow,
+            {
+              backgroundColor: t.surface,
+              borderColor: t.lineStrong,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+          hitSlop={6}
+        >
+          <IconChevR size={11} color={t.inkSoft} />
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
@@ -132,6 +193,11 @@ function Pill({ children, color, active, onPress }: PillProps) {
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    position: "relative",
+    flex: 1,
+    minWidth: 0,
+  },
   row: {
     flexDirection: "row",
     gap: 5,
@@ -144,5 +210,17 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
+  },
+  scrollArrow: {
+    position: "absolute",
+    right: 0,
+    top: "50%",
+    width: 22,
+    height: 22,
+    marginTop: -11,
+    borderRadius: 11,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

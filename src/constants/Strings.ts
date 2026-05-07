@@ -19,6 +19,9 @@ export const Strings = {
     income_label: "Income",
     expenses_label: "Expenses",
     uncategorized: "Uncategorized",
+    total: "Total",
+    average: "Avg",
+    avg_per_month: "Avg / month",
 
     // Accounts
     accounts_title: "Accounts",
@@ -238,6 +241,9 @@ export const Strings = {
     // Connections
     connect_bank: "Connect a bank",
     connected_accounts: "Connected accounts",
+
+    // Branding
+    app_title: "Finance Manager by Monte",
   },
   de: {
     // Tabs
@@ -259,6 +265,9 @@ export const Strings = {
     income_label: "Einkommen",
     expenses_label: "Ausgaben",
     uncategorized: "Unkategorisiert",
+    total: "Gesamt",
+    average: "Ø",
+    avg_per_month: "Ø / Monat",
 
     // Dashboard
     by_category: "Kategorie",
@@ -471,5 +480,8 @@ export const Strings = {
     main_account: "Hauptkonto",
     main_account_sub: "Konto, das für die Dashboard-Auswertung verwendet wird.",
     select_main_account: "Hauptkonto auswählen",
+
+    // Branding
+    app_title: "Finanzmanager von Monte",
   },
 };

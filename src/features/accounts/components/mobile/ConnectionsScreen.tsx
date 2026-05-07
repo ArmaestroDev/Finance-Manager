@@ -26,6 +26,7 @@ import {
 import { useSettings } from "@/src/shared/context/SettingsContext";
 import { useBankConnections, type StoredSession } from "../../hooks/useBankConnections";
 import { BankSelectionModal } from "../BankSelectionModal";
+import { formatDate } from "@/src/shared/utils/date";
 
 export function ConnectionsScreen() {
   const t = useFMTheme();
@@ -79,7 +80,7 @@ export function ConnectionsScreen() {
           </Text>
           <Text style={{ fontFamily: FMFonts.sans, fontSize: 10.5, color: t.inkMuted, marginTop: 2 }}>
             {i18n.connected_account_count.replace("{count}", item.accounts.length.toString())} ·{" "}
-            {i18n.connected_date.replace("{date}", new Date(item.connectedAt).toLocaleDateString("en-GB"))}
+            {i18n.connected_date.replace("{date}", formatDate(item.connectedAt))}
           </Text>
         </View>
         <View style={styles.liveTag}>

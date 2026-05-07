@@ -59,6 +59,7 @@ import type { Transaction } from "@/src/services/enableBanking";
 import { useAccounts } from "../../context/AccountsContext";
 import { useAccountStats } from "../../hooks/useAccountStats";
 import { AccountCategoryModal } from "../AccountCategoryModal";
+import { formatDate, formatWeekday } from "@/src/shared/utils/date";
 
 export function AccountDetailScreen() {
   const t = useFMTheme();
@@ -740,14 +741,9 @@ function dateRangeLabel(from: string, to: string): string {
 
 function formatGroupHeader(iso: string): string {
   if (!iso || iso === "Unknown") return "Unknown date";
-  try {
-    const d = new Date(iso);
-    const dayMonth = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-    const weekday = d.toLocaleDateString("en-GB", { weekday: "short" });
-    return `${dayMonth} · ${weekday}`;
-  } catch {
-    return iso;
-  }
+  const date = formatDate(iso);
+  const weekday = formatWeekday(iso, false);
+  return weekday ? `${date} · ${weekday}` : date;
 }
 
 function currencySymbol(currency: string): string {

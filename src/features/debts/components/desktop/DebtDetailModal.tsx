@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import React from "react";
 import { FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import type { DebtItem, DebtEntity } from "../../context/DebtsContext";
+import { formatDate } from "../../../../shared/utils/date";
 
 interface DebtDetailModalProps {
   visible: boolean;
@@ -80,7 +81,7 @@ export function DebtDetailModal({ visible, entity, debts, netBalance, onClose, b
             renderItem={({ item }) => (
               <View style={[styles.tableRow, { borderBottomColor: textColor + "0A" }]}>
                 <Text style={[styles.dateCol, { color: textColor, opacity: 0.6 }]}>
-                  {new Date(item.date).toLocaleDateString()}
+                  {formatDate(item.date)}
                 </Text>
                 <Text style={[styles.descCol, { color: textColor }]} numberOfLines={1}>{item.description}</Text>
                 <Text style={[styles.amountCol, { color: item.type === "OWES_ME" ? "#2ecc71" : "#e74c3c" }]}>

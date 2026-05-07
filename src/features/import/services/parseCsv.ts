@@ -1,4 +1,5 @@
 import type { Transaction } from "../../../services/enableBanking";
+import { cleanImportDescription } from "./cleanDescription";
 
 export type CsvFieldRole =
   | "ignore"
@@ -283,7 +284,7 @@ export function rowsToTransactions(
       return;
     }
 
-    const rawDesc = descCol >= 0 ? row[descCol] || "" : "";
+    const rawDesc = descCol >= 0 ? cleanImportDescription(row[descCol] || "") : "";
     const desc = `[Imported] ${rawDesc || fileName}`;
     transactions.push({
       transaction_id: `import_csv_${Date.now()}_${i}`,

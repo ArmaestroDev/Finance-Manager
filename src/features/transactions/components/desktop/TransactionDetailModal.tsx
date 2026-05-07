@@ -3,6 +3,7 @@ import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "rea
 import type { Transaction } from "../../../../services/enableBanking";
 import { getTransactionAmount } from "../../utils/transactions";
 import { cleanRemittanceInfo } from "../../../../shared/utils/financeHelpers";
+import { formatDate } from "../../../../shared/utils/date";
 
 interface TransactionCategory { id: string; name: string; color: string; }
 
@@ -33,8 +34,8 @@ export function TransactionDetailModal({ visible, transaction, categories, getCa
   const fields: { label: string; value: string }[] = [];
   if (transaction.creditor?.name) fields.push({ label: "Creditor", value: transaction.creditor.name });
   if (transaction.debtor?.name) fields.push({ label: "Debtor", value: transaction.debtor.name });
-  if (transaction.booking_date) fields.push({ label: "Booking Date", value: new Date(transaction.booking_date).toLocaleDateString() });
-  if (transaction.value_date) fields.push({ label: "Value Date", value: new Date(transaction.value_date).toLocaleDateString() });
+  if (transaction.booking_date) fields.push({ label: "Booking Date", value: formatDate(transaction.booking_date) });
+  if (transaction.value_date) fields.push({ label: "Value Date", value: formatDate(transaction.value_date) });
   if (transaction.credit_debit_indicator) fields.push({ label: "Type", value: transaction.credit_debit_indicator === "CRDT" ? "Credit" : "Debit" });
 
   return (

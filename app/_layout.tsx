@@ -26,7 +26,7 @@ import { BankStatementsProvider } from "../src/features/import/context/BankState
 import { ImportQueueOverlay } from "../src/features/import/components/ImportQueueOverlay";
 import { QuickAddSheetProvider } from "../src/shared/components/QuickAddSheet";
 import { SearchSheetProvider } from "../src/shared/components/SearchSheet";
-import { SettingsProvider } from "../src/shared/context/SettingsContext";
+import { SettingsProvider, useSettings } from "../src/shared/context/SettingsContext";
 import { DateFilterProvider } from "../src/shared/context/DateFilterContext";
 import { TransactionsProvider } from "../src/features/transactions/context/TransactionsContext";
 import { useColorScheme } from "../src/shared/hooks/use-color-scheme";
@@ -39,6 +39,13 @@ export const unstable_settings = {
 
 function RootLayoutInner() {
   const colorScheme = useColorScheme();
+  const { i18n } = useSettings();
+
+  useEffect(() => {
+    if (Platform.OS === "web" && typeof document !== "undefined") {
+      document.title = i18n.app_title;
+    }
+  }, [i18n.app_title]);
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>

@@ -17,6 +17,7 @@ import {
   type BankStatement,
 } from "../../context/BankStatementsContext";
 import { useTransactionsContext } from "../../../transactions/context/TransactionsContext";
+import { formatDate } from "../../../../shared/utils/date";
 
 interface StatementsModalProps {
   visible: boolean;
@@ -115,14 +116,6 @@ export function StatementsModal({
       Alert.alert(
         i18n.stmt_pdf_unavailable || "PDF not available for this statement",
       );
-    }
-  };
-
-  const formatDate = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleDateString();
-    } catch {
-      return iso;
     }
   };
 

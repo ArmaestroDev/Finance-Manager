@@ -38,24 +38,6 @@ export function formatPercent(value: number, masked = false): string {
   return `${Math.round(value * 100)}%`;
 }
 
-// DD-MM-YYYY (UI canonical)
-export function formatDateUI(d: Date | string): string {
-  const dt = d instanceof Date ? d : new Date(d);
-  const pad = (x: number) => String(x).padStart(2, "0");
-  return `${pad(dt.getDate())}-${pad(dt.getMonth() + 1)}-${dt.getFullYear()}`;
-}
-
-// "04 May" — short marker for date headers
-export function formatDateShort(d: Date | string): string {
-  const dt = d instanceof Date ? d : new Date(d);
-  return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-}
-
-export function formatWeekday(d: Date | string, long = false): string {
-  const dt = d instanceof Date ? d : new Date(d);
-  return dt.toLocaleDateString("en-GB", { weekday: long ? "long" : "short" });
-}
-
 // Split a number into integer / fraction parts for hero display so the
 // fraction can render in a muted tone.
 export function splitForHero(

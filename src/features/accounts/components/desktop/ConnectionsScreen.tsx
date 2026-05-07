@@ -25,6 +25,7 @@ import {
 import { useSettings } from "@/src/shared/context/SettingsContext";
 import { useBankConnections, type StoredSession } from "../../hooks/useBankConnections";
 import { BankSelectionModal } from "./BankSelectionModal";
+import { formatDate } from "@/src/shared/utils/date";
 
 export function ConnectionsScreen() {
   const t = useFMTheme();
@@ -200,7 +201,7 @@ function SessionRow({ session, isFirst, onRemove, i18n }: SessionRowProps) {
         <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13.5, color: t.ink }}>{session.bankName}</Text>
         <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkMuted, marginTop: 2 }}>
           {i18n.connected_account_count.replace("{count}", session.accounts.length.toString())} · connected{" "}
-          {i18n.connected_date.replace("{date}", new Date(session.connectedAt).toLocaleDateString("en-GB"))}
+          {i18n.connected_date.replace("{date}", formatDate(session.connectedAt))}
         </Text>
       </View>
       <View style={{ flexDirection: "row", gap: 5, marginRight: 14 }}>

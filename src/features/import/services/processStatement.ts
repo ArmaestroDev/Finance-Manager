@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import type { Transaction } from "../../../services/enableBanking";
 import type { QueueItem } from "../context/ImportQueueContext";
+import { cleanImportDescription } from "./cleanDescription";
 
 const API_BASE =
   typeof window !== "undefined" && window.location.hostname !== "localhost"
@@ -97,8 +98,9 @@ export async function parseStatementWithBackend(
   }
 
   const transactions: Transaction[] = data.transactions.map((entry, index) => {
-    const firstLine = entry.description.split("\n")[0] || entry.description;
-    const remittance = `[Imported] ${entry.description}`;
+    const cleaned = cleanImportDescription(entry.description);
+    const firstLine = cleaned.split("\n")[0] || cleaned;
+    const remittance = `[Imported] ${cleaned}`;
     return {
       transaction_id: `import_pdf_${statementId}_${index}`,
       booking_date: entry.date,

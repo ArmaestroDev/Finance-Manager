@@ -13,6 +13,7 @@ import { TransactionStatsSummary } from "../../../../shared/components/Transacti
 import { TransactionItem } from "../TransactionItem";
 import { DateFilterModal } from "../../../../shared/components/DateFilterModal";
 import { getStableTxId } from "../../utils/transactions";
+import { formatDate } from "../../../../shared/utils/date";
 
 export function TransactionsScreen() {
   const backgroundColor = useThemeColor({}, "background");
@@ -48,7 +49,7 @@ export function TransactionsScreen() {
     const groups: { [key: string]: any[] } = {};
     filteredTransactions.forEach((tx) => {
       const dateStr = tx.booking_date || tx.value_date || "";
-      const date = dateStr ? new Date(dateStr).toLocaleDateString() : "Unknown Date";
+      const date = dateStr ? formatDate(dateStr) : "Unknown Date";
       if (!groups[date]) groups[date] = [];
       groups[date].push(tx);
     });

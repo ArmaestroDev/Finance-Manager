@@ -10,6 +10,7 @@ import {
 import type { Transaction } from "../../../../services/enableBanking";
 import { getTransactionAmount } from "../../utils/transactions";
 import { cleanRemittanceInfo } from "../../../../shared/utils/financeHelpers";
+import { formatDate } from "../../../../shared/utils/date";
 
 interface TransactionCategory {
   id: string;
@@ -197,7 +198,7 @@ export function TransactionDetailModal({
                   Booking Date
                 </Text>
                 <Text style={[styles.detailValue, { color: textColor }]}>
-                  {new Date(transaction.booking_date).toLocaleDateString()}
+                  {formatDate(transaction.booking_date)}
                 </Text>
               </View>
             )}
@@ -207,7 +208,7 @@ export function TransactionDetailModal({
                   Value Date
                 </Text>
                 <Text style={[styles.detailValue, { color: textColor }]}>
-                  {new Date(transaction.value_date).toLocaleDateString()}
+                  {formatDate(transaction.value_date)}
                 </Text>
               </View>
             )}

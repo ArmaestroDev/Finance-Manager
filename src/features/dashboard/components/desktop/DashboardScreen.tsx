@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
-import { Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import React, { useMemo, useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View, ViewStyle } from "react-native";
 
 import { FMFonts } from "@/src/constants/theme";
 import { DesktopShell } from "@/src/shared/components/DesktopShell";
@@ -30,11 +30,12 @@ import {
 } from "@/src/features/transactions/utils/transactions";
 import { useFinanceData } from "../../hooks/useFinanceData";
 import { useFinanceStats } from "../../hooks/useFinanceStats";
+import { formatDate } from "@/src/shared/utils/date";
 
 export function DashboardScreen() {
   const t = useFMTheme();
   const router = useRouter();
-  const { isBalanceHidden, i18n, mainAccountId } = useSettings();
+  const { isBalanceHidden, i18n, mainAccountId, language } = useSettings();
   const { categories, transactionCategoryMap } = useCategories();
   const { setSelectedCategoryId } = useDateFilter();
 
@@ -56,20 +57,77 @@ export function DashboardScreen() {
     totalIncome,
     totalExpenses,
     categoryBreakdown,
+    monthlyBuckets,
   } = useFinanceStats({
     allTransactions,
     accounts,
     cashBalance,
     categories,
     transactionCategoryMap,
+    filterDateFrom,
+    filterDateTo,
   });
 
   const masked = isBalanceHidden;
   const netWorth = totalAssets - totalLiabilities;
-  const netCashflow = totalIncome - totalExpenses;
   const heroParts = splitForHero(netWorth, masked);
 
-  const slices = categoryBreakdown.map((c) => ({
+  // ── View-mode selector for the "Where it went" panel ──
+  // viewMode: "total" | "avg" | "<YYYY-MM>"
+  const [viewMode, setViewMode] = useState<string>("total");
+  const showSelector = monthlyBuckets.length > 1;
+  const locale = language === "de" ? "de-DE" : "en-GB";
+
+  const view = useMemo(() => {
+    const N = monthlyBuckets.length;
+    if (showSelector && viewMode === "avg" && N > 0) {
+      return {
+        income: totalIncome / N,
+        expenses: totalExpenses / N,
+        breakdown: categoryBreakdown.map((b) => ({ ...b, amount: b.amount / N })),
+        donutLabel: i18n.avg_per_month,
+        rangeText: i18n.avg_per_month,
+      };
+    }
+    if (showSelector && viewMode !== "total" && viewMode !== "avg") {
+      const bucket = monthlyBuckets.find((b) => b.key === viewMode);
+      if (bucket) {
+        const longLabel = new Date(bucket.year, bucket.month, 1).toLocaleDateString(locale, {
+          month: "long",
+          year: "numeric",
+        });
+        return {
+          income: bucket.income,
+          expenses: bucket.expenses,
+          breakdown: bucket.categoryBreakdown,
+          donutLabel: longLabel,
+          rangeText: longLabel,
+        };
+      }
+    }
+    return {
+      income: totalIncome,
+      expenses: totalExpenses,
+      breakdown: categoryBreakdown,
+      donutLabel: i18n.total,
+      rangeText: rangeLabel(filterDateFrom, filterDateTo),
+    };
+  }, [
+    viewMode,
+    showSelector,
+    monthlyBuckets,
+    totalIncome,
+    totalExpenses,
+    categoryBreakdown,
+    locale,
+    filterDateFrom,
+    filterDateTo,
+    i18n,
+  ]);
+
+  const netCashflow = view.income - view.expenses;
+
+  const slices = view.breakdown.map((c) => ({
     id: c.categoryId,
     amount: c.amount,
     color: c.color,
@@ -161,20 +219,20 @@ export function DashboardScreen() {
           </View>
 
           <View style={styles.cashflowGrid}>
-            <CashflowCard label={i18n.income_label} value={totalIncome} masked={masked} />
-            <CashflowCard label={i18n.expenses_label} value={-totalExpenses} masked={masked} />
+            <CashflowCard label={i18n.income_label} value={view.income} masked={masked} />
+            <CashflowCard label={i18n.expenses_label} value={-view.expenses} masked={masked} />
             <CashflowCard label="Net" value={netCashflow} masked={masked} total />
           </View>
 
           {/* Row 2: donut + midSide */}
           <View style={[styles.donutCard, { backgroundColor: t.surface, borderColor: t.line }]}>
             <View style={styles.donutHeader}>
-              <View>
+              <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ fontFamily: FMFonts.display, fontSize: 22, color: t.ink, letterSpacing: -0.3, lineHeight: 24 }}>
                   Where it went
                 </Text>
                 <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkSoft, marginTop: 2 }}>
-                  Categorized expenses, {rangeLabel(filterDateFrom, filterDateTo).toLowerCase()}
+                  Categorized expenses, {view.rangeText.toLowerCase()}
                 </Text>
               </View>
               <Pressable
@@ -190,12 +248,48 @@ export function DashboardScreen() {
               </Pressable>
             </View>
 
+            {showSelector ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.selectorRow}
+                style={{ marginBottom: 14 }}
+              >
+                <ModeChip
+                  label={i18n.total}
+                  active={viewMode === "total"}
+                  onPress={() => setViewMode("total")}
+                />
+                {monthlyBuckets.map((b) => {
+                  const labelDate = new Date(b.year, b.month, 1);
+                  const sameYear = monthlyBuckets.every((x) => x.year === b.year);
+                  const label = labelDate.toLocaleDateString(locale, {
+                    month: "short",
+                    ...(sameYear ? {} : { year: "2-digit" }),
+                  });
+                  return (
+                    <ModeChip
+                      key={b.key}
+                      label={label}
+                      active={viewMode === b.key}
+                      onPress={() => setViewMode(b.key)}
+                    />
+                  );
+                })}
+                <ModeChip
+                  label={i18n.average}
+                  active={viewMode === "avg"}
+                  onPress={() => setViewMode("avg")}
+                />
+              </ScrollView>
+            ) : null}
+
             {slices.length > 0 ? (
               <View style={styles.donutBody}>
                 <View style={{ position: "relative", width: 180, height: 180 }}>
                   <Donut slices={slices} size={180} thick={26} masked={masked} />
                   <View style={styles.donutCenter}>
-                    <Label>Total</Label>
+                    <Label>{view.donutLabel}</Label>
                     <Text
                       style={{
                         fontFamily: FMFonts.monoSemibold,
@@ -371,7 +465,7 @@ export function DashboardScreen() {
                           {title}
                         </Text>
                         <Text style={{ fontFamily: FMFonts.sans, fontSize: 10, color: t.inkMuted, marginTop: 1 }}>
-                          {dayMonth(date)} ·{" "}
+                          {formatDate(date)} ·{" "}
                           {cat ? (
                             cat.name
                           ) : (
@@ -511,14 +605,38 @@ function CashflowCard({ label, value, masked, total }: CashflowCardProps) {
   );
 }
 
-function dayMonth(iso: string): string {
-  if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-  } catch {
-    return iso;
-  }
+interface ModeChipProps {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}
+
+function ModeChip({ label, active, onPress }: ModeChipProps) {
+  const t = useFMTheme();
+  const fg = active ? t.bg : t.inkSoft;
+  const bg = active ? t.ink : t.surface;
+  const border = active ? t.ink : t.lineStrong;
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+      <View
+        style={[
+          styles.modeChip,
+          { backgroundColor: bg, borderColor: border },
+        ]}
+      >
+        <Text
+          style={{
+            fontFamily: FMFonts.sansMedium,
+            fontSize: 11,
+            color: fg,
+            letterSpacing: -0.1,
+          }}
+        >
+          {label}
+        </Text>
+      </View>
+    </Pressable>
+  );
 }
 
 function rangeLabel(from: string, to: string): string {
@@ -664,6 +782,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 8,
+    borderWidth: 1,
+  },
+  selectorRow: {
+    flexDirection: "row",
+    gap: 6,
+    paddingRight: 4,
+  },
+  modeChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
     borderWidth: 1,
   },
 });

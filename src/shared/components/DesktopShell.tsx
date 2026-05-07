@@ -1,13 +1,22 @@
 import { router, usePathname } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Animated, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  Animated,
+  Image,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 
 import { FMFonts } from "@/src/constants/theme";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import {
   Chip,
   IconBank,
-  IconCoins,
   IconCog,
+  IconCoins,
   IconLink,
   IconPeople,
   IconPlus,
@@ -16,7 +25,6 @@ import {
   IconTrend,
   useFMTheme,
 } from "@/src/shared/design";
-import { useSettings } from "@/src/shared/context/SettingsContext";
 import { useQuickAdd } from "./QuickAddSheet";
 import { useSearch } from "./SearchSheet";
 
@@ -32,11 +40,41 @@ interface NavItem {
 }
 
 const NAV: readonly NavItem[] = [
-  { id: "overview", href: "/(tabs)", label: "Dashboard", icon: (s, c) => <IconTrend size={s} color={c} />, pathPrefix: "/" },
-  { id: "accounts", href: "/(tabs)/accounts", label: "Accounts", icon: (s, c) => <IconBank size={s} color={c} />, pathPrefix: "/accounts" },
-  { id: "debts", href: "/(tabs)/debts", label: "Debts", icon: (s, c) => <IconPeople size={s} color={c} />, pathPrefix: "/debts" },
-  { id: "invest", href: "/(tabs)/invest", label: "Invest", icon: (s, c) => <IconCoins size={s} color={c} />, pathPrefix: "/invest" },
-  { id: "connections", href: "/connections", label: "Connections", icon: (s, c) => <IconLink size={s} color={c} />, pathPrefix: "/connections" },
+  {
+    id: "overview",
+    href: "/(tabs)",
+    label: "Dashboard",
+    icon: (s, c) => <IconTrend size={s} color={c} />,
+    pathPrefix: "/",
+  },
+  {
+    id: "accounts",
+    href: "/(tabs)/accounts",
+    label: "Accounts",
+    icon: (s, c) => <IconBank size={s} color={c} />,
+    pathPrefix: "/accounts",
+  },
+  {
+    id: "debts",
+    href: "/(tabs)/debts",
+    label: "Debts",
+    icon: (s, c) => <IconPeople size={s} color={c} />,
+    pathPrefix: "/debts",
+  },
+  {
+    id: "invest",
+    href: "/(tabs)/invest",
+    label: "Invest",
+    icon: (s, c) => <IconCoins size={s} color={c} />,
+    pathPrefix: "/invest",
+  },
+  {
+    id: "connections",
+    href: "/connections",
+    label: "Connections",
+    icon: (s, c) => <IconLink size={s} color={c} />,
+    pathPrefix: "/connections",
+  },
 ];
 
 interface DesktopShellProps {
@@ -56,7 +94,13 @@ interface DesktopShellProps {
 
 // Persistent left rail + topbar shell. Used on web for every screen.
 // Sidebar is collapsed to icons by default and expands on hover.
-export function DesktopShell({ children, activeId, breadcrumb, onRefresh, scrollable = true }: DesktopShellProps) {
+export function DesktopShell({
+  children,
+  activeId,
+  breadcrumb,
+  onRefresh,
+  scrollable = true,
+}: DesktopShellProps) {
   const t = useFMTheme();
   const pathname = usePathname() ?? "/";
   const quick = useQuickAdd();
@@ -66,9 +110,12 @@ export function DesktopShell({ children, activeId, breadcrumb, onRefresh, scroll
   const computedActiveId = useMemo(() => {
     if (activeId) return activeId;
     // Pathname-based detection; longest prefix wins.
-    const sorted = [...NAV].sort((a, b) => b.pathPrefix.length - a.pathPrefix.length);
+    const sorted = [...NAV].sort(
+      (a, b) => b.pathPrefix.length - a.pathPrefix.length,
+    );
     const found = sorted.find((n) => {
-      if (n.id === "overview") return pathname === "/" || pathname === "/(tabs)" || pathname === "";
+      if (n.id === "overview")
+        return pathname === "/" || pathname === "/(tabs)" || pathname === "";
       return pathname.startsWith(n.pathPrefix);
     });
     return found?.id ?? "overview";
@@ -121,28 +168,40 @@ export function DesktopShell({ children, activeId, breadcrumb, onRefresh, scroll
         ]}
       >
         <View style={styles.logoRow}>
-          <Text
-            style={{ fontFamily: FMFonts.display, fontSize: 20, color: t.ink, lineHeight: 22, letterSpacing: -0.3 }}
-            numberOfLines={1}
+          <Image
+            source={require("@/assets/images/logo.png")}
+            style={[styles.logoMark, { tintColor: t.ink }]}
+            resizeMode="contain"
+          />
+          <Animated.View
+            style={{ opacity: labelOpacity, marginLeft: 10, flexShrink: 1 }}
           >
-            F
-            <Animated.Text style={{ opacity: labelOpacity }}>inance</Animated.Text>
-            <Text style={{ color: t.accent }}>.</Text>
-          </Text>
-          <Animated.Text
-            numberOfLines={1}
-            style={{
-              opacity: labelOpacity,
-              fontSize: 10,
-              fontFamily: FMFonts.sansSemibold,
-              color: t.inkMuted,
-              marginTop: 3,
-              letterSpacing: 1,
-              textTransform: "uppercase",
-            }}
-          >
-            Manager
-          </Animated.Text>
+            <Text
+              style={{
+                fontFamily: FMFonts.display,
+                fontSize: 20,
+                color: t.ink,
+                lineHeight: 22,
+                letterSpacing: -0.3,
+              }}
+              numberOfLines={1}
+            >
+              Finance<Text style={{ color: t.accent }}>.</Text>
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={{
+                fontSize: 10,
+                fontFamily: FMFonts.sansSemibold,
+                color: t.inkMuted,
+                marginTop: 3,
+                letterSpacing: 1,
+                textTransform: "uppercase",
+              }}
+            >
+              Manager
+            </Text>
+          </Animated.View>
         </View>
 
         <View style={{ gap: 1 }}>
@@ -169,7 +228,9 @@ export function DesktopShell({ children, activeId, breadcrumb, onRefresh, scroll
                   style={{
                     marginLeft: 9,
                     fontSize: 12.5,
-                    fontFamily: isActive ? FMFonts.sansSemibold : FMFonts.sansMedium,
+                    fontFamily: isActive
+                      ? FMFonts.sansSemibold
+                      : FMFonts.sansMedium,
                     color: isActive ? t.ink : t.inkSoft,
                     opacity: labelOpacity,
                   }}
@@ -204,18 +265,32 @@ export function DesktopShell({ children, activeId, breadcrumb, onRefresh, scroll
               justifyContent: "center",
             }}
           >
-            <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: "#fff" }}>L</Text>
+            <IconCog size={14} color="#fff" />
           </View>
-          <Animated.View style={{ flex: 1, marginLeft: 8, opacity: labelOpacity }}>
-            <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 12, color: t.ink }} numberOfLines={1}>
+          <Animated.View
+            style={{ flex: 1, marginLeft: 8, opacity: labelOpacity }}
+          >
+            <Text
+              style={{
+                fontFamily: FMFonts.sansSemibold,
+                fontSize: 12,
+                color: t.ink,
+              }}
+              numberOfLines={1}
+            >
               You
             </Text>
-            <Text style={{ fontFamily: FMFonts.sans, fontSize: 10, color: t.inkMuted, marginTop: 1 }} numberOfLines={1}>
+            <Text
+              style={{
+                fontFamily: FMFonts.sans,
+                fontSize: 10,
+                color: t.inkMuted,
+                marginTop: 1,
+              }}
+              numberOfLines={1}
+            >
               Local · EUR
             </Text>
-          </Animated.View>
-          <Animated.View style={{ opacity: labelOpacity }}>
-            <IconCog size={13} color={t.inkMuted} />
           </Animated.View>
         </Pressable>
       </Animated.View>
@@ -223,14 +298,21 @@ export function DesktopShell({ children, activeId, breadcrumb, onRefresh, scroll
       {/* Content (offset by collapsed sidebar width; expanded sidebar overlays) */}
       <View style={[styles.content, { marginLeft: COLLAPSED_WIDTH }]}>
         {/* Topbar */}
-        <View style={[styles.topbar, { backgroundColor: t.surface, borderBottomColor: t.line }]}>
+        <View
+          style={[
+            styles.topbar,
+            { backgroundColor: t.surface, borderBottomColor: t.line },
+          ]}
+        >
           <View style={styles.crumb}>
             <Pressable onPress={() => router.push("/(tabs)" as never)}>
               {({ hovered: hov, pressed }: any) => (
                 <Text
                   style={{
                     fontFamily:
-                      isOverviewActive && !breadcrumb ? FMFonts.sansSemibold : FMFonts.sansMedium,
+                      isOverviewActive && !breadcrumb
+                        ? FMFonts.sansSemibold
+                        : FMFonts.sansMedium,
                     fontSize: 12,
                     color:
                       isOverviewActive && !breadcrumb
@@ -247,8 +329,22 @@ export function DesktopShell({ children, activeId, breadcrumb, onRefresh, scroll
             </Pressable>
             {breadcrumbTail ? (
               <>
-                <Text style={{ marginHorizontal: 8, color: t.inkMuted, fontSize: 12 }}>/</Text>
-                <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 12, color: t.ink }}>
+                <Text
+                  style={{
+                    marginHorizontal: 8,
+                    color: t.inkMuted,
+                    fontSize: 12,
+                  }}
+                >
+                  /
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: FMFonts.sansSemibold,
+                    fontSize: 12,
+                    color: t.ink,
+                  }}
+                >
                   {breadcrumbTail}
                 </Text>
               </>
@@ -269,7 +365,10 @@ export function DesktopShell({ children, activeId, breadcrumb, onRefresh, scroll
               {i18n.quick_add}
             </Chip>
             {onRefresh ? (
-              <Chip onPress={onRefresh} icon={<IconRefresh size={12} color={t.inkSoft} />}>
+              <Chip
+                onPress={onRefresh}
+                icon={<IconRefresh size={12} color={t.inkSoft} />}
+              >
                 Refresh
               </Chip>
             ) : null}
@@ -312,13 +411,20 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   logoRow: {
-    paddingHorizontal: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
     marginBottom: 24,
+    minHeight: 32,
+  },
+  logoMark: {
+    width: 28,
+    height: 28,
   },
   navItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 8,
+    paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 5,
     borderWidth: 1,
