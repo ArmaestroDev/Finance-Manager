@@ -10,7 +10,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useThemeColor } from "../../../shared/hooks/use-theme-color";
+import { useIsMobileLayout } from "../../../shared/hooks/useIsMobileLayout";
 import {
   autoDetectRoles,
   detectAmountFormat,
@@ -75,6 +77,7 @@ export function CsvMappingModal({
   onCancel,
   onConfirm,
 }: CsvMappingModalProps) {
+  const insets = useSafeAreaInsets();
   const backgroundColor = useThemeColor({}, "background");
   const surfaceColor = useThemeColor({}, "surface");
   const textColor = useThemeColor({}, "text");
@@ -138,7 +141,7 @@ export function CsvMappingModal({
     onConfirm(parseResult.transactions);
   };
 
-  const isDesktop = Platform.OS === "web";
+  const isDesktop = !useIsMobileLayout();
 
   const content = (
     <ScrollView
@@ -399,8 +402,12 @@ export function CsvMappingModal({
           style={[
             isDesktop ? styles.desktopDialog : styles.mobileSheet,
             { backgroundColor, borderColor },
+            isDesktop ? null : { paddingBottom: insets.bottom },
           ]}
         >
+          {isDesktop ? null : (
+            <View style={[styles.grabHandle, { backgroundColor: borderColor }]} />
+          )}
           <View style={[styles.header, { borderBottomColor: borderColor }]}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
               <Ionicons name="document-text-outline" size={20} color={tintColor} />
@@ -530,6 +537,15 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     maxHeight: "92%",
     minHeight: "60%",
+  },
+  grabHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 2,
+    opacity: 0.6,
   },
   header: {
     flexDirection: "row",

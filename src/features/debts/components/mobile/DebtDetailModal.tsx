@@ -1,8 +1,11 @@
-import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { FlatList, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import type { DebtItem, DebtEntity } from "../../context/DebtsContext";
-import { formatDate } from "../../../../shared/utils/date";
+import { FlatList, StyleSheet, Text, View } from "react-native";
+
+import { FMFonts } from "@/src/constants/theme";
+import { Sheet } from "@/src/shared/components/Sheet";
+import { Button, Label, Money, formatEUR, useFMTheme } from "@/src/shared/design";
+import { formatDate } from "@/src/shared/utils/date";
+import type { DebtEntity, DebtItem } from "../../context/DebtsContext";
 
 interface DebtDetailModalProps {
   visible: boolean;
@@ -10,64 +13,217 @@ interface DebtDetailModalProps {
   debts: DebtItem[];
   netBalance: number;
   onClose: () => void;
-  backgroundColor: string;
-  textColor: string;
-  tintColor: string;
   i18n: Record<string, string>;
 }
 
-export function DebtDetailModal({ visible, entity, debts, netBalance, onClose, backgroundColor, textColor, tintColor, i18n }: DebtDetailModalProps) {
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(Math.abs(amount));
+export function DebtDetailModal({
+  visible,
+  entity,
+  debts,
+  netBalance,
+  onClose,
+  i18n,
+}: DebtDetailModalProps) {
+  const t = useFMTheme();
 
   const entityDebts = entity
-    ? debts.filter((d) => d.entityId === entity.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    ? debts
+        .filter((d) => d.entityId === entity.id)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     : [];
 
   if (!entity) return null;
 
+  const isInstitution = entity.type === "institution";
+  const totalOwed = entityDebts
+    .filter((d) => d.type === "OWES_ME")
+    .reduce((s, d) => s + d.amount, 0);
+  const totalOwe = entityDebts
+    .filter((d) => d.type === "I_OWE")
+    .reduce((s, d) => s + d.amount, 0);
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor, height: "80%" }]}>
-          <View style={styles.detailHeader}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>{entity.name}</Text>
-            <TouchableOpacity onPress={onClose}><Ionicons name="close" size={24} color={textColor} /></TouchableOpacity>
-          </View>
-          <View style={[styles.detailNet, { backgroundColor: tintColor + "12" }]}>
-            <Text style={{ color: textColor, fontSize: 12 }}>{i18n.net_balance}</Text>
-            <Text style={{ fontSize: 24, fontWeight: "bold", color: netBalance >= 0 ? "#2ecc71" : "#e74c3c" }}>
-              {netBalance >= 0 ? "They owe you " : "You owe them "}{formatCurrency(netBalance)}
-            </Text>
-          </View>
-          <Text style={{ color: textColor, marginTop: 16, marginBottom: 8, fontWeight: "600" }}>{i18n.history}</Text>
-          <FlatList
-            data={entityDebts} keyExtractor={(item) => item.id}
-            contentContainerStyle={{ paddingBottom: 20 }}
-            ListEmptyComponent={<Text style={{ color: textColor, opacity: 0.5, textAlign: "center", marginTop: 20 }}>{i18n.no_history}</Text>}
-            renderItem={({ item }) => (
-              <View style={[styles.historyRow, { borderBottomColor: textColor + "10" }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ color: textColor, fontWeight: "500" }}>{item.description}</Text>
-                  <Text style={{ color: textColor, opacity: 0.5, fontSize: 12 }}>{formatDate(item.date)}</Text>
-                </View>
-                <Text style={{ color: item.type === "OWES_ME" ? "#2ecc71" : "#e74c3c", fontWeight: "600" }}>
-                  {item.type === "OWES_ME" ? "+" : "-"}{formatCurrency(item.amount)}
-                </Text>
-              </View>
-            )}
-          />
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      width={500}
+      actions={<Button variant="ghost" onPress={onClose}>{i18n.close ?? "Close"}</Button>}
+    >
+      {/* Avatar header */}
+      <View style={styles.header}>
+        <View
+          style={[
+            styles.avatar,
+            {
+              backgroundColor: isInstitution ? t.surfaceAlt : t.accentSoft,
+              borderColor: t.line,
+            },
+          ]}
+        >
+          <Text
+            style={{
+              fontFamily: FMFonts.sansSemibold,
+              fontSize: 19,
+              color: isInstitution ? t.inkSoft : t.accent,
+            }}
+          >
+            {entity.name.charAt(0).toUpperCase()}
+          </Text>
+        </View>
+        <View style={{ flex: 1, marginLeft: 14, minWidth: 0 }}>
+          <Text
+            style={{
+              fontFamily: FMFonts.display,
+              fontSize: 22,
+              color: t.ink,
+              letterSpacing: -0.3,
+            }}
+            numberOfLines={1}
+          >
+            {entity.name}
+          </Text>
+          <Text
+            style={{
+              fontFamily: FMFonts.sans,
+              fontSize: 11.5,
+              color: t.inkSoft,
+              marginTop: 3,
+            }}
+          >
+            {entityDebts.length}{" "}
+            {entityDebts.length === 1 ? "transaction" : "transactions"}
+          </Text>
         </View>
       </View>
-    </Modal>
+
+      {/* Three stat cards */}
+      <View style={styles.statsRow}>
+        <View style={[styles.statCard, { backgroundColor: t.posSoft }]}>
+          <Label>{i18n.they_owe_you ?? "They Owe You"}</Label>
+          <Text
+            style={{
+              fontFamily: FMFonts.monoSemibold,
+              fontSize: 16,
+              color: t.pos,
+              marginTop: 6,
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            {formatEUR(totalOwed, { showSign: true })}
+          </Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: t.negSoft }]}>
+          <Label>{i18n.you_owe ?? "You Owe"}</Label>
+          <Text
+            style={{
+              fontFamily: FMFonts.monoSemibold,
+              fontSize: 16,
+              color: t.neg,
+              marginTop: 6,
+              fontVariant: ["tabular-nums"],
+            }}
+          >
+            {formatEUR(-totalOwe)}
+          </Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: t.accentSoft }]}>
+          <Label>{i18n.net_balance ?? "Net"}</Label>
+          <View style={{ marginTop: 6 }}>
+            <Money value={netBalance} size={16} total />
+          </View>
+        </View>
+      </View>
+
+      <Label style={{ marginBottom: 8, marginTop: 18 }}>
+        {i18n.history ?? "History"}
+      </Label>
+      <FlatList
+        data={entityDebts}
+        keyExtractor={(item) => item.id}
+        scrollEnabled={false}
+        ListEmptyComponent={
+          <Text
+            style={{
+              fontFamily: FMFonts.sans,
+              fontSize: 12,
+              color: t.inkMuted,
+              textAlign: "center",
+              paddingVertical: 22,
+            }}
+          >
+            {i18n.no_history ?? "No history."}
+          </Text>
+        }
+        renderItem={({ item, index }) => (
+          <View
+            style={[
+              styles.row,
+              {
+                borderTopColor: t.line,
+                borderTopWidth: index === 0 ? 0 : 1,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={{
+                  fontFamily: FMFonts.sansMedium,
+                  fontSize: 12.5,
+                  color: t.ink,
+                }}
+                numberOfLines={1}
+              >
+                {item.description}
+              </Text>
+              <Text
+                style={{
+                  fontFamily: FMFonts.sans,
+                  fontSize: 10.5,
+                  color: t.inkMuted,
+                  marginTop: 2,
+                }}
+              >
+                {formatDate(item.date)}
+              </Text>
+            </View>
+            <Money
+              value={item.type === "OWES_ME" ? item.amount : -item.amount}
+              size={13}
+            />
+          </View>
+        )}
+      />
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 },
-  modalContent: { width: "100%", maxWidth: 400, borderRadius: 20, padding: 20, maxHeight: "80%" },
-  modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 20 },
-  detailHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
-  detailNet: { padding: 16, borderRadius: 12, alignItems: "center" },
-  historyRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 12, borderBottomWidth: 1 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  statCard: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 11,
+  },
 });

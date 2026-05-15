@@ -1,5 +1,11 @@
-﻿import { Platform } from "react-native";
+import React from "react";
+import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
 import { InputGroup as MobileComponent } from "./mobile/InputGroup";
 import { InputGroup as DesktopComponent } from "./desktop/InputGroup";
 
-export const InputGroup = Platform.OS === "web" ? DesktopComponent : MobileComponent;
+export const InputGroup = ((props: any) =>
+  useIsMobileLayout() ? (
+    <MobileComponent {...props} />
+  ) : (
+    <DesktopComponent {...props} />
+  )) as typeof DesktopComponent;

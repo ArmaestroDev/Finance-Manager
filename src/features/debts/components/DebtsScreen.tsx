@@ -1,5 +1,11 @@
-﻿import { Platform } from "react-native";
+import React from "react";
+import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
 import { DebtsScreen as MobileComponent } from "./mobile/DebtsScreen";
 import { DebtsScreen as DesktopComponent } from "./desktop/DebtsScreen";
 
-export const DebtsScreen = Platform.OS === "web" ? DesktopComponent : MobileComponent;
+export const DebtsScreen = ((props: any) =>
+  useIsMobileLayout() ? (
+    <MobileComponent {...props} />
+  ) : (
+    <DesktopComponent {...props} />
+  )) as typeof DesktopComponent;

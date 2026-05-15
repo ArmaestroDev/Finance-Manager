@@ -10,6 +10,7 @@ import {
   Button,
   Donut,
   IconAI,
+  IconFilter,
   IconWarn,
   Label,
   Money,
@@ -32,6 +33,7 @@ import {
 } from "@/src/features/transactions/utils/transactions";
 import { useFinanceData } from "../../hooks/useFinanceData";
 import { useFinanceStats } from "../../hooks/useFinanceStats";
+import { buildFlowSeries } from "../../utils/flowSeries";
 import { formatDate } from "@/src/shared/utils/date";
 
 export function DashboardScreen() {
@@ -74,6 +76,25 @@ export function DashboardScreen() {
   const masked = isBalanceHidden;
   const netWorth = totalAssets - totalLiabilities;
   const heroParts = splitForHero(netWorth, masked);
+
+  // Real trailing-30-day cumulative income / expense / net for the sparklines.
+  const flow = useMemo(
+    () =>
+      buildFlowSeries(
+        allTransactions,
+        transactionCategoryMap,
+        categories,
+        filterDateFrom,
+        filterDateTo,
+      ),
+    [
+      allTransactions,
+      transactionCategoryMap,
+      categories,
+      filterDateFrom,
+      filterDateTo,
+    ],
+  );
 
   // ── View-mode selector for the "Where it went" panel ──
   // viewMode: "total" | "avg" | "<YYYY-MM>"
@@ -221,7 +242,17 @@ export function DashboardScreen() {
           {/* Row 1: hero + cashflow */}
           <View style={[styles.hero, { backgroundColor: t.surface, borderColor: t.line }]}>
             <View style={{ flex: 1 }}>
-              <Label>{`${i18n.net_worth} · ${rangeLabel(filterDateFrom, filterDateTo)}`}</Label>
+              <Text
+                style={{
+                  fontFamily: FMFonts.display,
+                  fontSize: 20,
+                  color: t.ink,
+                  letterSpacing: -0.3,
+                  lineHeight: 24,
+                }}
+              >
+                {i18n.net_worth}
+              </Text>
               <View style={styles.heroRow}>
                 <Text
                   style={{
@@ -257,9 +288,30 @@ export function DashboardScreen() {
           </View>
 
           <View style={styles.cashflowGrid}>
-            <CashflowCard label={i18n.income_label} value={view.income} masked={masked} />
-            <CashflowCard label={i18n.expenses_label} value={-view.expenses} masked={masked} />
-            <CashflowCard label="Net" value={netCashflow} masked={masked} total />
+            <CashflowCard
+              label={i18n.income_label}
+              value={view.income}
+              masked={masked}
+              series={flow.income}
+              days={flow.days}
+            />
+            <CashflowCard
+              label={i18n.expenses_label}
+              value={-view.expenses}
+              masked={masked}
+              series={flow.expenses}
+              days={flow.days}
+              negSpark
+            />
+            <CashflowCard
+              label="Net"
+              value={netCashflow}
+              masked={masked}
+              total
+              series={flow.net}
+              days={flow.days}
+              zeroBaseline
+            />
           </View>
 
           {/* Row 2: donut + midSide */}
@@ -270,7 +322,7 @@ export function DashboardScreen() {
                   Where it went
                 </Text>
                 <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkSoft, marginTop: 2 }}>
-                  Categorized expenses, {view.rangeText.toLowerCase()}
+                  Categorized expenses
                 </Text>
               </View>
               <View style={{ flexDirection: "row", gap: 6 }}>
@@ -299,10 +351,24 @@ export function DashboardScreen() {
                   onPress={openDateModal}
                   style={({ pressed }) => [
                     styles.dateChip,
-                    { backgroundColor: t.surface, borderColor: t.lineStrong, opacity: pressed ? 0.8 : 1 },
+                    {
+                      backgroundColor: t.surface,
+                      borderColor: t.lineStrong,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      opacity: pressed ? 0.8 : 1,
+                    },
                   ]}
                 >
-                  <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.inkSoft }}>
+                  <IconFilter size={11} color={t.inkSoft} />
+                  <Text
+                    style={{
+                      fontFamily: FMFonts.sansMedium,
+                      fontSize: 11,
+                      color: t.inkSoft,
+                      marginLeft: 6,
+                    }}
+                  >
                     {rangeLabel(filterDateFrom, filterDateTo)}
                   </Text>
                 </Pressable>
@@ -703,18 +769,50 @@ interface CashflowCardProps {
   value: number;
   masked: boolean;
   total?: boolean;
+  series: number[];
+  days: string[];
+  negSpark?: boolean;
+  zeroBaseline?: boolean;
 }
 
-function CashflowCard({ label, value, masked, total }: CashflowCardProps) {
+function CashflowCard({
+  label,
+  value,
+  masked,
+  total,
+  series,
+  days,
+  negSpark,
+  zeroBaseline,
+}: CashflowCardProps) {
   const t = useFMTheme();
   return (
     <View style={[styles.cashflowCard, { backgroundColor: t.surface, borderColor: t.line }]}>
-      <Label>{label}</Label>
+      <Text
+        style={{
+          fontFamily: FMFonts.display,
+          fontSize: 18,
+          color: t.ink,
+          letterSpacing: -0.3,
+          lineHeight: 22,
+        }}
+      >
+        {label}
+      </Text>
       <View style={{ marginTop: 8 }}>
         <Balance value={value} masked={masked} size={18} total={total} />
       </View>
-      <View style={{ marginTop: 12, height: 18 }}>
-        <Spark data={[5, 8, 12, 7, 14, 9, Math.max(1, Math.abs(value) / 200)]} width={140} height={18} neg={value < 0} />
+      <View style={{ marginTop: 12 }}>
+        <Spark
+          data={series}
+          labels={days}
+          width={140}
+          height={18}
+          interactive
+          neg={negSpark}
+          zeroBaseline={zeroBaseline}
+          formatValue={(v) => formatEUR(v, { masked })}
+        />
       </View>
     </View>
   );

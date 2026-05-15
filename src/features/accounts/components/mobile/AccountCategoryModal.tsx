@@ -1,49 +1,143 @@
 import React from "react";
-import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+
+import { FMFonts } from "@/src/constants/theme";
+import { Sheet } from "@/src/shared/components/Sheet";
+import { Button, IconCheck, useFMTheme } from "@/src/shared/design";
 
 type AccountCategory = "Giro" | "Savings" | "Stock";
+
+interface CatMeta {
+  key: AccountCategory;
+  title: string;
+  desc: string;
+}
+
+const CATEGORIES: readonly CatMeta[] = [
+  {
+    key: "Giro",
+    title: "Giro",
+    desc: "Everyday checking — salary, spending, direct debits.",
+  },
+  {
+    key: "Savings",
+    title: "Savings",
+    desc: "Money set aside — emergency fund, goals, deposits.",
+  },
+  {
+    key: "Stock",
+    title: "Stock",
+    desc: "Brokerage / depot — ETFs, shares, invested capital.",
+  },
+];
 
 interface AccountCategoryModalProps {
   visible: boolean;
   currentCategory: AccountCategory;
   onSelect: (category: AccountCategory) => void;
   onClose: () => void;
-  backgroundColor: string;
-  textColor: string;
-  tintColor: string;
+  backgroundColor?: string;
+  textColor?: string;
+  tintColor?: string;
 }
 
-export function AccountCategoryModal({ visible, currentCategory, onSelect, onClose, backgroundColor, textColor, tintColor }: AccountCategoryModalProps) {
+// Account-category picker. Radio-style rows with a description for each option
+// so it reads as a real settings choice rather than three bare buttons.
+export function AccountCategoryModal({
+  visible,
+  currentCategory,
+  onSelect,
+  onClose,
+}: AccountCategoryModalProps) {
+  const t = useFMTheme();
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor }]}>
-          <Text style={[styles.modalTitle, { color: textColor }]}>Account Category</Text>
-          <View style={styles.categoryContainer}>
-            {(["Giro", "Savings", "Stock"] as AccountCategory[]).map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                style={[styles.categoryButton, { backgroundColor: currentCategory === cat ? tintColor : tintColor + "10" }]}
-                onPress={() => { onSelect(cat); onClose(); }}
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title="Account category"
+      subtitle="How this account is grouped in the Accounts overview."
+      actions={
+        <Button variant="ghost" onPress={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <View style={{ gap: 8 }}>
+        {CATEGORIES.map((cat) => {
+          const active = currentCategory === cat.key;
+          return (
+            <Pressable
+              key={cat.key}
+              onPress={() => {
+                onSelect(cat.key);
+                onClose();
+              }}
+              style={({ pressed }) => [
+                styles.row,
+                {
+                  backgroundColor: active ? t.accentSoft : t.surface,
+                  borderColor: active ? t.accent : t.lineStrong,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.radio,
+                  {
+                    borderColor: active ? t.accent : t.lineStrong,
+                    backgroundColor: active ? t.accent : "transparent",
+                  },
+                ]}
               >
-                <Text style={{ color: currentCategory === cat ? backgroundColor : textColor, fontWeight: "600" }}>{cat}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <TouchableOpacity onPress={onClose} style={[styles.closeButton, { backgroundColor: textColor + "15" }]}>
-            <Text style={{ color: textColor, fontWeight: "600" }}>Close</Text>
-          </TouchableOpacity>
-        </View>
+                {active ? <IconCheck size={11} color={t.bg} /> : null}
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text
+                  style={{
+                    fontFamily: FMFonts.sansSemibold,
+                    fontSize: 13.5,
+                    color: t.ink,
+                  }}
+                >
+                  {cat.title}
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: FMFonts.sans,
+                    fontSize: 11.5,
+                    color: t.inkSoft,
+                    marginTop: 3,
+                    lineHeight: 16,
+                  }}
+                >
+                  {cat.desc}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
       </View>
-    </Modal>
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 20 },
-  modalContent: { width: "100%", maxWidth: 320, borderRadius: 16, padding: 24, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 },
-  modalTitle: { fontSize: 18, fontWeight: "600", marginBottom: 24, textAlign: "center" },
-  categoryContainer: { flexDirection: "row", gap: 8, marginBottom: 20 },
-  categoryButton: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  closeButton: { paddingVertical: 12, borderRadius: 8, alignItems: "center" },
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderRadius: 10,
+  },
+  radio: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 1,
+  },
 });

@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
 import React from "react";
@@ -7,12 +6,25 @@ import {
   FlatList,
   Modal,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
-import { useThemeColor } from "../../../../shared/hooks/use-theme-color";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { FMFonts } from "@/src/constants/theme";
+import {
+  Button,
+  IconClose,
+  IconDoc,
+  IconChevR,
+  IconTrash,
+  IconUpload,
+  IconWarn,
+  Label,
+  useFMTheme,
+} from "@/src/shared/design";
 import { useSettings } from "../../../../shared/context/SettingsContext";
 import {
   useBankStatements,
@@ -50,11 +62,8 @@ export function StatementsModal({
   onClose,
   onImport,
 }: StatementsModalProps) {
-  const backgroundColor = useThemeColor({}, "background");
-  const surfaceColor = useThemeColor({}, "surface");
-  const textColor = useThemeColor({}, "text");
-  const tintColor = useThemeColor({}, "tint");
-  const borderColor = useThemeColor({}, "border");
+  const t = useFMTheme();
+  const insets = useSafeAreaInsets();
   const { i18n } = useSettings();
   const { getStatementsForAccount, deleteStatement, getPdfData } =
     useBankStatements();
@@ -144,147 +153,248 @@ export function StatementsModal({
 
   const renderItem = ({ item }: { item: BankStatement }) => {
     const clickable = !!item.hasPdf;
+    const metaParts = [formatDate(item.uploadedAt)];
+    if (item.bank) metaParts.push(item.bank);
+
     return (
-      <View
-        style={[styles.card, { backgroundColor: surfaceColor, borderColor }]}
-      >
+      <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.line }]}>
+        {/* File header — tap to open PDF */}
         <View style={styles.cardHeader}>
-          <TouchableOpacity
-            activeOpacity={clickable ? 0.7 : 1}
+          <Pressable
             onPress={clickable ? () => handleOpenPdf(item) : undefined}
             disabled={!clickable}
-            style={styles.cardHeaderTouch}
+            style={({ pressed }) => [
+              styles.cardHeaderTouch,
+              { opacity: pressed && clickable ? 0.7 : 1 },
+            ]}
           >
-            <Ionicons name="document-text" size={22} color={tintColor} />
+            <View style={[styles.iconBg, { backgroundColor: t.accentSoft }]}>
+              <IconDoc size={16} color={t.accent} />
+            </View>
             <View style={styles.cardTitleArea}>
               <Text
-                style={[styles.cardFileName, { color: textColor }]}
+                style={{
+                  fontFamily: FMFonts.sansSemibold,
+                  fontSize: 13.5,
+                  color: t.ink,
+                }}
                 numberOfLines={1}
               >
                 {item.fileName}
               </Text>
-              <Text style={[styles.cardMeta, { color: textColor }]}>
-                {formatDate(item.uploadedAt)}
-                {item.bank ? ` · ${item.bank}` : ""}
+              <Text
+                style={{
+                  fontFamily: FMFonts.sans,
+                  fontSize: 11,
+                  color: t.inkMuted,
+                  marginTop: 2,
+                }}
+                numberOfLines={1}
+              >
+                {metaParts.join(" · ")}
               </Text>
             </View>
-            {clickable && (
-              <Ionicons
-                name="open-outline"
-                size={18}
-                color={textColor}
-                style={{ opacity: 0.4 }}
-              />
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => handleDelete(item)}
-            style={styles.deleteBtn}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="trash-outline" size={18} color="#F43F5E" />
-          </TouchableOpacity>
+            {clickable ? (
+              <View style={styles.openLink}>
+                <Text
+                  style={{
+                    fontFamily: FMFonts.sansMedium,
+                    fontSize: 11,
+                    color: t.accent,
+                  }}
+                >
+                  {i18n.stmt_open_pdf || "Open PDF"}
+                </Text>
+                <IconChevR size={11} color={t.accent} />
+              </View>
+            ) : null}
+          </Pressable>
         </View>
 
+        {/* Stats badges */}
         <View style={styles.statsRow}>
-          <View style={[styles.statBadge, { backgroundColor: tintColor + "15" }]}>
-            <Text style={[styles.statText, { color: tintColor }]}>
+          <View style={[styles.statBadge, { backgroundColor: t.accentSoft }]}>
+            <Text style={[styles.statText, { color: t.accent }]}>
               {item.importedTxIds.length} {i18n.stmt_imported || "imported"}
             </Text>
           </View>
-          {item.skippedCount > 0 && (
-            <View style={[styles.statBadge, { backgroundColor: "#F59E0B15" }]}>
-              <Text style={[styles.statText, { color: "#F59E0B" }]}>
+          {item.skippedCount > 0 ? (
+            <View style={[styles.statBadge, { backgroundColor: t.warnSoft }]}>
+              <Text style={[styles.statText, { color: t.warn }]}>
                 {item.skippedCount} {i18n.stmt_skipped || "skipped"}
               </Text>
             </View>
-          )}
-          {item.period && (
-            <View style={[styles.statBadge, { backgroundColor: textColor + "08" }]}>
-              <Text style={[styles.statText, { color: textColor, opacity: 0.6 }]}>
+          ) : null}
+          {item.period ? (
+            <View style={[styles.statBadge, { backgroundColor: t.surfaceAlt }]}>
+              <Text style={[styles.statText, { color: t.inkSoft }]}>
                 {item.period}
               </Text>
             </View>
-          )}
+          ) : null}
         </View>
 
-        {item.iban && (
+        {item.iban ? (
           <Text
-            style={[styles.ibanText, { color: textColor }]}
+            style={{
+              fontFamily: FMFonts.mono,
+              fontSize: 11,
+              color: t.inkMuted,
+              marginTop: 8,
+              fontVariant: ["tabular-nums"],
+            }}
             numberOfLines={1}
           >
-            IBAN: {item.iban}
+            {item.iban}
           </Text>
-        )}
+        ) : null}
 
-        {item.parseWarning && (
-          <View style={[styles.warningRow, { backgroundColor: "#FEF3C7" }]}>
-            <Ionicons name="warning-outline" size={14} color="#92400E" />
-            <Text style={styles.warningText}>{item.parseWarning}</Text>
+        {item.parseWarning ? (
+          <View style={[styles.warningRow, { backgroundColor: t.warnSoft }]}>
+            <IconWarn size={12} color={t.warn} />
+            <Text style={[styles.warningText, { color: t.warn }]}>
+              {item.parseWarning}
+            </Text>
           </View>
-        )}
+        ) : null}
+
+        <View style={[styles.cardFooter, { borderTopColor: t.line }]}>
+          <Pressable
+            onPress={() => handleDelete(item)}
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.deleteBtn,
+              { opacity: pressed ? 0.6 : 1 },
+            ]}
+          >
+            <IconTrash size={13} color={t.neg} />
+            <Text
+              style={{
+                fontFamily: FMFonts.sansMedium,
+                fontSize: 11.5,
+                color: t.neg,
+                marginLeft: 5,
+              }}
+            >
+              {i18n.delete || "Delete"}
+            </Text>
+          </Pressable>
+        </View>
       </View>
     );
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.backdrop}>
-        <View
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.scrim} onPress={onClose}>
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
           style={[
             styles.sheet,
-            { backgroundColor },
+            {
+              backgroundColor: t.surface,
+              borderColor: t.lineStrong,
+              paddingBottom: insets.bottom,
+            },
           ]}
         >
-          <View style={styles.sheetHeader}>
-            <Text style={[styles.sheetTitle, { color: textColor }]}>
-              {i18n.stmt_title || "Bank Statements"}
-            </Text>
-            <View style={styles.headerRight}>
-              {onImport && (
-                <TouchableOpacity
+          <View style={[styles.handle, { backgroundColor: t.lineStrong }]} />
+
+          {/* Header */}
+          <View style={[styles.header, { borderBottomColor: t.line }]}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                style={{
+                  fontFamily: FMFonts.display,
+                  fontSize: 20,
+                  color: t.ink,
+                  letterSpacing: -0.3,
+                  lineHeight: 24,
+                }}
+                numberOfLines={1}
+              >
+                {i18n.stmt_title || "Statements"}
+              </Text>
+              <Text
+                style={{
+                  fontFamily: FMFonts.sans,
+                  fontSize: 11,
+                  color: t.inkSoft,
+                  marginTop: 2,
+                }}
+              >
+                {statements.length}{" "}
+                {statements.length === 1
+                  ? i18n.stmt_count_single || "statement"
+                  : i18n.stmt_count_plural || "statements"}
+              </Text>
+            </View>
+            <View style={styles.headerActions}>
+              {onImport ? (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<IconUpload size={12} />}
                   onPress={onImport}
-                  style={[styles.importBtn, { backgroundColor: tintColor }]}
-                  activeOpacity={0.8}
                 >
-                  <Ionicons
-                    name="cloud-upload-outline"
-                    size={16}
-                    color={backgroundColor}
-                  />
-                  <Text
-                    style={[styles.importBtnText, { color: backgroundColor }]}
-                  >
-                    {i18n.import || "Import"}
-                  </Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                <Ionicons name="close" size={24} color={textColor} />
-              </TouchableOpacity>
+                  {i18n.import || "Import"}
+                </Button>
+              ) : null}
+              <Pressable
+                onPress={onClose}
+                hitSlop={10}
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.5 : 1,
+                  padding: 4,
+                })}
+              >
+                <IconClose size={15} color={t.inkSoft} />
+              </Pressable>
             </View>
           </View>
 
           {statements.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={{ fontSize: 48 }}>📄</Text>
+              <View style={[styles.emptyIcon, { backgroundColor: t.surfaceAlt }]}>
+                <IconDoc size={22} color={t.inkMuted} />
+              </View>
               <Text
-                style={[styles.emptyText, { color: textColor, opacity: 0.5 }]}
+                style={{
+                  fontFamily: FMFonts.sansSemibold,
+                  fontSize: 14,
+                  color: t.inkSoft,
+                  marginTop: 14,
+                  textAlign: "center",
+                }}
               >
                 {i18n.stmt_empty || "No statements imported yet"}
               </Text>
               <Text
                 style={{
-                  color: textColor,
-                  opacity: 0.4,
-                  fontSize: 13,
+                  fontFamily: FMFonts.sans,
+                  fontSize: 12,
+                  color: t.inkMuted,
+                  marginTop: 6,
                   textAlign: "center",
-                  marginTop: 4,
+                  lineHeight: 18,
+                  paddingHorizontal: 24,
                 }}
               >
                 {i18n.stmt_empty_hint ||
                   "Use the Import button to upload bank statements"}
               </Text>
+              {onImport ? (
+                <View style={{ marginTop: 18 }}>
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    icon={<IconUpload size={13} />}
+                    onPress={onImport}
+                  >
+                    {i18n.import || "Import"}
+                  </Button>
+                </View>
+              ) : null}
             </View>
           ) : (
             <FlatList
@@ -293,154 +403,141 @@ export function StatementsModal({
               renderItem={renderItem}
               contentContainerStyle={styles.listContent}
               showsVerticalScrollIndicator={false}
-              ListFooterComponent={
-                <Text
-                  style={{
-                    textAlign: "center",
-                    color: textColor,
-                    opacity: 0.4,
-                    fontSize: 12,
-                    paddingVertical: 16,
-                  }}
-                >
-                  {statements.length}{" "}
-                  {statements.length === 1
-                    ? i18n.stmt_count_single || "statement"
-                    : i18n.stmt_count_plural || "statements"}
-                </Text>
-              }
+              ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
             />
           )}
-        </View>
-      </View>
+        </Pressable>
+      </Pressable>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  scrim: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "rgba(0,0,0,0.4)",
     justifyContent: "flex-end",
   },
   sheet: {
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    maxHeight: "85%",
-    minHeight: 300,
-    paddingTop: 8,
+    width: "100%",
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderTopWidth: 1,
+    overflow: "hidden",
+    maxHeight: "92%",
   },
-  sheetHeader: {
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 16,
+    borderBottomWidth: 1,
+    gap: 10,
   },
-  headerRight: {
+  headerActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
-  importBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  importBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  sheetTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  closeBtn: {
-    padding: 8,
-  },
   listContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
   },
   card: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 0,
+    borderWidth: 1,
+    borderRadius: 12,
   },
   cardHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
   },
   cardHeaderTouch: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+  },
+  iconBg: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
   },
   cardTitleArea: {
     flex: 1,
-    gap: 2,
+    minWidth: 0,
   },
-  cardFileName: {
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  cardMeta: {
-    fontSize: 12,
-    opacity: 0.5,
-  },
-  deleteBtn: {
-    padding: 8,
+  openLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    marginLeft: 10,
   },
   statsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8,
+    gap: 6,
+    marginTop: 14,
   },
   statBadge: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
-    borderRadius: 999,
+    borderRadius: 6,
   },
   statText: {
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  ibanText: {
+    fontFamily: FMFonts.sansMedium,
     fontSize: 11,
-    fontFamily: "monospace",
-    opacity: 0.4,
-    marginTop: 4,
   },
   warningRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 6,
-    padding: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: 8,
-    marginTop: 8,
+    marginTop: 10,
   },
   warningText: {
-    fontSize: 12,
-    color: "#92400E",
+    fontFamily: FMFonts.sansMedium,
+    fontSize: 11,
     flex: 1,
+    lineHeight: 16,
+  },
+  cardFooter: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    borderTopWidth: 1,
+    marginTop: 14,
+    paddingVertical: 12,
+  },
+  deleteBtn: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   emptyState: {
-    flex: 1,
-    justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 64,
-    gap: 8,
+    justifyContent: "center",
+    paddingVertical: 56,
+    paddingHorizontal: 20,
   },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: "600",
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

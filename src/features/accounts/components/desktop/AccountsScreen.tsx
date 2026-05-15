@@ -18,11 +18,15 @@ import {
   IconPlus,
   Label,
   Spark,
+  formatEUR,
   splitForHero,
   useFMTheme,
 } from "@/src/shared/design";
 import type { UnifiedAccount } from "../../context/AccountsContext";
 import { useAccountsScreen } from "../../hooks/useAccountsScreen";
+import { useTransactionsContext } from "@/src/features/transactions/context/TransactionsContext";
+import { useDateFilter } from "@/src/shared/context/DateFilterContext";
+import { buildAccountBalanceSeries, type BalanceSeries } from "../../utils/balanceSeries";
 import { CashModal } from "./CashModal";
 import { AddAccountModal } from "./AddAccountModal";
 
@@ -59,6 +63,21 @@ export function AccountsScreen() {
     totalBankBalance,
     totalNetWorth,
   } = useAccountsScreen();
+
+  const { transactionsByAccount } = useTransactionsContext();
+  const { filterDateFrom, filterDateTo } = useDateFilter();
+  const seriesByAccount = useMemo(() => {
+    const m: Record<string, BalanceSeries> = {};
+    for (const a of accounts) {
+      m[a.id] = buildAccountBalanceSeries(
+        a.balance ?? 0,
+        transactionsByAccount[a.id],
+        filterDateFrom,
+        filterDateTo,
+      );
+    }
+    return m;
+  }, [accounts, transactionsByAccount, filterDateFrom, filterDateTo]);
 
   const masked = isBalanceHidden;
 
@@ -160,6 +179,7 @@ export function AccountsScreen() {
                 label={labelFor(sec.cat, i18n)}
                 accounts={sec.accounts}
                 masked={masked}
+                seriesByAccount={seriesByAccount}
                 onPressAccount={(a) =>
                   router.push({
                     pathname: "/account/[id]",
@@ -265,10 +285,17 @@ interface SectionTableProps {
   label: string;
   accounts: UnifiedAccount[];
   masked: boolean;
+  seriesByAccount: Record<string, BalanceSeries>;
   onPressAccount: (a: UnifiedAccount) => void;
 }
 
-function SectionTable({ label, accounts, masked, onPressAccount }: SectionTableProps) {
+function SectionTable({
+  label,
+  accounts,
+  masked,
+  seriesByAccount,
+  onPressAccount,
+}: SectionTableProps) {
   const t = useFMTheme();
   const subtotal = accounts.reduce((s, a) => s + (a.balance ?? 0), 0);
   return (
@@ -378,10 +405,13 @@ function SectionTable({ label, accounts, masked, onPressAccount }: SectionTableP
           </View>
           <View style={[styles.cell, { width: 90, alignItems: "flex-end" }]}>
             <Spark
-              data={makePlaceholderSpark(a.balance ?? 0)}
-              width={70}
+              data={seriesByAccount[a.id]?.balance ?? []}
+              labels={seriesByAccount[a.id]?.days}
+              width={78}
               height={18}
+              interactive
               neg={(a.balance ?? 0) < 0}
+              formatValue={(v) => formatEUR(v, { masked })}
             />
           </View>
           <View style={[styles.cell, { width: 130, alignItems: "flex-end" }]}>
@@ -424,12 +454,6 @@ function labelFor(cat: Cat, i18n: any): string {
   if (cat === "Savings") return i18n.cat_savings ?? "Savings";
   if (cat === "Stock") return i18n.cat_stock ?? "Stock";
   return cat;
-}
-
-// Placeholder until real history is wired (task #9).
-function makePlaceholderSpark(balance: number): number[] {
-  const sign = balance < 0 ? -1 : 1;
-  return [0.7, 0.85, 0.95, 0.9, 1, 0.97, 1].map((v) => v * sign);
 }
 
 const styles = StyleSheet.create({

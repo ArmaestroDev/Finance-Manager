@@ -1,11 +1,15 @@
 import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import type { Transaction } from "../../../../services/enableBanking";
-import { getTransactionAmount } from "../../utils/transactions";
-import { cleanRemittanceInfo } from "../../../../shared/utils/financeHelpers";
-import { Colors } from "../../../../constants/theme";
-import { useColorScheme } from "../../../../shared/hooks/use-color-scheme";
-import { IconSymbol } from "../../../../shared/components/ui/icon-symbol";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+
+import { FMFonts } from "@/src/constants/theme";
+import { Money, useFMTheme } from "@/src/shared/design";
+import type { Transaction } from "@/src/services/enableBanking";
+import { cleanRemittanceInfo } from "@/src/shared/utils/financeHelpers";
+import {
+  getStableTxId,
+  getTransactionAmount,
+  pickTransactionTitle,
+} from "../../utils/transactions";
 
 interface TransactionCategory {
   id: string;
@@ -16,47 +20,109 @@ interface TransactionCategory {
 interface TransactionItemProps {
   item: Transaction;
   textColor?: string;
+  masked?: boolean;
   getCategoryForTransaction: (txId: string) => TransactionCategory | null;
   onPress: (tx: Transaction) => void;
 }
 
-export function TransactionItem({ item, getCategoryForTransaction, onPress }: TransactionItemProps) {
-  const colorScheme = useColorScheme();
-  const theme = Colors[colorScheme ?? "light"];
+// Mobile transaction row. Clean touch layout matching the canonical
+// DashboardScreen "recent" rows: small category color dot, merchant title
+// (medium), reference secondary line, category NAME label, amount via Money.
+export function TransactionItem({
+  item,
+  masked = false,
+  getCategoryForTransaction,
+  onPress,
+}: TransactionItemProps) {
+  const t = useFMTheme();
 
   const amount = getTransactionAmount(item);
-  const isNegative = amount < 0;
-  const name = item.creditor?.name || item.debtor?.name || "Unknown Transaction";
+  const title = pickTransactionTitle(item);
   const reference = cleanRemittanceInfo(item.remittance_information);
-  const txId = item.transaction_id || `gen_${item.booking_date || ""}_${item.transaction_amount.amount}_${item.creditor?.name || item.debtor?.name || ""}`;
+  const txId = getStableTxId(item);
   const txCat = getCategoryForTransaction(txId);
+  // Hide the reference line when it merely echoes the title.
+  const showReference =
+    !!reference && reference.toLowerCase() !== title.toLowerCase();
 
   return (
-    <TouchableOpacity onPress={() => onPress(item)}>
-      <View style={styles.transactionItem}>
-        <View style={[styles.iconContainer, { backgroundColor: txCat?.color ? txCat.color + "25" : "#6B728020" }]}>
-          <IconSymbol name="creditcard.fill" size={20} color={txCat?.color || "#6B7280"} />
-        </View>
-        <View style={styles.transactionLeft}>
-          <Text style={[styles.transactionName, { color: theme.text }]} numberOfLines={1}>{name}</Text>
-          <Text style={[styles.transactionDate, { color: theme.textSecondary }]} numberOfLines={1}>
-            {reference || ""}
+    <Pressable
+      onPress={() => onPress(item)}
+      style={({ pressed }) => [
+        styles.row,
+        { backgroundColor: t.surface, borderColor: t.line },
+        pressed && { opacity: 0.7 },
+      ]}
+    >
+      <View
+        style={[
+          styles.dot,
+          txCat
+            ? { backgroundColor: txCat.color }
+            : {
+                backgroundColor: "transparent",
+                borderWidth: 1.5,
+                borderStyle: "dashed",
+                borderColor: t.inkMuted,
+              },
+        ]}
+      />
+      <View style={styles.body}>
+        <Text
+          style={{ fontFamily: FMFonts.sansMedium, fontSize: 13, color: t.ink }}
+          numberOfLines={1}
+        >
+          {title}
+        </Text>
+        {showReference ? (
+          <Text
+            style={{
+              fontFamily: FMFonts.sans,
+              fontSize: 11,
+              color: t.inkMuted,
+              marginTop: 2,
+            }}
+            numberOfLines={1}
+          >
+            {reference}
           </Text>
-        </View>
-        <Text style={[styles.transactionAmount, { color: isNegative ? theme.text : theme.income }]}>
-          {isNegative ? "" : "+"}
-          {new Intl.NumberFormat("de-DE", { style: "currency", currency: item.transaction_amount.currency }).format(amount)}
+        ) : null}
+        <Text
+          style={{
+            fontFamily: FMFonts.sansSemibold,
+            fontSize: 10,
+            letterSpacing: 0.4,
+            textTransform: "uppercase",
+            color: txCat ? txCat.color : t.warn,
+            marginTop: showReference ? 5 : 4,
+          }}
+          numberOfLines={1}
+        >
+          {txCat ? txCat.name : "Uncategorized"}
         </Text>
       </View>
-    </TouchableOpacity>
+      <Money value={amount} masked={masked} size={13} />
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  transactionItem: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16, paddingHorizontal: 8 },
-  iconContainer: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", marginRight: 16 },
-  transactionLeft: { flex: 1, marginRight: 16 },
-  transactionName: { fontSize: 16, fontWeight: "600", marginBottom: 4 },
-  transactionDate: { fontSize: 13 },
-  transactionAmount: { fontSize: 16, fontWeight: "600" },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderRadius: 12,
+  },
+  dot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    marginRight: 12,
+  },
+  body: {
+    flex: 1,
+    marginRight: 12,
+  },
 });

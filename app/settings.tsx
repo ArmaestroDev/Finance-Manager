@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FMColors, FMFonts, ThemePalette } from "@/src/constants/theme";
 import { DesktopShell } from "@/src/shared/components/DesktopShell";
 import { MobileHeader } from "@/src/shared/components/MobileHeader";
+import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
 import {
   Button,
   IconBack,
@@ -32,7 +33,7 @@ export default function SettingsScreen() {
   const t = useFMTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const isWeb = Platform.OS === "web";
+  const isMobile = useIsMobileLayout();
 
   const {
     isBalanceHidden,
@@ -225,7 +226,7 @@ export default function SettingsScreen() {
       <Modal
         visible={isPinModalVisible}
         transparent
-        animationType={isWeb ? "fade" : "slide"}
+        animationType={Platform.OS === "web" ? "fade" : "slide"}
         onRequestClose={() => setPinModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
@@ -276,7 +277,7 @@ export default function SettingsScreen() {
       <Modal
         visible={isMainAccModalVisible}
         transparent
-        animationType={isWeb ? "fade" : "slide"}
+        animationType={Platform.OS === "web" ? "fade" : "slide"}
         onRequestClose={() => setMainAccModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
@@ -338,7 +339,7 @@ export default function SettingsScreen() {
     </>
   );
 
-  if (isWeb) {
+  if (!isMobile) {
     return (
       <DesktopShell breadcrumb={i18n.settings_title} activeId="overview">
         <Stack.Screen options={{ headerShown: false }} />
@@ -389,9 +390,9 @@ interface SettingsSectionProps {
 
 function SettingsSection({ title, desc, children }: SettingsSectionProps) {
   const t = useFMTheme();
-  const isWeb = Platform.OS === "web";
+  const isMobile = useIsMobileLayout();
 
-  if (isWeb) {
+  if (!isMobile) {
     return (
       <View style={[styles.desktopSection, { borderTopColor: t.line }]}>
         <View style={{ width: 240 }}>
@@ -516,6 +517,7 @@ const PALETTE_ORDER: { value: ThemePalette; labelKey: PaletteLabelKey }[] = [
 function PaletteSwatchRow({ label, active, onSelect }: PaletteSwatchRowProps) {
   const t = useFMTheme();
   const { i18n } = useSettings();
+  const isMobile = useIsMobileLayout();
   return (
     <View style={[styles.row, { flexWrap: "wrap", gap: 12 }]}>
       <View style={{ flex: 1, minWidth: 120 }}>
@@ -523,7 +525,20 @@ function PaletteSwatchRow({ label, active, onSelect }: PaletteSwatchRowProps) {
           {label}
         </Text>
       </View>
-      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 14 }}>
+      <View
+        style={
+          !isMobile
+            ? { flexDirection: "row", alignItems: "flex-start", gap: 14 }
+            : {
+                flexDirection: "row",
+                alignItems: "flex-start",
+                flexWrap: "wrap",
+                gap: 14,
+                rowGap: 14,
+                justifyContent: "flex-end",
+              }
+        }
+      >
         {PALETTE_ORDER.map((opt) => {
           const swatchColor = FMColors[opt.value].light.accent;
           const isActive = active === opt.value;
@@ -578,6 +593,7 @@ interface SegmentedToggleProps<T extends string> {
 
 function SegmentedToggle<T extends string>({ options, active, onSelect }: SegmentedToggleProps<T>) {
   const t = useFMTheme();
+  const isMobile = useIsMobileLayout();
   return (
     <View style={styles.segmentedRow}>
       {options.map((opt) => {
@@ -595,12 +611,13 @@ function SegmentedToggle<T extends string>({ options, active, onSelect }: Segmen
                 borderColor: isActive ? t.accent : t.lineStrong,
                 opacity: pressed ? 0.85 : 1,
               },
+              isMobile && { paddingHorizontal: 8 },
             ]}
           >
             <Text
               style={{
                 fontFamily: isActive ? FMFonts.sansSemibold : FMFonts.sansMedium,
-                fontSize: 15,
+                fontSize: isMobile ? 14 : 15,
                 color: isActive ? t.accentInk : t.ink,
                 textAlign: "center",
               }}
@@ -716,6 +733,7 @@ function ApiKeyRow({
       </Text>
       {masked ? (
         <Text
+          numberOfLines={1}
           style={{
             fontFamily: FMFonts.mono,
             fontSize: 13.5,
@@ -825,7 +843,7 @@ const styles = StyleSheet.create({
   },
   swatchWrap: {
     alignItems: "center",
-    width: 52,
+    width: Platform.OS === "web" ? 52 : 50,
   },
   swatchDot: {
     width: 32,

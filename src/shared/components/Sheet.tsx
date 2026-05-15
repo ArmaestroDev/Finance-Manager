@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { FMFonts } from "@/src/constants/theme";
 import { IconClose, useFMTheme } from "@/src/shared/design";
+import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
 
 interface SheetProps {
   visible: boolean;
@@ -47,7 +48,9 @@ export function Sheet({
 }: SheetProps) {
   const t = useFMTheme();
   const insets = useSafeAreaInsets();
-  const isWeb = Platform.OS === "web";
+  // Desktop layout → centered dialog; mobile layout (native or narrow web) →
+  // bottom sheet. Width-driven so a narrow browser gets the sheet treatment.
+  const isWeb = !useIsMobileLayout();
 
   return (
     <Modal
@@ -56,7 +59,13 @@ export function Sheet({
       animationType={isWeb ? "fade" : "slide"}
       onRequestClose={onClose}
     >
-      <Pressable style={styles.scrim} onPress={onClose}>
+      <Pressable
+        style={[
+          styles.scrim,
+          { justifyContent: isWeb ? "center" : "flex-end" },
+        ]}
+        onPress={onClose}
+      >
         <Pressable
           onPress={(e) => e.stopPropagation()}
           style={[

@@ -3,14 +3,13 @@ import React, { useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  RefreshControl,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 
 import { FMFonts } from "@/src/constants/theme";
+import { MobileShell } from "@/src/shared/components/MobileShell";
 import { MobileHeader } from "@/src/shared/components/MobileHeader";
 import {
   Balance,
@@ -18,7 +17,6 @@ import {
   IconEdit,
   IconLink,
   IconPlus,
-  IconRefresh,
   Label,
   Spark,
   formatEUR,
@@ -27,8 +25,11 @@ import {
 } from "@/src/shared/design";
 import type { UnifiedAccount } from "../../context/AccountsContext";
 import { useAccountsScreen } from "../../hooks/useAccountsScreen";
-import { CashModal } from "../CashModal";
-import { AddAccountModal } from "../AddAccountModal";
+import { useTransactionsContext } from "@/src/features/transactions/context/TransactionsContext";
+import { useDateFilter } from "@/src/shared/context/DateFilterContext";
+import { buildAccountBalanceSeries, type BalanceSeries } from "../../utils/balanceSeries";
+import { CashModal } from "./CashModal";
+import { AddAccountModal } from "./AddAccountModal";
 
 type Cat = "Giro" | "Savings" | "Stock";
 const CATS: readonly Cat[] = ["Giro", "Savings", "Stock"];
@@ -65,8 +66,27 @@ export function AccountsScreen() {
     totalNetWorth,
   } = useAccountsScreen();
 
+  const { transactionsByAccount } = useTransactionsContext();
+  const { filterDateFrom, filterDateTo } = useDateFilter();
+  const seriesByAccount = useMemo(() => {
+    const m: Record<string, BalanceSeries> = {};
+    for (const a of accounts) {
+      m[a.id] = buildAccountBalanceSeries(
+        a.balance ?? 0,
+        transactionsByAccount[a.id],
+        filterDateFrom,
+        filterDateTo,
+      );
+    }
+    return m;
+  }, [accounts, transactionsByAccount, filterDateFrom, filterDateTo]);
+
   const masked = isBalanceHidden;
-  const heroParts = splitForHero(totalNetWorth, masked);
+
+  const totalLiabilities = useMemo(
+    () => accounts.reduce((s, a) => (a.balance < 0 ? s + a.balance : s), 0),
+    [accounts],
+  );
 
   const sectioned = useMemo(
     () =>
@@ -77,6 +97,14 @@ export function AccountsScreen() {
     [accounts],
   );
 
+  const banksCount = useMemo(() => {
+    const set = new Set<string>();
+    accounts.forEach((a) => {
+      if (a.bankName) set.add(a.bankName);
+    });
+    return set.size;
+  }, [accounts]);
+
   if (initialLoading && accounts.length === 0) {
     return (
       <View style={[styles.center, { backgroundColor: t.bg }]}>
@@ -86,116 +114,110 @@ export function AccountsScreen() {
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: t.bg }]}>
-      <MobileHeader
-        title={i18n.accounts_title}
-        right={
-          <>
-            <Chip
-              icon={<IconPlus size={11} color={t.inkSoft} />}
-              onPress={() => setAddAccountModalVisible(true)}
-            >
-              New
-            </Chip>
-            <Pressable
-              onPress={() => router.push("/connections" as never)}
-              style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 4 })}
-            >
-              <IconLink size={18} color={t.inkSoft} />
-            </Pressable>
-            <Pressable
-              onPress={() => refreshAccounts()}
-              disabled={isRefreshing}
-              style={({ pressed }) => ({
-                opacity: pressed ? 0.5 : isRefreshing ? 0.4 : 1,
-                padding: 4,
-              })}
-            >
-              <IconRefresh size={18} color={t.inkSoft} />
-            </Pressable>
-          </>
-        }
-      />
+    <MobileShell
+      headerOverride={
+        <MobileHeader
+          title={i18n.accounts_title}
+          sub={`${accounts.length} account${
+            accounts.length === 1 ? "" : "s"
+          } across ${banksCount || 0} bank${banksCount === 1 ? "" : "s"}`}
+          right={
+            <>
+              <Chip
+                icon={<IconEdit size={11} color={t.inkSoft} />}
+                onPress={openCashModal}
+              >
+                Cash
+              </Chip>
+              <Chip
+                icon={<IconPlus size={11} color={t.inkSoft} />}
+                onPress={() => setAddAccountModalVisible(true)}
+              >
+                Add
+              </Chip>
+              <Pressable
+                onPress={() => router.push("/connections" as never)}
+                style={({ pressed }) => ({
+                  opacity: pressed ? 0.6 : 1,
+                  padding: 4,
+                })}
+              >
+                <IconLink size={18} color={t.inkSoft} />
+              </Pressable>
+            </>
+          }
+        />
+      }
+      onRefresh={onRefresh}
+      refreshing={isRefreshing}
+    >
+      {/* ── 4-stat summary ── */}
+      <View style={styles.statsGrid}>
+        <StatCard
+          label={i18n.net_worth}
+          value={totalNetWorth}
+          masked={masked}
+          inverted
+        />
+        <StatCard label="Bank" value={totalBankBalance} masked={masked} />
+      </View>
+      <View style={[styles.statsGrid, { marginTop: 8 }]}>
+        <StatCard
+          label={i18n.cash_at_hand}
+          value={cashBalance}
+          masked={masked}
+          editable
+          onEdit={openCashModal}
+        />
+        <StatCard
+          label={i18n.total_liabilities}
+          value={totalLiabilities}
+          masked={masked}
+        />
+      </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={t.accent} />}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Net worth strip — inverted ink card */}
-        <View style={[styles.netCard, { backgroundColor: t.ink }]}>
-          <Label color={t.bg} style={{ opacity: 0.55 }}>{i18n.net_worth}</Label>
-          <View style={styles.heroRow}>
-            <Text
-              style={{
-                fontFamily: FMFonts.display,
-                fontSize: 30,
-                color: t.bg,
-                lineHeight: 32,
-                letterSpacing: -0.5,
-              }}
-            >
-              {heroParts.sign}
-              {heroParts.integer}
-              <Text style={{ color: t.bg, opacity: 0.55 }}>{heroParts.fraction}</Text>
-            </Text>
-            <Text
-              style={{
-                fontFamily: FMFonts.display,
-                fontSize: 18,
-                color: t.bg,
-                opacity: 0.7,
-                marginLeft: 4,
-              }}
-            >
-              €
-            </Text>
-          </View>
-          <View style={styles.netSplit}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.netSplitLabel, { color: t.bg, opacity: 0.55 }]}>
-                {i18n.bank_assets}
-              </Text>
-              <Text style={[styles.netSplitValue, { color: t.bg }]}>
-                {formatEUR(totalBankBalance, { masked })}
-              </Text>
-            </View>
-            <Pressable
-              onPress={openCashModal}
-              style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.7 : 1 })}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, opacity: 0.55 }}>
-                <Text style={[styles.netSplitLabel, { color: t.bg }]}>
-                  {i18n.cash_at_hand}
-                </Text>
-                <IconEdit size={9} color={t.bg} />
-              </View>
-              <Text style={[styles.netSplitValue, { color: t.bg }]}>
-                {formatEUR(cashBalance, { masked })}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-
-        {sectioned.length === 0 ? (
-          <EmptyState onAdd={() => setAddAccountModalVisible(true)} i18n={i18n} />
-        ) : (
-          sectioned.map((sec) => {
-            const subtotal = sec.accounts.reduce((s, a) => s + (a.balance ?? 0), 0);
+      {/* ── Sectioned accounts ── */}
+      {sectioned.length === 0 ? (
+        <EmptyState
+          onAdd={() => setAddAccountModalVisible(true)}
+          i18n={i18n}
+        />
+      ) : (
+        <View style={{ marginTop: 14, gap: 14 }}>
+          {sectioned.map((sec) => {
+            const subtotal = sec.accounts.reduce(
+              (s, a) => s + (a.balance ?? 0),
+              0,
+            );
             return (
-              <View key={sec.cat} style={{ marginBottom: 14 }}>
+              <View key={sec.cat}>
                 <View style={styles.sectionHead}>
-                  <Label>{`${labelFor(sec.cat, i18n)} · ${sec.accounts.length}`}</Label>
-                  <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.inkSoft, fontVariant: ["tabular-nums"] }}>
+                  <Label>{`${labelFor(sec.cat, i18n)} · ${
+                    sec.accounts.length
+                  }`}</Label>
+                  <Text
+                    style={{
+                      fontFamily: FMFonts.sansMedium,
+                      fontSize: 11,
+                      color: t.inkSoft,
+                      fontVariant: ["tabular-nums"],
+                    }}
+                  >
                     {formatEUR(subtotal, { masked })}
                   </Text>
                 </View>
-                <View style={[styles.sectionList, { backgroundColor: t.surface, borderColor: t.line }]}>
+                <View
+                  style={[
+                    styles.sectionList,
+                    { backgroundColor: t.surface, borderColor: t.line },
+                  ]}
+                >
                   {sec.accounts.map((a, i) => (
                     <AccountRow
                       key={a.id}
                       account={a}
                       masked={masked}
+                      series={seriesByAccount[a.id]}
                       isFirst={i === 0}
                       onPress={() =>
                         router.push({
@@ -208,9 +230,11 @@ export function AccountsScreen() {
                 </View>
               </View>
             );
-          })
-        )}
+          })}
+        </View>
+      )}
 
+      {sectioned.length > 0 ? (
         <Pressable
           onPress={() => setAddAccountModalVisible(true)}
           style={({ pressed }) => [
@@ -223,11 +247,18 @@ export function AccountsScreen() {
           ]}
         >
           <IconPlus size={13} color={t.ink} />
-          <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 13, color: t.ink, marginLeft: 6 }}>
+          <Text
+            style={{
+              fontFamily: FMFonts.sansMedium,
+              fontSize: 13,
+              color: t.ink,
+              marginLeft: 6,
+            }}
+          >
             {i18n.add_manual_account}
           </Text>
         </Pressable>
-      </ScrollView>
+      ) : null}
 
       <CashModal
         visible={isCashModalVisible}
@@ -235,9 +266,6 @@ export function AccountsScreen() {
         onChangeText={setTempCashValue}
         onSave={handleSaveCash}
         onClose={() => setCashModalVisible(false)}
-        textColor={t.ink}
-        backgroundColor={t.bg}
-        tintColor={t.accent}
         i18n={i18n}
       />
       <AddAccountModal
@@ -250,23 +278,102 @@ export function AccountsScreen() {
         setBalance={setNewAccountBalance}
         category={newAccountCategory}
         setCategory={setNewAccountCategory}
-        textColor={t.ink}
-        backgroundColor={t.bg}
-        tintColor={t.accent}
         i18n={i18n}
       />
-    </View>
+    </MobileShell>
+  );
+}
+
+interface StatCardProps {
+  label: string;
+  value: number;
+  masked: boolean;
+  inverted?: boolean;
+  editable?: boolean;
+  onEdit?: () => void;
+}
+
+function StatCard({
+  label,
+  value,
+  masked,
+  inverted,
+  editable,
+  onEdit,
+}: StatCardProps) {
+  const t = useFMTheme();
+  const bg = inverted ? t.ink : t.surface;
+  const fg = inverted ? t.bg : t.ink;
+  const labelColor = inverted ? t.bg : t.inkMuted;
+  const labelOpacity = inverted ? 0.55 : 1;
+  const heroParts = splitForHero(value, masked);
+  return (
+    <Pressable
+      onPress={editable ? onEdit : undefined}
+      style={({ pressed }) => [
+        styles.statCard,
+        {
+          backgroundColor: bg,
+          borderColor: inverted ? t.ink : t.line,
+          opacity: pressed && editable ? 0.85 : 1,
+        },
+      ]}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          opacity: labelOpacity,
+        }}
+      >
+        <Text style={[styles.statLabel, { color: labelColor }]} numberOfLines={1}>
+          {label}
+        </Text>
+        {editable ? <IconEdit size={10} color={labelColor} /> : null}
+      </View>
+      <View style={styles.statHero}>
+        <Text
+          style={{
+            fontFamily: FMFonts.display,
+            fontSize: 24,
+            color: fg,
+            lineHeight: 26,
+            letterSpacing: -0.4,
+          }}
+          numberOfLines={1}
+        >
+          {heroParts.sign}
+          {heroParts.integer}
+          <Text style={{ color: labelColor, opacity: labelOpacity }}>
+            {heroParts.fraction}
+          </Text>
+        </Text>
+        <Text
+          style={{
+            fontFamily: FMFonts.display,
+            fontSize: 15,
+            color: labelColor,
+            opacity: labelOpacity,
+            marginLeft: 4,
+          }}
+        >
+          €
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
 interface AccountRowProps {
   account: UnifiedAccount;
   masked: boolean;
+  series?: BalanceSeries;
   isFirst: boolean;
   onPress: () => void;
 }
 
-function AccountRow({ account, masked, isFirst, onPress }: AccountRowProps) {
+function AccountRow({ account, masked, series, isFirst, onPress }: AccountRowProps) {
   const t = useFMTheme();
   const isConnected = account.type === "connected";
   const initial = (account.bankName || account.name).charAt(0).toUpperCase();
@@ -288,15 +395,30 @@ function AccountRow({ account, masked, isFirst, onPress }: AccountRowProps) {
           { backgroundColor: t.surfaceAlt, borderColor: t.line },
         ]}
       >
-        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: t.inkSoft, letterSpacing: -0.3 }}>
+        <Text
+          style={{
+            fontFamily: FMFonts.sansSemibold,
+            fontSize: 12,
+            color: t.inkSoft,
+            letterSpacing: -0.3,
+          }}
+        >
           {initial}
         </Text>
       </View>
       <View style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink, lineHeight: 16 }} numberOfLines={1}>
+        <Text
+          style={{
+            fontFamily: FMFonts.sansSemibold,
+            fontSize: 13,
+            color: t.ink,
+            lineHeight: 16,
+          }}
+          numberOfLines={1}
+        >
           {account.name}
         </Text>
-        <View style={styles.statusRow}>
+        <View style={styles.metaRow}>
           <View
             style={{
               width: 5,
@@ -307,19 +429,57 @@ function AccountRow({ account, masked, isFirst, onPress }: AccountRowProps) {
               borderColor: t.inkMuted,
             }}
           />
-          <Text style={{ fontFamily: FMFonts.sans, fontSize: 10.5, color: t.inkMuted, marginLeft: 4 }} numberOfLines={1}>
-            {isConnected ? account.bankName : "Manual"}
+          <Text
+            style={{
+              fontFamily: FMFonts.sansMedium,
+              fontSize: 10,
+              color: isConnected ? t.pos : t.inkMuted,
+              marginLeft: 4,
+              letterSpacing: 0.4,
+              textTransform: "uppercase",
+            }}
+          >
+            {isConnected ? "Live" : "Manual"}
+          </Text>
+          <Text
+            style={{
+              fontFamily: FMFonts.sans,
+              fontSize: 10.5,
+              color: t.inkMuted,
+              marginLeft: 8,
+              flexShrink: 1,
+            }}
+            numberOfLines={1}
+          >
+            {account.bankName || "—"}
+            {account.iban ? ` · ·· ${account.iban.slice(-4)}` : ""}
           </Text>
         </View>
       </View>
-      <View style={{ marginRight: 10 }}>
-        <Spark data={makePlaceholderSpark(account.balance ?? 0)} width={56} height={18} neg={(account.balance ?? 0) < 0} />
+      <View style={{ marginHorizontal: 10 }}>
+        <Spark
+          data={series?.balance ?? []}
+          labels={series?.days}
+          width={64}
+          height={18}
+          interactive
+          neg={(account.balance ?? 0) < 0}
+          formatValue={(v) => formatEUR(v, { masked })}
+        />
       </View>
-      <View style={{ alignItems: "flex-end" }}>
+      <View style={{ alignItems: "flex-end", minWidth: 64 }}>
         {account.loading ? (
           <ActivityIndicator size="small" color={t.accent} />
         ) : account.error ? (
-          <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.neg }}>Error</Text>
+          <Text
+            style={{
+              fontFamily: FMFonts.sansMedium,
+              fontSize: 11,
+              color: t.neg,
+            }}
+          >
+            Error
+          </Text>
         ) : (
           <Balance value={account.balance ?? 0} masked={masked} size={13} />
         )}
@@ -330,18 +490,49 @@ function AccountRow({ account, masked, isFirst, onPress }: AccountRowProps) {
 
 interface EmptyStateProps {
   onAdd: () => void;
-  i18n: { no_accounts: string; no_accounts_hint: string; add_manual_account: string };
+  i18n: {
+    no_accounts: string;
+    no_accounts_hint: string;
+    add_manual_account: string;
+  };
 }
 
 function EmptyState({ onAdd, i18n }: EmptyStateProps) {
   const t = useFMTheme();
   return (
-    <View style={styles.empty}>
-      <View style={[styles.emptyCircle, { backgroundColor: t.surfaceAlt, borderColor: t.lineStrong }]} />
-      <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 14, color: t.ink, marginTop: 14 }}>
+    <View
+      style={[
+        styles.empty,
+        { borderColor: t.lineStrong, backgroundColor: t.surface },
+      ]}
+    >
+      <View
+        style={[
+          styles.emptyCircle,
+          { backgroundColor: t.surfaceAlt, borderColor: t.lineStrong },
+        ]}
+      >
+        <IconPlus size={26} color={t.inkMuted} />
+      </View>
+      <Text
+        style={{
+          fontFamily: FMFonts.sansSemibold,
+          fontSize: 14,
+          color: t.ink,
+          marginTop: 14,
+        }}
+      >
         {i18n.no_accounts}
       </Text>
-      <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 4, textAlign: "center" }}>
+      <Text
+        style={{
+          fontFamily: FMFonts.sans,
+          fontSize: 12,
+          color: t.inkSoft,
+          marginTop: 4,
+          textAlign: "center",
+        }}
+      >
         {i18n.no_accounts_hint}
       </Text>
       <Pressable
@@ -351,7 +542,13 @@ function EmptyState({ onAdd, i18n }: EmptyStateProps) {
           { backgroundColor: t.ink, opacity: pressed ? 0.85 : 1 },
         ]}
       >
-        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 13, color: t.bg }}>
+        <Text
+          style={{
+            fontFamily: FMFonts.sansMedium,
+            fontSize: 13,
+            color: t.bg,
+          }}
+        >
           {i18n.add_manual_account}
         </Text>
       </Pressable>
@@ -366,44 +563,31 @@ function labelFor(cat: Cat, i18n: any): string {
   return cat;
 }
 
-// Placeholder shape until real balance history is wired in (task #9).
-function makePlaceholderSpark(balance: number): number[] {
-  const sign = balance < 0 ? -1 : 1;
-  return [0.7, 0.85, 0.95, 0.9, 1, 0.97, 1].map((v) => v * sign);
-}
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
-  scroll: { paddingHorizontal: 18, paddingBottom: 96 },
-  netCard: {
-    paddingHorizontal: 16,
+  statsGrid: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  statCard: {
+    flex: 1,
+    paddingHorizontal: 14,
     paddingTop: 14,
     paddingBottom: 16,
+    borderWidth: 1,
     borderRadius: 12,
-    marginBottom: 12,
   },
-  heroRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    marginTop: 4,
-  },
-  netSplit: {
-    flexDirection: "row",
-    marginTop: 10,
-    gap: 14,
-  },
-  netSplitLabel: {
-    fontFamily: FMFonts.sans,
-    fontSize: 10,
-    letterSpacing: 0.4,
+  statLabel: {
+    fontFamily: FMFonts.sansSemibold,
+    fontSize: 9.5,
+    letterSpacing: 1,
     textTransform: "uppercase",
   },
-  netSplitValue: {
-    fontFamily: FMFonts.sansMedium,
-    fontSize: 12,
-    marginTop: 2,
-    fontVariant: ["tabular-nums"],
+  statHero: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    marginTop: 10,
   },
   sectionHead: {
     flexDirection: "row",
@@ -414,7 +598,7 @@ const styles = StyleSheet.create({
   },
   sectionList: {
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 12,
     overflow: "hidden",
   },
   row: {
@@ -424,44 +608,51 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 7,
+    width: 34,
+    height: 34,
+    borderRadius: 8,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
     marginRight: 12,
   },
-  statusRow: {
+  metaRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 2,
+    marginTop: 3,
   },
   addButton: {
-    marginTop: 4,
+    marginTop: 14,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingVertical: 13,
+    borderRadius: 12,
     borderWidth: 1,
     borderStyle: "dashed",
   },
   empty: {
     alignItems: "center",
     paddingVertical: 40,
-  },
-  emptyCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    paddingHorizontal: 24,
+    marginTop: 14,
     borderWidth: 1,
     borderStyle: "dashed",
+    borderRadius: 12,
+  },
+  emptyCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
   },
   emptyBtn: {
-    marginTop: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    marginTop: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
     borderRadius: 6,
   },
 });

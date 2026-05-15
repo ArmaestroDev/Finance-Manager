@@ -1,21 +1,22 @@
 import { Tabs } from "expo-router";
-import { Platform } from "react-native";
 
 import { BottomTabBar } from "@/src/shared/components/BottomTabBar";
+import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
 
-// On web we render the persistent DesktopShell from inside each (tabs) screen,
-// so the bottom tab bar is hidden by setting `tabBarStyle: { display: 'none' }`.
-// On native we replace the default tab bar with our 4-tab + center-"+" design.
+// In desktop layout the persistent DesktopShell (rendered inside each screen)
+// provides navigation, so the bottom tab bar is hidden. In mobile layout
+// (native, or a narrow web viewport) we render our 4-tab + center-"+" bar.
+// Width-driven so resizing the browser live-swaps the chrome.
 export default function TabLayout() {
-  const isWeb = Platform.OS === "web";
+  const isMobile = useIsMobileLayout();
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: isWeb ? { display: "none" } : undefined,
+        tabBarStyle: isMobile ? undefined : { display: "none" },
       }}
-      tabBar={isWeb ? () => null : (props) => <BottomTabBar {...props} />}
+      tabBar={isMobile ? (props) => <BottomTabBar {...props} /> : () => null}
     >
       <Tabs.Screen name="index" />
       <Tabs.Screen name="accounts" />

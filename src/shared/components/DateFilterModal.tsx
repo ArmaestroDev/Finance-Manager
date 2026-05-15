@@ -1,5 +1,11 @@
-﻿import { Platform } from "react-native";
+import React from "react";
+import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
 import { DateFilterModal as MobileComponent } from "./mobile/DateFilterModal";
 import { DateFilterModal as DesktopComponent } from "./desktop/DateFilterModal";
 
-export const DateFilterModal = Platform.OS === "web" ? DesktopComponent : MobileComponent;
+export const DateFilterModal = ((props: any) =>
+  useIsMobileLayout() ? (
+    <MobileComponent {...props} />
+  ) : (
+    <DesktopComponent {...props} />
+  )) as typeof DesktopComponent;
