@@ -50,6 +50,10 @@ export default function SettingsScreen() {
     setPalette,
     geminiApiKey,
     setGeminiApiKey,
+    claudeApiKey,
+    setClaudeApiKey,
+    aiProvider,
+    setAiProvider,
     i18n,
   } = useSettings();
 
@@ -159,8 +163,35 @@ export default function SettingsScreen() {
         />
       </SettingsSection>
 
-      <SettingsSection title={i18n.ai_section} desc={i18n.ai_gemini_explainer}>
-        <GeminiKeyRow apiKey={geminiApiKey} onSave={setGeminiApiKey} />
+      <SettingsSection title={i18n.ai_section} desc={i18n.ai_provider_sub}>
+        <SegmentedToggle
+          options={[
+            { label: i18n.ai_provider_gemini, value: "gemini" },
+            { label: i18n.ai_provider_claude, value: "claude" },
+          ]}
+          active={aiProvider}
+          onSelect={(v) => setAiProvider(v as "gemini" | "claude")}
+        />
+        <ApiKeyRow
+          label={i18n.ai_gemini_key_label}
+          explainer={i18n.ai_gemini_explainer}
+          placeholder="AIza…"
+          apiKey={geminiApiKey}
+          onSave={setGeminiApiKey}
+          setLabel={i18n.ai_gemini_key_set}
+          updateLabel={i18n.ai_gemini_key_update}
+          saveLabel={i18n.ai_gemini_key_save}
+        />
+        <ApiKeyRow
+          label={i18n.ai_claude_key_label}
+          explainer={i18n.ai_claude_explainer}
+          placeholder="sk-ant-…"
+          apiKey={claudeApiKey}
+          onSave={setClaudeApiKey}
+          setLabel={i18n.ai_claude_key_set}
+          updateLabel={i18n.ai_claude_key_update}
+          saveLabel={i18n.ai_gemini_key_save}
+        />
       </SettingsSection>
 
       <SettingsSection title={i18n.privacy} desc="Mask balances and protect with a PIN.">
@@ -584,13 +615,27 @@ function SegmentedToggle<T extends string>({ options, active, onSelect }: Segmen
   );
 }
 
-function GeminiKeyRow({
-  apiKey,
-  onSave,
-}: {
+interface ApiKeyRowProps {
+  label: string;
+  explainer: string;
+  placeholder: string;
   apiKey: string | null;
   onSave: (key: string) => Promise<void>;
-}) {
+  setLabel: string;
+  updateLabel: string;
+  saveLabel: string;
+}
+
+function ApiKeyRow({
+  label,
+  explainer,
+  placeholder,
+  apiKey,
+  onSave,
+  setLabel,
+  updateLabel,
+  saveLabel,
+}: ApiKeyRowProps) {
   const t = useFMTheme();
   const { i18n } = useSettings();
   const [editing, setEditing] = useState(false);
@@ -626,12 +671,12 @@ function GeminiKeyRow({
     return (
       <View style={styles.aiBlock}>
         <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>
-          {i18n.ai_gemini_key_label}
+          {label}
         </Text>
         <TextInput
           value={draft}
           onChangeText={setDraft}
-          placeholder="AIza…"
+          placeholder={placeholder}
           placeholderTextColor={t.inkMuted}
           autoCapitalize="none"
           autoCorrect={false}
@@ -651,7 +696,7 @@ function GeminiKeyRow({
         />
         <View style={{ flexDirection: "row", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
           <Button variant="primary" disabled={!draft.trim() || saving} onPress={save}>
-            {saving ? "…" : i18n.ai_gemini_key_save}
+            {saving ? "…" : saveLabel}
           </Button>
           <Button variant="ghost" onPress={cancel}>
             {i18n.cancel}
@@ -664,10 +709,10 @@ function GeminiKeyRow({
   return (
     <View style={styles.aiBlock}>
       <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>
-        {i18n.ai_gemini_key_label}
+        {label}
       </Text>
       <Text style={{ fontFamily: FMFonts.sans, fontSize: 12.5, color: t.inkMuted, marginTop: 6, lineHeight: 17 }}>
-        {i18n.ai_gemini_explainer}
+        {explainer}
       </Text>
       {masked ? (
         <Text
@@ -684,7 +729,7 @@ function GeminiKeyRow({
       ) : null}
       <View style={{ marginTop: 12, alignSelf: "flex-start" }}>
         <Button variant={apiKey ? "secondary" : "primary"} onPress={startEdit}>
-          {apiKey ? i18n.ai_gemini_key_update : i18n.ai_gemini_key_set}
+          {apiKey ? updateLabel : setLabel}
         </Button>
       </View>
     </View>

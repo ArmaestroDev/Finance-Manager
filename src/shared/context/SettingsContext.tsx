@@ -5,6 +5,7 @@ import type { ThemePalette } from "../../constants/theme";
 
 type Language = "en" | "de";
 export type ThemeAppearance = "system" | "light" | "dark";
+export type AiProvider = "gemini" | "claude";
 
 const VALID_PALETTES: readonly ThemePalette[] = [
   "mulberry",
@@ -18,6 +19,8 @@ interface SettingsContextType {
   isBalanceHidden: boolean;
   userPin: string | null;
   geminiApiKey: string | null;
+  claudeApiKey: string | null;
+  aiProvider: AiProvider;
   language: Language;
   mainAccountId: string | null;
   theme: ThemeAppearance;
@@ -26,6 +29,8 @@ interface SettingsContextType {
   setPin: (newPin: string) => Promise<void>;
   verifyPin: (pin: string) => boolean;
   setGeminiApiKey: (key: string) => Promise<void>;
+  setClaudeApiKey: (key: string) => Promise<void>;
+  setAiProvider: (provider: AiProvider) => Promise<void>;
   setLanguage: (lang: Language) => Promise<void>;
   setMainAccountId: (id: string) => Promise<void>;
   setTheme: (newTheme: ThemeAppearance) => Promise<void>;
@@ -41,6 +46,8 @@ const STORAGE_KEYS = {
   BALANCE_HIDDEN: "settings_balance_hidden",
   USER_PIN: "settings_user_pin",
   GEMINI_API_KEY: "settings_gemini_api_key",
+  CLAUDE_API_KEY: "settings_claude_api_key",
+  AI_PROVIDER: "settings_ai_provider",
   LANGUAGE: "settings_language",
   MAIN_ACCOUNT_ID: "settings_main_account_id",
   THEME: "settings_theme",
@@ -51,6 +58,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [isBalanceHidden, setIsBalanceHidden] = useState(false);
   const [userPin, setUserPin] = useState<string | null>(null);
   const [geminiApiKey, setGeminiApiKeyState] = useState<string | null>(null);
+  const [claudeApiKey, setClaudeApiKeyState] = useState<string | null>(null);
+  const [aiProvider, setAiProviderState] = useState<AiProvider>("gemini");
   const [language, setLanguageState] = useState<Language>("de");
   const [mainAccountId, setMainAccountIdState] = useState<string | null>(null);
   const [theme, setThemeState] = useState<ThemeAppearance>("system");
@@ -63,19 +72,34 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const loadSettings = async () => {
     try {
-      const [hidden, pin, apiKey, lang, mainAcc, storedTheme, storedPalette] =
-        await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.BALANCE_HIDDEN),
-          AsyncStorage.getItem(STORAGE_KEYS.USER_PIN),
-          AsyncStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY),
-          AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
-          AsyncStorage.getItem(STORAGE_KEYS.MAIN_ACCOUNT_ID),
-          AsyncStorage.getItem(STORAGE_KEYS.THEME),
-          AsyncStorage.getItem(STORAGE_KEYS.PALETTE),
-        ]);
+      const [
+        hidden,
+        pin,
+        apiKey,
+        claudeKey,
+        provider,
+        lang,
+        mainAcc,
+        storedTheme,
+        storedPalette,
+      ] = await Promise.all([
+        AsyncStorage.getItem(STORAGE_KEYS.BALANCE_HIDDEN),
+        AsyncStorage.getItem(STORAGE_KEYS.USER_PIN),
+        AsyncStorage.getItem(STORAGE_KEYS.GEMINI_API_KEY),
+        AsyncStorage.getItem(STORAGE_KEYS.CLAUDE_API_KEY),
+        AsyncStorage.getItem(STORAGE_KEYS.AI_PROVIDER),
+        AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE),
+        AsyncStorage.getItem(STORAGE_KEYS.MAIN_ACCOUNT_ID),
+        AsyncStorage.getItem(STORAGE_KEYS.THEME),
+        AsyncStorage.getItem(STORAGE_KEYS.PALETTE),
+      ]);
       setIsBalanceHidden(hidden === "true");
       setUserPin(pin);
       setGeminiApiKeyState(apiKey);
+      setClaudeApiKeyState(claudeKey);
+      if (provider === "gemini" || provider === "claude") {
+        setAiProviderState(provider);
+      }
       if (lang === "en" || lang === "de") {
         setLanguageState(lang);
       }
@@ -104,6 +128,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const setGeminiApiKey = async (key: string) => {
     await AsyncStorage.setItem(STORAGE_KEYS.GEMINI_API_KEY, key);
     setGeminiApiKeyState(key);
+  };
+
+  const setClaudeApiKey = async (key: string) => {
+    await AsyncStorage.setItem(STORAGE_KEYS.CLAUDE_API_KEY, key);
+    setClaudeApiKeyState(key);
+  };
+
+  const setAiProvider = async (provider: AiProvider) => {
+    await AsyncStorage.setItem(STORAGE_KEYS.AI_PROVIDER, provider);
+    setAiProviderState(provider);
   };
 
   const setLanguage = async (lang: Language) => {
@@ -156,6 +190,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         isBalanceHidden,
         userPin,
         geminiApiKey,
+        claudeApiKey,
+        aiProvider,
         language,
         mainAccountId,
         theme,
@@ -164,6 +200,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setPin,
         verifyPin,
         setGeminiApiKey,
+        setClaudeApiKey,
+        setAiProvider,
         setLanguage,
         setMainAccountId,
         setTheme,

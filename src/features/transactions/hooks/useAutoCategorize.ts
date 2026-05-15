@@ -4,6 +4,7 @@ import type { Transaction } from "../../../services/enableBanking";
 import { getStableTxId, getTransactionAmount } from "../utils/transactions";
 import { cleanRemittanceInfo } from "../../../shared/utils/financeHelpers";
 import { SYSTEM_IGNORE_ID } from "../context/CategoriesContext";
+import { callAiProvider, type AiProvider } from "../utils/aiProviders";
 
 interface TransactionCategory {
   id: string;
@@ -15,7 +16,9 @@ interface TransactionCategory {
 interface UseAutoCategorizeParams {
   transactions: Transaction[];
   categories: TransactionCategory[];
+  aiProvider: AiProvider;
   geminiApiKey: string | null;
+  claudeApiKey: string | null;
   language: string;
   getCategoryForTransaction: (txId: string) => TransactionCategory | null;
   assignCategory: (txId: string, categoryId: string | null) => void;
@@ -31,7 +34,9 @@ interface UseAutoCategorizeParams {
 export function useAutoCategorize({
   transactions,
   categories,
+  aiProvider,
   geminiApiKey,
+  claudeApiKey,
   language,
   getCategoryForTransaction,
   assignCategory,
@@ -46,18 +51,21 @@ export function useAutoCategorize({
   const [isCategorizing, setIsCategorizing] = useState(false);
 
   const autoCategorizeTransactions = async (reCategorizeAll: boolean = false) => {
-    if (!geminiApiKey) {
+    const activeApiKey = aiProvider === "claude" ? claudeApiKey : geminiApiKey;
+    const providerLabel = aiProvider === "claude" ? "Claude" : "Gemini";
+    if (!activeApiKey) {
+      const title = i18n.ai_api_key_missing_title || "API Key Missing";
+      const template =
+        i18n.ai_api_key_missing_msg ||
+        "Please set your {provider} API Key in Settings first.";
+      const msg = template.replace("{provider}", providerLabel);
       if (Platform.OS === "web") {
-        alert("Please set your Gemini API Key in Settings first.");
+        alert(msg);
       } else {
-        Alert.alert(
-          "API Key Missing",
-          "Please set your Gemini API Key in Settings first.",
-          [
-            { text: i18n.cancel, style: "cancel" },
-            { text: "Settings", onPress: () => router.push("/settings") },
-          ],
-        );
+        Alert.alert(title, msg, [
+          { text: i18n.cancel, style: "cancel" },
+          { text: "Settings", onPress: () => router.push("/settings") },
+        ]);
       }
       onFinish?.();
       return;
@@ -173,31 +181,11 @@ Example output format:
 }
 `;
 
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-            }),
-          },
-        );
-
-        if (!response.ok) {
-          let errorMsg = `Request failed with status ${response.status}`;
-          try {
-            const errorData = await response.json();
-            errorMsg = errorData.error?.message || errorMsg;
-          } catch (e) {
-            // Body is not JSON
-          }
-          throw new Error(errorMsg);
-        }
-
-        const data = await response.json();
-
-        const resultText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const resultText = await callAiProvider({
+          provider: aiProvider,
+          apiKey: activeApiKey,
+          prompt,
+        });
         if (!resultText) continue;
 
         try {

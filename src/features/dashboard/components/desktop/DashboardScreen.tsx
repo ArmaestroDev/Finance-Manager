@@ -22,6 +22,8 @@ import {
 import { useDateFilter } from "@/src/shared/context/DateFilterContext";
 import { useSettings } from "@/src/shared/context/SettingsContext";
 import { useCategories } from "@/src/features/transactions/context/CategoriesContext";
+import { CategoryBudgetModal } from "@/src/features/transactions/components/CategoryBudgetModal";
+import { useCategoryBudgets } from "../../hooks/useCategoryBudgets";
 import { DebtsSummaryCard } from "@/src/features/debts/components/desktop/DebtsSummaryCard";
 import {
   getStableTxId,
@@ -37,6 +39,7 @@ export function DashboardScreen() {
   const router = useRouter();
   const { isBalanceHidden, i18n, mainAccountId, language } = useSettings();
   const { categories, transactionCategoryMap } = useCategories();
+  const { getEstimate, budgetableCategories } = useCategoryBudgets();
   const { setSelectedCategoryId } = useDateFilter();
 
   const {
@@ -134,6 +137,40 @@ export function DashboardScreen() {
   }));
   const totalExp = slices.reduce((s, x) => s + x.amount, 0);
 
+  // The estimate is per-month; scale it to the period the panel is showing so
+  // actual-vs-estimate is apples-to-apples. A single month or the avg view is
+  // 1×; the "total" view spans every bucket in range.
+  const periodMonths =
+    showSelector && viewMode === "total"
+      ? Math.max(1, monthlyBuckets.length)
+      : 1;
+
+  // Legend = spent categories ∪ categories with an estimate but no spend yet
+  // (the latter would otherwise be invisible since breakdown is tx-derived).
+  const legendRows = useMemo(() => {
+    const rows = view.breakdown.map((b) => ({
+      categoryId: b.categoryId,
+      name: b.name,
+      color: b.color,
+      amount: b.amount,
+      estimate: getEstimate(b.categoryId) * periodMonths,
+    }));
+    const present = new Set(rows.map((r) => r.categoryId));
+    for (const c of budgetableCategories) {
+      const est = getEstimate(c.id);
+      if (est > 0 && !present.has(c.id)) {
+        rows.push({
+          categoryId: c.id,
+          name: c.name,
+          color: c.color,
+          amount: 0,
+          estimate: est * periodMonths,
+        });
+      }
+    }
+    return rows;
+  }, [view.breakdown, getEstimate, periodMonths, budgetableCategories]);
+
   const uncategorized = allTransactions.filter(
     (tx) => !transactionCategoryMap[getStableTxId(tx)],
   );
@@ -145,6 +182,7 @@ export function DashboardScreen() {
   const recent = allTransactions.slice(0, 5);
 
   const [isDateModalVisible, setDateModalVisible] = useState(false);
+  const [isBudgetModalVisible, setBudgetModalVisible] = useState(false);
   const [tempFrom, setTempFrom] = useState("");
   const [tempTo, setTempTo] = useState("");
 
@@ -235,17 +273,40 @@ export function DashboardScreen() {
                   Categorized expenses, {view.rangeText.toLowerCase()}
                 </Text>
               </View>
-              <Pressable
-                onPress={openDateModal}
-                style={({ pressed }) => [
-                  styles.dateChip,
-                  { backgroundColor: t.surface, borderColor: t.lineStrong, opacity: pressed ? 0.8 : 1 },
-                ]}
-              >
-                <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.inkSoft }}>
-                  {rangeLabel(filterDateFrom, filterDateTo)}
-                </Text>
-              </Pressable>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                <Pressable
+                  onPress={() => setBudgetModalVisible(true)}
+                  style={({ pressed }) => [
+                    styles.dateChip,
+                    {
+                      backgroundColor: t.accentSoft,
+                      borderColor: t.accent,
+                      opacity: pressed ? 0.8 : 1,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={{
+                      fontFamily: FMFonts.sansSemibold,
+                      fontSize: 11,
+                      color: t.accent,
+                    }}
+                  >
+                    {i18n.budget}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={openDateModal}
+                  style={({ pressed }) => [
+                    styles.dateChip,
+                    { backgroundColor: t.surface, borderColor: t.lineStrong, opacity: pressed ? 0.8 : 1 },
+                  ]}
+                >
+                  <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.inkSoft }}>
+                    {rangeLabel(filterDateFrom, filterDateTo)}
+                  </Text>
+                </Pressable>
+              </View>
             </View>
 
             {showSelector ? (
@@ -284,37 +345,65 @@ export function DashboardScreen() {
               </ScrollView>
             ) : null}
 
-            {slices.length > 0 ? (
+            {legendRows.length > 0 ? (
               <View style={styles.donutBody}>
-                <View style={{ position: "relative", width: 180, height: 180 }}>
-                  <Donut slices={slices} size={180} thick={26} masked={masked} />
-                  <View style={styles.donutCenter}>
-                    <Label>{view.donutLabel}</Label>
-                    <Text
-                      style={{
-                        fontFamily: FMFonts.monoSemibold,
-                        fontSize: 18,
-                        color: t.ink,
-                        marginTop: 2,
-                      }}
-                    >
-                      {formatEUR(totalExp, { masked })}
-                    </Text>
+                {slices.length > 0 ? (
+                  <View style={{ position: "relative", width: 180, height: 180 }}>
+                    <Donut slices={slices} size={180} thick={26} masked={masked} />
+                    <View style={styles.donutCenter}>
+                      <Label>{view.donutLabel}</Label>
+                      <Text
+                        style={{
+                          fontFamily: FMFonts.monoSemibold,
+                          fontSize: 18,
+                          color: t.ink,
+                          marginTop: 2,
+                        }}
+                      >
+                        {formatEUR(totalExp, { masked })}
+                      </Text>
+                    </View>
                   </View>
-                </View>
+                ) : null}
 
-                <View style={{ flex: 1, marginLeft: 24, gap: 6 }}>
-                  {slices.map((s) => {
-                    const cat = categoryBreakdown.find((c) => c.categoryId === s.id);
-                    if (!cat) return null;
-                    const pct = totalExp > 0 ? s.amount / totalExp : 0;
+                <View
+                  style={{
+                    flex: 1,
+                    marginLeft: slices.length > 0 ? 24 : 0,
+                    gap: 6,
+                  }}
+                >
+                  {legendRows.map((row) => {
+                    const hasEstimate = row.estimate > 0;
+                    const remaining = row.estimate - row.amount;
+                    const over = hasEstimate && remaining < 0;
+                    // With an estimate the bar is consumption of budget;
+                    // otherwise it's share of total spend (legacy behavior).
+                    const ratio = hasEstimate
+                      ? row.estimate > 0
+                        ? Math.min(1, row.amount / row.estimate)
+                        : 0
+                      : totalExp > 0
+                        ? row.amount / totalExp
+                        : 0;
+                    const barColor = over ? t.neg : row.color;
                     return (
                       <Pressable
-                        key={s.id}
-                        onPress={() => handleCategoryPress(s.id)}
-                        style={({ pressed }) => [styles.legendRow, pressed && { opacity: 0.7 }]}
+                        key={row.categoryId}
+                        onPress={() => handleCategoryPress(row.categoryId)}
+                        style={({ pressed }) => [
+                          styles.legendRow,
+                          pressed && { opacity: 0.7 },
+                        ]}
                       >
-                        <View style={{ width: 8, height: 8, borderRadius: 5, backgroundColor: s.color }} />
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 5,
+                            backgroundColor: row.color,
+                          }}
+                        />
                         <Text
                           style={{
                             flex: 1,
@@ -325,7 +414,7 @@ export function DashboardScreen() {
                           }}
                           numberOfLines={1}
                         >
-                          {cat.name}
+                          {row.name}
                         </Text>
                         <View
                           style={{
@@ -339,27 +428,48 @@ export function DashboardScreen() {
                         >
                           <View
                             style={{
-                              width: `${pct * 100}%` as `${number}%`,
+                              width: `${ratio * 100}%` as `${number}%`,
                               height: "100%",
-                              backgroundColor: s.color,
+                              backgroundColor: barColor,
                               opacity: 0.7,
                             }}
                           />
                         </View>
-                        <View style={{ width: 80, alignItems: "flex-end" }}>
-                          <Balance value={-s.amount} masked={masked} size={11.5} />
+                        <View style={{ width: 104, alignItems: "flex-end" }}>
+                          <Balance
+                            value={-row.amount}
+                            masked={masked}
+                            size={11.5}
+                          />
+                          {hasEstimate ? (
+                            <Text
+                              style={{
+                                fontFamily: FMFonts.mono,
+                                fontSize: 9.5,
+                                marginTop: 2,
+                                color: over ? t.neg : t.inkMuted,
+                              }}
+                              numberOfLines={1}
+                            >
+                              {masked
+                                ? "··"
+                                : `${formatEUR(Math.abs(remaining))} ${
+                                    over ? i18n.over_budget : i18n.under_budget
+                                  }`}
+                            </Text>
+                          ) : (
+                            <Text
+                              style={{
+                                fontFamily: FMFonts.mono,
+                                fontSize: 9.5,
+                                marginTop: 2,
+                                color: t.inkMuted,
+                              }}
+                            >
+                              {masked ? "··" : `${Math.round(ratio * 100)}%`}
+                            </Text>
+                          )}
                         </View>
-                        <Text
-                          style={{
-                            width: 36,
-                            textAlign: "right",
-                            fontFamily: FMFonts.mono,
-                            fontSize: 11,
-                            color: t.inkMuted,
-                          }}
-                        >
-                          {masked ? "··" : `${Math.round(pct * 100)}%`}
-                        </Text>
                       </Pressable>
                     );
                   })}
@@ -561,6 +671,11 @@ export function DashboardScreen() {
         textColor={t.ink}
         tintColor={t.accent}
         i18n={i18n}
+      />
+
+      <CategoryBudgetModal
+        visible={isBudgetModalVisible}
+        onClose={() => setBudgetModalVisible(false)}
       />
     </DesktopShell>
   );

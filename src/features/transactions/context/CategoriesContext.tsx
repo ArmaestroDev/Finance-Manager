@@ -19,12 +19,27 @@ export interface TransactionCategory {
   system?: "ignore";
 }
 
+// A single named line of an expected monthly spend, e.g. { label: "Fuel",
+// amount: 60 }. Amounts are positive EUR/month; a category's total monthly
+// estimate is the sum of its line items.
+export interface BudgetLineItem {
+  id: string;
+  label: string;
+  amount: number;
+  /** "ai" marks an auto-detected suggestion the user hasn't confirmed yet. */
+  source?: "ai";
+}
+
 // Map of transactionId -> categoryId
 type TransactionCategoryMap = Record<string, string>;
+
+// Map of categoryId -> its budget line items
+type CategoryBudgetMap = Record<string, BudgetLineItem[]>;
 
 // --- Storage Keys ---
 const CATEGORIES_KEY = "tx_categories";
 const TX_CATEGORY_MAP_KEY = "tx_category_map";
+const CATEGORY_BUDGETS_KEY = "tx_category_budgets";
 
 // --- System category IDs ---
 export const SYSTEM_IGNORE_ID = "cat_system_ignore";
@@ -50,6 +65,12 @@ export const CATEGORY_COLORS = [
 interface CategoriesContextType {
   categories: TransactionCategory[];
   transactionCategoryMap: TransactionCategoryMap;
+  categoryBudgets: CategoryBudgetMap;
+  setCategoryBudget: (
+    categoryId: string,
+    items: BudgetLineItem[],
+  ) => Promise<void>;
+  getCategoryEstimate: (categoryId: string) => number;
   addCategory: (name: string, color: string) => Promise<string>;
   updateCategory: (
     id: string,
@@ -80,12 +101,14 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
   const [categories, setCategories] = useState<TransactionCategory[]>([]);
   const [transactionCategoryMap, setTransactionCategoryMap] =
     useState<TransactionCategoryMap>({});
+  const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudgetMap>({});
   const bootstrappedRef = useRef(false);
 
   // Refs mirror state so async callers always read the latest value, even when
   // multiple awaited mutations run before React commits a re-render.
   const categoriesRef = useRef<TransactionCategory[]>([]);
   const mapRef = useRef<TransactionCategoryMap>({});
+  const budgetsRef = useRef<CategoryBudgetMap>({});
 
   const commitCategories = (next: TransactionCategory[]) => {
     categoriesRef.current = next;
@@ -95,6 +118,11 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
   const commitMap = (next: TransactionCategoryMap) => {
     mapRef.current = next;
     setTransactionCategoryMap(next);
+  };
+
+  const commitBudgets = (next: CategoryBudgetMap) => {
+    budgetsRef.current = next;
+    setCategoryBudgets(next);
   };
 
   // Load from AsyncStorage on mount (one-time bootstrap)
@@ -107,9 +135,10 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
 
   const loadData = async () => {
     try {
-      const [catData, mapData] = await Promise.all([
+      const [catData, mapData, budgetData] = await Promise.all([
         AsyncStorage.getItem(CATEGORIES_KEY),
         AsyncStorage.getItem(TX_CATEGORY_MAP_KEY),
+        AsyncStorage.getItem(CATEGORY_BUDGETS_KEY),
       ]);
 
       let cats: TransactionCategory[] = catData ? JSON.parse(catData) : [];
@@ -138,6 +167,7 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
       commitCategories(cats);
       if (mutated) await persistCategories(cats);
       if (mapData) commitMap(JSON.parse(mapData));
+      if (budgetData) commitBudgets(JSON.parse(budgetData));
     } catch (e) {
       console.error("Failed to load categories:", e);
     }
@@ -149,6 +179,10 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
 
   const persistMap = async (map: TransactionCategoryMap) => {
     await AsyncStorage.setItem(TX_CATEGORY_MAP_KEY, JSON.stringify(map));
+  };
+
+  const persistBudgets = async (budgets: CategoryBudgetMap) => {
+    await AsyncStorage.setItem(CATEGORY_BUDGETS_KEY, JSON.stringify(budgets));
   };
 
   const addCategory = useCallback(async (name: string, color: string) => {
@@ -225,6 +259,14 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
         commitMap(updatedMap);
         await persistMap(updatedMap);
       }
+
+      // Drop any budget attached to the removed category so it can't orphan.
+      if (budgetsRef.current[id] !== undefined) {
+        const nextBudgets = { ...budgetsRef.current };
+        delete nextBudgets[id];
+        commitBudgets(nextBudgets);
+        await persistBudgets(nextBudgets);
+      }
     },
     [i18n.system_category_delete_blocked],
   );
@@ -267,6 +309,40 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // Replace a category's budget with the given line items (empty array clears
+  // it). Items are stored verbatim — callers normalize labels/amounts.
+  const setCategoryBudget = useCallback(
+    async (categoryId: string, items: BudgetLineItem[]) => {
+      const next = { ...budgetsRef.current };
+      const cleaned = items.filter(
+        (it) => it.label.trim().length > 0 || it.amount !== 0,
+      );
+      if (cleaned.length === 0) {
+        if (next[categoryId] === undefined) return;
+        delete next[categoryId];
+      } else {
+        next[categoryId] = cleaned;
+      }
+      commitBudgets(next);
+      await persistBudgets(next);
+    },
+    [],
+  );
+
+  // Sum of a category's line items (0 when none). Reads state so consumers
+  // re-render when budgets change.
+  const getCategoryEstimate = useCallback(
+    (categoryId: string): number => {
+      const items = categoryBudgets[categoryId];
+      if (!items || items.length === 0) return 0;
+      return items.reduce(
+        (s, it) => s + (Number.isFinite(it.amount) ? it.amount : 0),
+        0,
+      );
+    },
+    [categoryBudgets],
+  );
+
   const getCategoryForTransaction = useCallback(
     (transactionId: string): TransactionCategory | null => {
       const catId = transactionCategoryMap[transactionId];
@@ -281,6 +357,9 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
       value={{
         categories,
         transactionCategoryMap,
+        categoryBudgets,
+        setCategoryBudget,
+        getCategoryEstimate,
         addCategory,
         bulkAddCategories,
         updateCategory,

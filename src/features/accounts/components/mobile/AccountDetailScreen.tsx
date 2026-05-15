@@ -70,7 +70,14 @@ export function AccountDetailScreen() {
     type: "connected" | "manual";
   }>();
   const router = useRouter();
-  const { isBalanceHidden, geminiApiKey, i18n, language } = useSettings();
+  const {
+    isBalanceHidden,
+    geminiApiKey,
+    claudeApiKey,
+    aiProvider,
+    i18n,
+    language,
+  } = useSettings();
   const { deleteManualAccount, refreshAccounts, updateAccount, accounts } = useAccounts();
   const {
     categories,
@@ -121,7 +128,9 @@ export function AccountDetailScreen() {
   const { autoCategorizeTransactions, isCategorizing } = useAutoCategorize({
     transactions,
     categories,
+    aiProvider,
     geminiApiKey,
+    claudeApiKey,
     language,
     getCategoryForTransaction,
     assignCategory,

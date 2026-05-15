@@ -51,6 +51,12 @@ interface TransactionsContextType {
     txIds: string[],
     isManual: boolean,
   ) => Promise<number>;
+  /**
+   * Every transaction in the on-device cache across all accounts, ignoring
+   * the active date filter. Used for long-range analysis (e.g. recurring
+   * spend detection) that needs more history than the current view.
+   */
+  getAllCachedTransactions: () => Promise<Transaction[]>;
   clearGlobalError: () => void;
 }
 
@@ -510,6 +516,26 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Pulls the raw cache for every account (no date filtering) so callers can
+  // analyse the full available history. Stays inside this context because it
+  // owns the transactions AsyncStorage domain.
+  const getAllCachedTransactions = async (): Promise<Transaction[]> => {
+    const all: Transaction[] = [];
+    for (const acc of accounts) {
+      const key = storageKeyFor(acc.id, acc.type === "manual");
+      try {
+        const stored = await AsyncStorage.getItem(key);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) all.push(...(parsed as Transaction[]));
+        }
+      } catch {
+        // Skip unreadable/corrupt cache entries.
+      }
+    }
+    return all;
+  };
+
   return (
     <TransactionsContext.Provider
       value={{
@@ -523,6 +549,7 @@ export function TransactionsProvider({ children }: { children: ReactNode }) {
         importBankStatement,
         deleteTransactionsByIds,
         deleteStatementTransactions,
+        getAllCachedTransactions,
         clearGlobalError: () => setGlobalError(null),
       }}
     >

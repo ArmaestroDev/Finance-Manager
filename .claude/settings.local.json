@@ -17,7 +17,11 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash(python scripts/process_logo.py)",
       "PowerShell(npx expo lint -- --quiet \"app/_layout.tsx\" \"src/constants/Strings.ts\" \"src/shared/components/DesktopShell.tsx\" 2>&1 | Select-Object -Last 20)",
-      "PowerShell(npx expo lint -- --quiet \"app/_layout.tsx\" \"src/constants/Strings.ts\" \"src/shared/components/DesktopShell.tsx\" 2>&1; \"ExitCode=$LASTEXITCODE\")"
+      "PowerShell(npx expo lint -- --quiet \"app/_layout.tsx\" \"src/constants/Strings.ts\" \"src/shared/components/DesktopShell.tsx\" 2>&1; \"ExitCode=$LASTEXITCODE\")",
+      "Skill(claude-api)",
+      "Bash(npx expo *)",
+      "Bash(git --no-pager diff --stat HEAD)",
+      "Bash(findstr \"??\")"
     ]
   }
 }

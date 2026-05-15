@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { FMFonts } from "@/src/constants/theme";
 import { Sheet } from "@/src/shared/components/Sheet";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import {
   Button,
   Field,
@@ -13,6 +14,13 @@ import {
   Label,
   useFMTheme,
 } from "@/src/shared/design";
+import { useCategories } from "@/src/features/transactions/context/CategoriesContext";
+import {
+  CategoryBudgetEditor,
+  EditorRow,
+  itemsToRows,
+  rowsToItems,
+} from "./CategoryBudgetEditor";
 
 interface TransactionCategory {
   id: string;
@@ -44,7 +52,20 @@ export function CategoryManageModal({
   onClose,
 }: CategoryManageModalProps) {
   const t = useFMTheme();
+  const { i18n } = useSettings();
+  const { categoryBudgets, setCategoryBudget } = useCategories();
   const [editing, setEditing] = useState<{ id: string; name: string; color: string } | null>(null);
+  const [budgetRows, setBudgetRows] = useState<EditorRow[]>([]);
+
+  // Hydrate the estimate editor whenever an existing category is opened; a
+  // brand-new (unsaved) category has no id yet so it gets a blank sheet.
+  useEffect(() => {
+    if (editing?.id) {
+      setBudgetRows(itemsToRows(categoryBudgets[editing.id] ?? []));
+    } else {
+      setBudgetRows([]);
+    }
+  }, [editing?.id, categoryBudgets]);
 
   const handleClose = () => {
     setEditing(null);
@@ -85,6 +106,7 @@ export function CategoryManageModal({
               if (!editing.name.trim()) return;
               if (editing.id) {
                 await onUpdate(editing.id, { name: editing.name, color: editing.color });
+                await setCategoryBudget(editing.id, rowsToItems(budgetRows));
               } else {
                 await onAdd(editing.name, editing.color);
               }
@@ -95,32 +117,61 @@ export function CategoryManageModal({
           </Button>
         }
       >
-        <Field
-          label="Name"
-          placeholder="Groceries, Rent, …"
-          value={editing.name}
-          onChangeText={(s) => setEditing({ ...editing, name: s })}
-        />
-        <Label style={{ marginBottom: 8 }}>Color</Label>
-        <View style={styles.swatchRow}>
-          {categoryColors.map((c) => {
-            const active = editing.color === c;
-            return (
-              <Pressable
-                key={c}
-                onPress={() => setEditing({ ...editing, color: c })}
-                style={({ pressed }) => [
-                  styles.swatch,
-                  {
-                    backgroundColor: c,
-                    borderColor: active ? t.ink : "transparent",
-                    opacity: pressed ? 0.85 : 1,
-                  },
-                ]}
+        <ScrollView
+          style={{ maxHeight: 460 }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Field
+            label="Name"
+            placeholder="Groceries, Rent, …"
+            value={editing.name}
+            onChangeText={(s) => setEditing({ ...editing, name: s })}
+          />
+          <Label style={{ marginBottom: 8 }}>Color</Label>
+          <View style={styles.swatchRow}>
+            {categoryColors.map((c) => {
+              const active = editing.color === c;
+              return (
+                <Pressable
+                  key={c}
+                  onPress={() => setEditing({ ...editing, color: c })}
+                  style={({ pressed }) => [
+                    styles.swatch,
+                    {
+                      backgroundColor: c,
+                      borderColor: active ? t.ink : "transparent",
+                      opacity: pressed ? 0.85 : 1,
+                    },
+                  ]}
+                />
+              );
+            })}
+          </View>
+
+          {editing.id ? (
+            <View style={[styles.budgetSection, { borderTopColor: t.line }]}>
+              <Label style={{ marginBottom: 2 }}>{i18n.monthly_estimate}</Label>
+              <Text
+                style={{
+                  fontFamily: FMFonts.sans,
+                  fontSize: 11,
+                  color: t.inkMuted,
+                  marginBottom: 12,
+                  lineHeight: 16,
+                }}
+              >
+                {i18n.budget_hint}
+              </Text>
+              <CategoryBudgetEditor
+                rows={budgetRows}
+                setRows={setBudgetRows}
+                i18n={i18n}
+                hideHint
               />
-            );
-          })}
-        </View>
+            </View>
+          ) : null}
+        </ScrollView>
       </Sheet>
     );
   }
@@ -229,6 +280,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 10,
+  },
+  budgetSection: {
+    marginTop: 20,
+    paddingTop: 18,
+    borderTopWidth: 1,
   },
   systemPill: {
     paddingHorizontal: 8,

@@ -28,18 +28,24 @@ import {
 import { useDateFilter } from "@/src/shared/context/DateFilterContext";
 import { useSettings } from "@/src/shared/context/SettingsContext";
 import { useCategories } from "@/src/features/transactions/context/CategoriesContext";
+import { CategoryBudgetModal } from "@/src/features/transactions/components/CategoryBudgetModal";
 import {
   getStableTxId,
   getTransactionAmount,
 } from "@/src/features/transactions/utils/transactions";
 import { useFinanceData } from "../../hooks/useFinanceData";
 import { useFinanceStats } from "../../hooks/useFinanceStats";
+import {
+  monthsInRange,
+  useCategoryBudgets,
+} from "../../hooks/useCategoryBudgets";
 
 export function DashboardScreen() {
   const t = useFMTheme();
   const router = useRouter();
   const { isBalanceHidden, i18n, mainAccountId } = useSettings();
   const { categories, transactionCategoryMap } = useCategories();
+  const { getEstimate, budgetableCategories } = useCategoryBudgets();
   const { setSelectedCategoryId } = useDateFilter();
 
   const {
@@ -86,9 +92,38 @@ export function DashboardScreen() {
     color: c.color,
   }));
   const totalExp = slices.reduce((s, x) => s + x.amount, 0);
-  const top = slices.slice(0, 5);
+
+  // Monthly estimate scaled to the active filter span so it lines up with the
+  // total spend the mobile dashboard shows over that same range.
+  const periodMonths = monthsInRange(filterDateFrom, filterDateTo);
+  const legendRows = (() => {
+    const rows = categoryBreakdown.map((b) => ({
+      categoryId: b.categoryId,
+      name: b.name,
+      color: b.color,
+      amount: b.amount,
+      estimate: getEstimate(b.categoryId) * periodMonths,
+    }));
+    const present = new Set(rows.map((r) => r.categoryId));
+    for (const c of budgetableCategories) {
+      const est = getEstimate(c.id);
+      if (est > 0 && !present.has(c.id)) {
+        rows.push({
+          categoryId: c.id,
+          name: c.name,
+          color: c.color,
+          amount: 0,
+          estimate: est * periodMonths,
+        });
+      }
+    }
+    return rows
+      .sort((a, b) => Math.max(b.amount, b.estimate) - Math.max(a.amount, a.estimate))
+      .slice(0, 5);
+  })();
 
   const [isDateModalVisible, setDateModalVisible] = useState(false);
+  const [isBudgetModalVisible, setBudgetModalVisible] = useState(false);
   const [tempFrom, setTempFrom] = useState("");
   const [tempTo, setTempTo] = useState("");
 
@@ -129,6 +164,7 @@ export function DashboardScreen() {
         sub={i18n.overview_subtitle}
         right={
           <>
+            <Chip onPress={() => setBudgetModalVisible(true)}>{i18n.budget}</Chip>
             <Chip onPress={openDateModal}>{rangeChipLabel(filterDateFrom, filterDateTo)}</Chip>
             <Pressable onPress={() => router.push("/settings" as never)} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 4 })}>
               <IconCog size={18} color={t.inkSoft} />
@@ -203,7 +239,7 @@ export function DashboardScreen() {
         </View>
 
         {/* Donut */}
-        {slices.length > 0 ? (
+        {legendRows.length > 0 ? (
           <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.line, marginTop: 12 }]}>
             <View style={styles.cardHeader}>
               <Label>Spending by category</Label>
@@ -212,18 +248,27 @@ export function DashboardScreen() {
               </Text>
             </View>
             <View style={[styles.donutRow, { marginTop: 8 }]}>
-              <Donut slices={slices} size={108} thick={16} masked={masked} />
-              <View style={{ flex: 1, marginLeft: 14, gap: 5 }}>
-                {top.map((s) => {
-                  const cat = categoryBreakdown.find((c) => c.categoryId === s.id);
-                  if (!cat) return null;
+              {slices.length > 0 ? (
+                <Donut slices={slices} size={108} thick={16} masked={masked} />
+              ) : null}
+              <View
+                style={{
+                  flex: 1,
+                  marginLeft: slices.length > 0 ? 14 : 0,
+                  gap: 7,
+                }}
+              >
+                {legendRows.map((row) => {
+                  const hasEstimate = row.estimate > 0;
+                  const remaining = row.estimate - row.amount;
+                  const over = hasEstimate && remaining < 0;
                   return (
                     <Pressable
-                      key={s.id}
-                      onPress={() => handleCategoryPress(s.id)}
+                      key={row.categoryId}
+                      onPress={() => handleCategoryPress(row.categoryId)}
                       style={({ pressed }) => [styles.legendRow, pressed && { opacity: 0.7 }]}
                     >
-                      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: s.color }} />
+                      <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: row.color }} />
                       <Text
                         style={{
                           flex: 1,
@@ -234,17 +279,41 @@ export function DashboardScreen() {
                         }}
                         numberOfLines={1}
                       >
-                        {cat.name}
+                        {row.name}
                       </Text>
-                      <Text
-                        style={{
-                          fontFamily: FMFonts.monoMedium,
-                          fontSize: 10.5,
-                          color: t.ink,
-                        }}
-                      >
-                        {masked ? "··" : `${Math.round((s.amount / totalExp) * 100)}%`}
-                      </Text>
+                      <View style={{ alignItems: "flex-end" }}>
+                        <Text
+                          style={{
+                            fontFamily: FMFonts.monoMedium,
+                            fontSize: 10.5,
+                            color: t.ink,
+                          }}
+                        >
+                          {masked
+                            ? "··"
+                            : hasEstimate
+                              ? `${Math.round((row.amount / row.estimate) * 100)}%`
+                              : totalExp > 0
+                                ? `${Math.round((row.amount / totalExp) * 100)}%`
+                                : "0%"}
+                        </Text>
+                        {hasEstimate ? (
+                          <Text
+                            style={{
+                              fontFamily: FMFonts.sans,
+                              fontSize: 9,
+                              marginTop: 1,
+                              color: over ? t.neg : t.inkMuted,
+                            }}
+                          >
+                            {masked
+                              ? "··"
+                              : `${formatEUR(Math.abs(remaining))} ${
+                                  over ? i18n.over_budget : i18n.under_budget
+                                }`}
+                          </Text>
+                        ) : null}
+                      </View>
                     </Pressable>
                   );
                 })}
@@ -318,6 +387,11 @@ export function DashboardScreen() {
         textColor={t.ink}
         tintColor={t.accent}
         i18n={i18n}
+      />
+
+      <CategoryBudgetModal
+        visible={isBudgetModalVisible}
+        onClose={() => setBudgetModalVisible(false)}
       />
     </View>
   );

@@ -39,12 +39,18 @@ export function Field({
           placeholderTextColor={t.inkMuted}
           style={{
             flex: 1,
+            // Without this, the input keeps its intrinsic (~20ch) width and
+            // refuses to shrink, spilling past the field border on web.
+            minWidth: 0,
+            // Kill the browser's default focus ring, which is drawn outside
+            // the element and pokes past our rounded border on web.
+            outlineStyle: "none",
             fontFamily: mono ? FMFonts.sansMedium : FMFonts.sansMedium,
             fontSize: 13,
             color: t.ink,
             paddingVertical: 0,
             ...(mono ? { fontVariant: ["tabular-nums"] as any } : {}),
-          }}
+          } as any}
         />
         {suffix ? (
           <Text style={{ fontFamily: FMFonts.sans, fontSize: 13, color: t.inkMuted, marginLeft: 6 }}>
@@ -76,6 +82,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderWidth: 1,
     borderRadius: 8,
+    overflow: "hidden",
   },
   hint: {
     fontFamily: FMFonts.sans,

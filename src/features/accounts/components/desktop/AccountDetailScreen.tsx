@@ -74,7 +74,14 @@ export function AccountDetailScreen() {
     type: "connected" | "manual";
   }>();
   const router = useRouter();
-  const { isBalanceHidden, geminiApiKey, i18n, language } = useSettings();
+  const {
+    isBalanceHidden,
+    geminiApiKey,
+    claudeApiKey,
+    aiProvider,
+    i18n,
+    language,
+  } = useSettings();
   const { deleteManualAccount, refreshAccounts, updateAccount, accounts } = useAccounts();
   const {
     categories,
@@ -125,7 +132,9 @@ export function AccountDetailScreen() {
   const { autoCategorizeTransactions, isCategorizing } = useAutoCategorize({
     transactions,
     categories,
+    aiProvider,
     geminiApiKey,
+    claudeApiKey,
     language,
     getCategoryForTransaction,
     assignCategory,
@@ -401,8 +410,19 @@ export function AccountDetailScreen() {
             </View>
           </View>
           <View style={{ flexDirection: "row", gap: 6, alignItems: "flex-end" }}>
-            <Button variant="secondary" icon={<IconUpload size={12} color={t.ink} />} onPress={handleImportPress}>
-              Import
+            <Button
+              variant="secondary"
+              icon={<IconDoc size={12} color={t.ink} />}
+              onPress={() => setStatementsModalVisible(true)}
+            >
+              All statements
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<IconSearch size={12} color={t.ink} />}
+              onPress={() => setCatManageModalVisible(true)}
+            >
+              Categories
             </Button>
             <Button
               variant="secondary"
@@ -463,14 +483,6 @@ export function AccountDetailScreen() {
               i18n={i18n}
               showStats={false}
             />
-          </View>
-          <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-            <Chip onPress={() => setStatementsModalVisible(true)} icon={<IconDoc size={11} color={t.inkSoft} />}>
-              All statements
-            </Chip>
-            <Chip onPress={() => setCatManageModalVisible(true)} icon={<IconSearch size={11} color={t.inkSoft} />}>
-              Categories
-            </Chip>
           </View>
         </View>
 
