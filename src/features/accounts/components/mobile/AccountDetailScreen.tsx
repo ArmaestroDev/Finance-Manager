@@ -38,7 +38,7 @@ import {
   useFMTheme,
 } from "@/src/shared/design";
 import { useTransactionLinks } from "@/src/features/transactions/context/TransactionLinksContext";
-import { CategoryFilterBar } from "@/src/shared/components/CategoryFilterBar";
+import { CategoryOverview, matchesCategoryFilter } from "../CategoryOverview";
 import { DateFilterModal } from "@/src/shared/components/DateFilterModal";
 import { useDateFilter } from "@/src/shared/context/DateFilterContext";
 import { useSettings } from "@/src/shared/context/SettingsContext";
@@ -210,11 +210,7 @@ export function AccountDetailScreen() {
   const [tempTo, setTempTo] = useState("");
 
   const filteredTransactions = selectedCategoryId
-    ? transactions.filter((tx) => {
-        const txId = getStableTxId(tx);
-        const cat = getCategoryForTransaction(txId);
-        return cat?.id === selectedCategoryId;
-      })
+    ? transactions.filter((tx) => matchesCategoryFilter(getCategoryForTransaction(getStableTxId(tx)), selectedCategoryId))
     : transactions;
 
   const groupedTransactions = useMemo(() => {
@@ -383,7 +379,7 @@ export function AccountDetailScreen() {
           <View style={{ gap: 12, marginBottom: 8 }}>
             {heroCard}
             {actions}
-            {/* Date + category filter bar */}
+            {/* Date range + category overview */}
             <View style={styles.filterBar}>
               <Chip
                 onPress={openDateModal}
@@ -392,17 +388,15 @@ export function AccountDetailScreen() {
               >
                 {dateRangeLabel(filterDateFrom, filterDateTo, i18n)}
               </Chip>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <CategoryFilterBar
-                  categories={categories}
-                  transactions={transactions}
-                  getCategoryForTransaction={getCategoryForTransaction}
-                  selectedFilter={selectedCategoryId}
-                  onSelectFilter={setSelectedCategoryId}
-                  i18n={i18n}
-                />
-              </View>
             </View>
+            <CategoryOverview
+              transactions={transactions}
+              categories={categories}
+              getCategoryForTransaction={getCategoryForTransaction}
+              selected={selectedCategoryId}
+              onSelect={setSelectedCategoryId}
+              masked={masked}
+            />
             <RangeCoverageHint accountId={id} />
           </View>
         }

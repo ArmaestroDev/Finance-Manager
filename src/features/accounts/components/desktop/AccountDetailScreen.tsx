@@ -11,7 +11,7 @@ import {
 
 import { FMFonts, FMType } from "@/src/constants/theme";
 import { DesktopShell } from "@/src/shared/components/DesktopShell";
-import { CategoryFilterBar } from "@/src/shared/components/CategoryFilterBar";
+import { CategoryOverview, matchesCategoryFilter } from "../CategoryOverview";
 import { DateFilterModal } from "@/src/shared/components/DateFilterModal";
 import {
   Avatar,
@@ -206,11 +206,7 @@ export function AccountDetailScreen() {
   const [tempTo, setTempTo] = useState("");
 
   const filteredTransactions = selectedCategoryId
-    ? transactions.filter((tx) => {
-        const txId = getStableTxId(tx);
-        const cat = getCategoryForTransaction(txId);
-        return cat?.id === selectedCategoryId;
-      })
+    ? transactions.filter((tx) => matchesCategoryFilter(getCategoryForTransaction(getStableTxId(tx)), selectedCategoryId))
     : transactions;
 
   const groupedTransactions = useMemo(() => {
@@ -392,17 +388,16 @@ export function AccountDetailScreen() {
             >
               {dateRangeLabel(filterDateFrom, filterDateTo, i18n)}
             </Chip>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <CategoryFilterBar
-                categories={categories}
-                transactions={transactions}
-                getCategoryForTransaction={getCategoryForTransaction}
-                selectedFilter={selectedCategoryId}
-                onSelectFilter={setSelectedCategoryId}
-                i18n={i18n}
-              />
-            </View>
           </View>
+
+          <CategoryOverview
+            transactions={transactions}
+            categories={categories}
+            getCategoryForTransaction={getCategoryForTransaction}
+            selected={selectedCategoryId}
+            onSelect={setSelectedCategoryId}
+            masked={masked}
+          />
 
           <RangeCoverageHint accountId={id} style={{ paddingHorizontal: 16, marginTop: -8 }} />
 
