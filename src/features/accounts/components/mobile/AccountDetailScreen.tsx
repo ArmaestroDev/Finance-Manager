@@ -65,6 +65,8 @@ import {
 import type { Transaction } from "@/src/services/enableBanking";
 import { useAccounts } from "../../context/AccountsContext";
 import { useAccountStats } from "../../hooks/useAccountStats";
+import { useMonthFilter } from "../../hooks/useMonthFilter";
+import { ModeChips } from "@/src/features/dashboard/components/DashboardParts";
 import { UncategorizedHint } from "../UncategorizedHint";
 import { useAccountFileImport } from "../../hooks/useAccountFileImport";
 import { AccountCategoryModal } from "../AccountCategoryModal";
@@ -140,7 +142,16 @@ export function AccountDetailScreen() {
   const { getDisplayAmount, getStatAmount } = useTransactionLinks();
   const { findTransaction } = useTransactionsContext();
 
-  const { accountIncome, accountExpenses, uncategorizedCount } = useAccountStats({
+  const { month, setMonth, monthChips, showSelector, monthTransactions } =
+    useMonthFilter(transactions);
+
+  // Header totals follow the month chip; the uncategorized hint stays on
+  // the whole range, matching what auto-categorize runs on.
+  const { accountIncome, accountExpenses } = useAccountStats({
+    transactions: monthTransactions,
+    getCategoryForTransaction,
+  });
+  const { uncategorizedCount } = useAccountStats({
     transactions,
     getCategoryForTransaction,
   });
@@ -210,8 +221,8 @@ export function AccountDetailScreen() {
   const [tempTo, setTempTo] = useState("");
 
   const filteredTransactions = selectedCategoryId
-    ? transactions.filter((tx) => matchesCategoryFilter(getCategoryForTransaction(getStableTxId(tx)), selectedCategoryId))
-    : transactions;
+    ? monthTransactions.filter((tx) => matchesCategoryFilter(getCategoryForTransaction(getStableTxId(tx)), selectedCategoryId))
+    : monthTransactions;
 
   const groupedTransactions = useMemo(() => {
     const groups: Record<string, Transaction[]> = {};
@@ -389,8 +400,18 @@ export function AccountDetailScreen() {
                 {dateRangeLabel(filterDateFrom, filterDateTo, i18n)}
               </Chip>
             </View>
+            {showSelector ? (
+              <ModeChips
+                i18n={i18n}
+                viewMode={month}
+                setViewMode={setMonth}
+                monthChips={monthChips}
+                showAverage={false}
+                style={{ marginBottom: 0 }}
+              />
+            ) : null}
             <CategoryOverview
-              transactions={transactions}
+              transactions={monthTransactions}
               categories={categories}
               getCategoryForTransaction={getCategoryForTransaction}
               selected={selectedCategoryId}

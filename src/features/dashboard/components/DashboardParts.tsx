@@ -1,5 +1,5 @@
 import React from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 
 import type { Strings } from "@/src/constants/Strings";
 import { FMFonts, FMRadius } from "@/src/constants/theme";
@@ -99,23 +99,28 @@ export function ModeChips({
   viewMode,
   setViewMode,
   monthChips,
+  showAverage = true,
+  style,
 }: {
   i18n: I18n;
   viewMode: string;
   setViewMode: (m: string) => void;
   monthChips: { key: string; label: string }[];
+  /** The account screen filters a list, where an average has no meaning. */
+  showAverage?: boolean;
+  style?: StyleProp<ViewStyle>;
 }) {
   const options = [
     { key: "total", label: i18n.total },
     ...monthChips,
-    { key: "avg", label: i18n.average },
+    ...(showAverage ? [{ key: "avg", label: i18n.average }] : []),
   ];
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ flexDirection: "row", gap: 8, paddingRight: 4 }}
-      style={{ marginBottom: 16, flexGrow: 0 }}
+      style={[{ marginBottom: 16, flexGrow: 0 }, style]}
     >
       {options.map((o) => (
         <Chip key={o.key} filter active={viewMode === o.key} onPress={() => setViewMode(o.key)}>

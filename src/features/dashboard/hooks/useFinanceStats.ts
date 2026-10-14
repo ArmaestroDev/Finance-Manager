@@ -4,7 +4,7 @@ import type { TransactionCategory } from "../../transactions/context/CategoriesC
 import type { Transaction } from "../../../services/enableBanking";
 import { getStableTxId } from "../../transactions/utils/transactions";
 import { EMPTY_LINK_INDEX, statAmountFor, type LinkIndex } from "../../transactions/utils/links";
-import { toApiDate } from "../../../shared/utils/date";
+import { monthKeysInRange } from "../../../shared/utils/date";
 
 export interface CategoryBreakdownItem {
   categoryId: string;
@@ -74,23 +74,7 @@ export function useFinanceStats({
 
       // Enumerate months from the active filter range so empty months still
       // render in the selector (and contribute a 0 to the average).
-      const monthKeys: string[] = [];
-      const apiFrom = filterDateFrom ? toApiDate(filterDateFrom) : "";
-      const apiTo = filterDateTo ? toApiDate(filterDateTo) : "";
-      if (apiFrom && apiTo) {
-        const [fy, fm] = apiFrom.split("-").map(Number);
-        const [ty, tm] = apiTo.split("-").map(Number);
-        let y = fy;
-        let m = fm;
-        while (y < ty || (y === ty && m <= tm)) {
-          monthKeys.push(`${y}-${String(m).padStart(2, "0")}`);
-          m++;
-          if (m > 12) {
-            m = 1;
-            y++;
-          }
-        }
-      }
+      const monthKeys = monthKeysInRange(filterDateFrom ?? "", filterDateTo ?? "");
 
       const monthData: Record<
         string,

@@ -69,3 +69,25 @@ export const formatWeekday = (
     if (isNaN(d.getTime())) return "";
     return d.toLocaleDateString(locale, { weekday: long ? "long" : "short" });
 };
+
+// Every month touched by a UI-format range as `YYYY-MM` keys, oldest first
+// (empty months included). Empty when either bound is missing.
+export const monthKeysInRange = (fromUi: string, toUi: string): string[] => {
+    const apiFrom = fromUi ? toApiDate(fromUi) : "";
+    const apiTo = toUi ? toApiDate(toUi) : "";
+    if (!apiFrom || !apiTo) return [];
+    const [fy, fm] = apiFrom.split("-").map(Number);
+    const [ty, tm] = apiTo.split("-").map(Number);
+    const keys: string[] = [];
+    let y = fy;
+    let m = fm;
+    while (y < ty || (y === ty && m <= tm)) {
+        keys.push(`${y}-${String(m).padStart(2, "0")}`);
+        m++;
+        if (m > 12) {
+            m = 1;
+            y++;
+        }
+    }
+    return keys;
+};
