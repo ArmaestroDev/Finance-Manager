@@ -1,18 +1,23 @@
 import React from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import type { Strings } from "@/src/constants/Strings";
 import { Sheet } from "@/src/shared/components/Sheet";
 import {
+  Avatar,
   Button,
+  EmptyState,
+  IconButton,
+  IconCoins,
   IconEdit,
   IconPlus,
   IconTrash,
-  formatEUR,
-  formatEURCompact,
+  ListItem,
   useFMTheme,
 } from "@/src/shared/design";
+import { showAlert } from "@/src/shared/utils/alert";
 import type { Profile } from "../hooks/useInvestCalculator";
+import { profileSummary } from "./investFormat";
 
 interface ManageProfilesModalProps {
   visible: boolean;
@@ -21,9 +26,7 @@ interface ManageProfilesModalProps {
   onDelete: (id: string) => Promise<void>;
   onCreateNew: () => void;
   onClose: () => void;
-  textColor?: string;
-  cardColor?: string;
-  i18n: Record<string, string>;
+  i18n: typeof Strings.de;
 }
 
 export function ManageProfilesModal({
@@ -37,21 +40,17 @@ export function ManageProfilesModal({
 }: ManageProfilesModalProps) {
   const t = useFMTheme();
 
-  const handleDelete = (profile: Profile) => {
-    if (Platform.OS === "web") {
-      if (window.confirm(i18n.delete_profile_msg.replace("{name}", profile.name))) {
-        onDelete(profile.id);
-      }
-    } else {
-      Alert.alert(
-        i18n.delete_profile_title,
-        i18n.delete_profile_msg.replace("{name}", profile.name),
-        [
-          { text: i18n.cancel, style: "cancel" },
-          { text: i18n.delete, style: "destructive", onPress: () => onDelete(profile.id) },
-        ],
-      );
-    }
+  const confirmDelete = (profile: Profile) => {
+    showAlert(i18n.delete_profile_title, i18n.delete_profile_msg.replace("{name}", profile.name), [
+      { text: i18n.cancel, style: "cancel" },
+      { text: i18n.delete, style: "destructive", onPress: () => onDelete(profile.id) },
+    ]);
+  };
+
+  // Close first, then open the follow-up sheet once this one has dismissed.
+  const thenClose = (fn: () => void) => {
+    onClose();
+    setTimeout(fn, 120);
   };
 
   return (
@@ -59,91 +58,42 @@ export function ManageProfilesModal({
       visible={visible}
       onClose={onClose}
       title={i18n.manage_profiles}
-      subtitle={`${profiles.length} saved · tap to apply`}
       width={520}
-      leftActions={
-        <Button
-          variant="secondary"
-          icon={<IconPlus size={11} color={t.ink} />}
-          onPress={() => {
-            onClose();
-            setTimeout(() => onCreateNew(), 100);
-          }}
-        >
+      actions={
+        <Button icon={<IconPlus size={16} />} onPress={() => thenClose(onCreateNew)}>
           {i18n.create_profile}
         </Button>
       }
-      actions={<Button variant="primary" onPress={onClose}>Done</Button>}
     >
-      <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ maxHeight: 420, marginHorizontal: -24 }} showsVerticalScrollIndicator={false}>
         {profiles.length === 0 ? (
-          <Text
-            style={{
-              fontFamily: FMFonts.sans,
-              fontSize: 12,
-              color: t.inkMuted,
-              textAlign: "center",
-              paddingVertical: 18,
-            }}
-          >
-            No profiles yet.
-          </Text>
+          <EmptyState icon={<IconCoins />} title={i18n.invest_no_scenarios_short} style={{ paddingVertical: 16 }} />
         ) : (
-          profiles.map((p, i) => (
-            <View
-              key={p.id}
-              style={[
-                styles.row,
-                {
-                  borderTopColor: t.line,
-                  borderTopWidth: i === 0 ? 0 : 1,
-                },
-              ]}
-            >
-              <View style={{ width: 8, height: 36, borderRadius: 2, backgroundColor: p.color }} />
-              <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13.5, color: t.ink }}>
-                  {p.name}
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: FMFonts.sans,
-                    fontSize: 10.5,
-                    color: t.inkMuted,
-                    marginTop: 3,
-                    fontVariant: ["tabular-nums"],
-                  }}
-                >
-                  {formatEUR(parseFloat(p.initial) || 0)} · +{formatEUR(parseFloat(p.monthly) || 0)}/mo · {p.years}y · {p.returnVal}%
-                </Text>
-              </View>
-              <Pressable
-                onPress={() => {
-                  onClose();
-                  setTimeout(() => onEdit(p), 100);
-                }}
-                style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 6 })}
-              >
-                <IconEdit size={13} color={t.inkSoft} />
-              </Pressable>
-              <Pressable
-                onPress={() => handleDelete(p)}
-                style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 6 })}
-              >
-                <IconTrash size={13} color={t.neg} />
-              </Pressable>
-            </View>
+          profiles.map((item) => (
+            <ListItem
+              key={item.id}
+              leading={<Avatar label={item.name} color={item.color} />}
+              title={item.name}
+              subtitle={profileSummary(item, i18n)}
+              style={{ paddingHorizontal: 24 }}
+              trailing={
+                <View style={{ flexDirection: "row" }}>
+                  <IconButton
+                    icon={<IconEdit size={18} />}
+                    label={`${i18n.edit}: ${item.name}`}
+                    onPress={() => thenClose(() => onEdit(item))}
+                  />
+                  <IconButton
+                    icon={<IconTrash size={18} color={t.error} />}
+                    label={`${i18n.delete}: ${item.name}`}
+                    onPress={() => confirmDelete(item)}
+                  />
+                </View>
+              }
+            />
           ))
         )}
       </ScrollView>
     </Sheet>
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-});

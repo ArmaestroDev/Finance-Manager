@@ -1,8 +1,22 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { toUiDate } from "../utils/date";
+import { toApiDate, toUiDate } from "../utils/date";
 
 const DATE_FILTER_KEY = "date_filter_state";
+
+// Merge `patch` into the persisted filter record (best effort).
+async function persistFilterState(patch: Record<string, unknown>) {
+  try {
+    const saved = await AsyncStorage.getItem(DATE_FILTER_KEY);
+    const existing = saved ? JSON.parse(saved) : {};
+    await AsyncStorage.setItem(DATE_FILTER_KEY, JSON.stringify({ ...existing, ...patch }));
+  } catch (e) {
+    console.warn("Failed to persist date filter state", e);
+  }
+}
+
+const isUiDate = (v: unknown): v is string =>
+  typeof v === "string" && /^\d{2}\.\d{2}\.\d{4}$/.test(v);
 
 interface DateFilterContextType {
   filterDateFrom: string;
@@ -26,26 +40,35 @@ export function DateFilterProvider({ children }: { children: ReactNode }) {
   const [refreshSignal, setRefreshSignal] = useState(0);
   const [isInitialized, setIsInitialized] = useState(false);
 
+  // Default range: 1st of this month → today
+  const applyDefaultRange = () => {
+    const d = new Date();
+    d.setDate(1);
+    setFilterDateFrom(toUiDate(d));
+    setFilterDateTo(toUiDate(new Date()));
+  };
+
   // Load persisted state
   useEffect(() => {
     const loadState = async () => {
       try {
         const saved = await AsyncStorage.getItem(DATE_FILTER_KEY);
-        if (saved) {
-          const { from, to, catId, stmtId } = JSON.parse(saved);
+        const parsed = saved ? JSON.parse(saved) : {};
+        const { from, to, catId, stmtId } = parsed || {};
+        // The record can exist without a range (a category/statement filter
+        // picked before any date change persists only `catId`/`stmtId`).
+        // Restoring `undefined` there meant transactions never loaded.
+        if (isUiDate(from) && isUiDate(to)) {
           setFilterDateFrom(from);
           setFilterDateTo(to);
-          if (catId) setSelectedCategoryId(catId);
-          if (stmtId) setSelectedStatementId(stmtId);
         } else {
-          // Default to 1st of this month → today
-          const d = new Date();
-          d.setDate(1);
-          setFilterDateFrom(toUiDate(d));
-          setFilterDateTo(toUiDate(new Date()));
+          applyDefaultRange();
         }
+        if (catId) setSelectedCategoryId(catId);
+        if (stmtId) setSelectedStatementId(stmtId);
       } catch (e) {
         console.error("Failed to load date filter state", e);
+        applyDefaultRange();
       } finally {
         setIsInitialized(true);
       }
@@ -53,33 +76,28 @@ export function DateFilterProvider({ children }: { children: ReactNode }) {
     loadState();
   }, []);
 
-  const applyDateFilter = async (from: string, to: string) => {
+  const applyDateFilter = async (fromIn: string, toIn: string) => {
+    // Reject malformed input (e.g. dayjs "Invalid Date" from a half-typed
+    // field) and normalise a reversed range, which otherwise yields an
+    // empty result with no explanation.
+    if (!isUiDate(fromIn) || !isUiDate(toIn)) return;
+    let from = fromIn;
+    let to = toIn;
+    if (toApiDate(from) > toApiDate(to)) [from, to] = [to, from];
     setFilterDateFrom(from);
     setFilterDateTo(to);
     setRefreshSignal(prev => prev + 1);
-    try {
-      const saved = await AsyncStorage.getItem(DATE_FILTER_KEY);
-      const existing = saved ? JSON.parse(saved) : {};
-      await AsyncStorage.setItem(DATE_FILTER_KEY, JSON.stringify({ ...existing, from, to }));
-    } catch (e) {}
+    await persistFilterState({ from, to });
   };
 
   const handleSetSelectedCategoryId = async (id: string | null) => {
     setSelectedCategoryId(id);
-    try {
-      const saved = await AsyncStorage.getItem(DATE_FILTER_KEY);
-      const existing = saved ? JSON.parse(saved) : {};
-      await AsyncStorage.setItem(DATE_FILTER_KEY, JSON.stringify({ ...existing, catId: id }));
-    } catch (e) {}
+    await persistFilterState({ catId: id });
   };
 
   const handleSetSelectedStatementId = async (id: string | null) => {
     setSelectedStatementId(id);
-    try {
-      const saved = await AsyncStorage.getItem(DATE_FILTER_KEY);
-      const existing = saved ? JSON.parse(saved) : {};
-      await AsyncStorage.setItem(DATE_FILTER_KEY, JSON.stringify({ ...existing, stmtId: id }));
-    } catch (e) {}
+    await persistFilterState({ stmtId: id });
   };
 
   const applyPreset = (days: number | "year") => {

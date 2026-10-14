@@ -1,12 +1,18 @@
 import { useState } from "react";
 
 import type { Transaction } from "../../../services/enableBanking";
-import { callAiProvider, type AiProvider } from "../utils/aiProviders";
 import {
-  getStableTxId,
-  getTransactionAmount,
-  pickTransactionTitle,
-} from "../utils/transactions";
+  aiApiKeyFor,
+  callAiProvider,
+  OllamaModelMissingError,
+  OllamaUnreachableError,
+  type AiConfig,
+} from "../utils/aiProviders";
+import { extractJson, isIncomeName } from "../utils/aiCategorize";
+import { BrowserAiNotReadyError } from "../utils/browserAi";
+import { getStableTxId, pickTransactionTitle } from "../utils/transactions";
+import { statAmountFor } from "../utils/links";
+import { useTransactionLinks } from "../context/TransactionLinksContext";
 import type {
   BudgetLineItem,
   TransactionCategory,
@@ -38,11 +44,32 @@ interface UseBudgetSuggestionsParams {
     items: BudgetLineItem[],
   ) => Promise<void>;
   getAllCachedTransactions: () => Promise<Transaction[]>;
-  aiProvider: AiProvider;
-  geminiApiKey: string | null;
-  claudeApiKey: string | null;
+  aiConfig: AiConfig;
   language: string;
+  /** Localized texts for Ollama connection errors. */
+  ollamaErrors: { unreachable: string; modelMissing: (model: string) => string; browserNotReady: string };
 }
+
+// Structured-output schema for the answer (Ollama `format`). The prompt asks
+// for a bare array; the parser also accepts `{ suggestions: [...] }`.
+const SUGGESTIONS_SCHEMA = {
+  type: "object",
+  properties: {
+    suggestions: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          categoryId: { type: "string" },
+          label: { type: "string" },
+          amount: { type: "number" },
+        },
+        required: ["categoryId", "label", "amount"],
+      },
+    },
+  },
+  required: ["suggestions"],
+};
 
 // Collapse a payee/reference into a stable grouping key: lowercase, drop
 // digits and punctuation (invoice numbers, dates, SEPA refs vary per charge),
@@ -77,17 +104,15 @@ export function useBudgetSuggestions({
   categoryBudgets,
   setCategoryBudget,
   getAllCachedTransactions,
-  aiProvider,
-  geminiApiKey,
-  claudeApiKey,
+  aiConfig,
   language,
+  ollamaErrors,
 }: UseBudgetSuggestionsParams) {
   const [isDetecting, setIsDetecting] = useState(false);
+  const { linkIndex } = useTransactionLinks();
 
   const detectRecurring = async (): Promise<DetectionResult> => {
-    const activeApiKey =
-      aiProvider === "claude" ? claudeApiKey : geminiApiKey;
-    if (!activeApiKey) {
+    if (aiApiKeyFor(aiConfig) === null) {
       return { ok: false, addedCount: 0, categoriesTouched: 0, reason: "no-key" };
     }
 
@@ -108,8 +133,9 @@ export function useBudgetSuggestions({
       // Group categorized expenses by category + normalized payee.
       const groups = new Map<string, Group>();
       for (const tx of txs) {
-        const amount = getTransactionAmount(tx);
-        if (!Number.isFinite(amount) || amount >= 0) continue; // expenses only
+        // Net of reimbursements; linked children are skipped (utils/links.ts).
+        const amount = statAmountFor(tx, linkIndex);
+        if (amount === null || !Number.isFinite(amount) || amount >= 0) continue; // expenses only
 
         const catId = transactionCategoryMap[getStableTxId(tx)];
         if (!catId) continue;
@@ -186,9 +212,19 @@ export function useBudgetSuggestions({
         };
       }
 
+      // Income categories have no spending budget. Existing items are sent
+      // so the model doesn't propose them again under another name.
       const categoryList = categories
-        .filter((c) => c.system !== "ignore")
-        .map((c) => ({ id: c.id, name: c.name }));
+        .filter((c) => c.system !== "ignore" && !isIncomeName(c.name))
+        .map((c) => {
+          const existing = (categoryBudgets[c.id] ?? []).map((it) => ({
+            label: it.label,
+            amount: it.amount,
+          }));
+          return existing.length > 0
+            ? { id: c.id, name: c.name, existingItems: existing }
+            : { id: c.id, name: c.name };
+        });
 
       const langName =
         language === "de" ? "German (Deutsch)" : "English";
@@ -221,7 +257,10 @@ RULES:
 5. NEVER invent categories. "categoryId" MUST be one of the IDs listed above
    and SHOULD match the group's own category.
 6. "amount" is the expected monthly spend in EUR, a positive number.
-7. Be selective — prefer confidence over coverage. Return at most 25 items.
+7. Some categories list "existingItems" the user already budgets. Do NOT
+   suggest a group that one of them already covers (same payee or purpose,
+   e.g. "Bahn" 49 already covers "DB Vertrieb" 49).
+8. Be selective — prefer confidence over coverage. Return at most 25 items.
 
 Return STRICT valid JSON, an array only, no prose, no markdown fences:
 [
@@ -233,17 +272,26 @@ Return STRICT valid JSON, an array only, no prose, no markdown fences:
       let resultText: string | null;
       try {
         resultText = await callAiProvider({
-          provider: aiProvider,
-          apiKey: activeApiKey,
+          config: aiConfig,
           prompt,
+          schema: SUGGESTIONS_SCHEMA,
         });
-      } catch (err: any) {
+      } catch (err) {
         return {
           ok: false,
           addedCount: 0,
           categoriesTouched: 0,
           reason: "api",
-          error: err?.message || "Request failed",
+          error:
+            err instanceof OllamaUnreachableError
+              ? ollamaErrors.unreachable
+              : err instanceof OllamaModelMissingError
+                ? ollamaErrors.modelMissing(err.model)
+                : err instanceof BrowserAiNotReadyError
+                  ? ollamaErrors.browserNotReady
+                  : err instanceof Error
+                  ? err.message
+                  : undefined,
         };
       }
       if (!resultText) {
@@ -252,11 +300,7 @@ Return STRICT valid JSON, an array only, no prose, no markdown fences:
 
       let parsed: unknown;
       try {
-        const cleaned = resultText
-          .replace(/```json/gi, "")
-          .replace(/```/g, "")
-          .trim();
-        parsed = JSON.parse(cleaned);
+        parsed = extractJson(resultText);
       } catch {
         return {
           ok: false,
@@ -266,10 +310,12 @@ Return STRICT valid JSON, an array only, no prose, no markdown fences:
         };
       }
 
-      const list: any[] = Array.isArray(parsed)
+      type RawSuggestion = { categoryId?: unknown; label?: unknown; amount?: unknown };
+      const wrapped = (parsed as { suggestions?: unknown } | null)?.suggestions;
+      const list: RawSuggestion[] = Array.isArray(parsed)
         ? parsed
-        : Array.isArray((parsed as any)?.suggestions)
-          ? (parsed as any).suggestions
+        : Array.isArray(wrapped)
+          ? wrapped
           : [];
 
       // Validate + bucket suggestions by category.
@@ -278,7 +324,7 @@ Return STRICT valid JSON, an array only, no prose, no markdown fences:
         if (!s || typeof s !== "object") continue;
         const categoryId = String(s.categoryId ?? "");
         const cat = catById.get(categoryId);
-        if (!cat || cat.system === "ignore") continue;
+        if (!cat || cat.system === "ignore" || isIncomeName(cat.name)) continue;
 
         const label = String(s.label ?? "").trim().slice(0, 60);
         if (!label) continue;

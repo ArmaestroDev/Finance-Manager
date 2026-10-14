@@ -6,6 +6,7 @@ import React, {
   useReducer,
   useRef,
 } from "react";
+import { useSettings } from "../../../shared/context/SettingsContext";
 import { useTransactionsContext } from "../../transactions/context/TransactionsContext";
 import { parseStatementWithBackend } from "../services/processStatement";
 import { useBankStatements } from "./BankStatementsContext";
@@ -144,6 +145,9 @@ export function ImportQueueProvider({
   txRef.current = txCtx;
   const bsRef = useRef(bsCtx);
   bsRef.current = bsCtx;
+  const { i18n } = useSettings();
+  const i18nRef = useRef(i18n);
+  i18nRef.current = i18n;
 
   const addFiles = useCallback((files: EnqueueFile[]) => {
     const newItems: QueueItem[] = files.map((f) => ({
@@ -198,6 +202,8 @@ export function ImportQueueProvider({
 
         dispatch({ type: "UPDATE_PROGRESS", id: nextIdle.id, progress: 70 });
 
+        // Throws on storage failure → the item is marked "failed" below
+        // (it used to report "completed, 0 imported").
         const importResult = await txRef.current.importBankStatement(
           nextIdle.accountId,
           parseResult.transactions,
@@ -237,7 +243,9 @@ export function ImportQueueProvider({
         });
       } catch (err) {
         const errorMessage =
-          err instanceof Error ? err.message : "Unknown error";
+          err instanceof Error && err.message
+            ? err.message
+            : i18nRef.current.error_unknown;
         dispatch({
           type: "UPDATE_STATUS",
           id: nextIdle.id,

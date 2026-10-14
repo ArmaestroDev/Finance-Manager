@@ -4,13 +4,14 @@ import {
   ThemeProvider,
 } from "@react-navigation/native";
 import {
-  Geist_400Regular,
-  Geist_500Medium,
-  Geist_600SemiBold,
-  Geist_700Bold,
-} from "@expo-google-fonts/geist";
+  GoogleSansFlex_400Regular,
+  GoogleSansFlex_500Medium,
+  GoogleSansFlex_600SemiBold,
+  GoogleSansFlex_700Bold,
+} from "@expo-google-fonts/google-sans-flex";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import { Stack, usePathname, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -21,6 +22,7 @@ import "react-native-reanimated";
 import { AccountsProvider } from "../src/features/accounts/context/AccountsContext";
 import { CategoriesProvider } from "../src/features/transactions/context/CategoriesContext";
 import { DebtsProvider } from "../src/features/debts/context/DebtsContext";
+import { TransactionLinksProvider } from "../src/features/transactions/context/TransactionLinksContext";
 import { ImportQueueProvider } from "../src/features/import/context/ImportQueueContext";
 import { BankStatementsProvider } from "../src/features/import/context/BankStatementsContext";
 import { ImportQueueOverlay } from "../src/features/import/components/ImportQueueOverlay";
@@ -30,8 +32,18 @@ import { SettingsProvider, useSettings } from "../src/shared/context/SettingsCon
 import { DateFilterProvider } from "../src/shared/context/DateFilterContext";
 import { TransactionsProvider } from "../src/features/transactions/context/TransactionsContext";
 import { useColorScheme } from "../src/shared/hooks/use-color-scheme";
+import { useFMTheme } from "../src/shared/design/theme";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+// Bank-auth redirect params present in the URL the page was opened with.
+const readAuthRedirect = (): { code: string | null; error: string | null } | null => {
+  if (Platform.OS !== "web" || typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  const error = params.get("error");
+  return code || error ? { code, error } : null;
+};
 
 export const unstable_settings = {
   anchor: "(tabs)",
@@ -39,13 +51,45 @@ export const unstable_settings = {
 
 function RootLayoutInner() {
   const colorScheme = useColorScheme();
-  const { i18n } = useSettings();
+  const { i18n, isLoaded } = useSettings();
+  const t = useFMTheme();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Keep the splash screen up until the persisted theme/language are known,
+  // otherwise the default (light / German) UI flashes before the user's choice.
+  useEffect(() => {
+    if (isLoaded) SplashScreen.hideAsync().catch(() => {});
+  }, [isLoaded]);
 
   useEffect(() => {
     if (Platform.OS === "web" && typeof document !== "undefined") {
       document.title = i18n.app_title;
     }
   }, [i18n.app_title]);
+
+  // Match the page background to the active palette so overscroll / gaps
+  // don't show the static light/dark fallback colour.
+  useEffect(() => {
+    if (!isLoaded || Platform.OS !== "web" || typeof document === "undefined") return;
+    document.documentElement.style.background = t.bg;
+    document.body.style.background = t.bg;
+  }, [isLoaded, t.bg]);
+
+  // The bank redirects to the app's root URL. In a popup, RootLayout hands
+  // the result to the opener; without one (popup opened as a tab, or the auth
+  // link was opened directly) the result lands here in the main window, and
+  // only the connections screen knows how to exchange the code — route there.
+  // useBankConnections reads it via Linking.getInitialURL().
+  useEffect(() => {
+    if (!isLoaded || pathname === "/connections") return;
+    const hasOpener = typeof window !== "undefined" && !!window.opener;
+    if (!hasOpener && readAuthRedirect()) router.replace("/connections");
+    // Only on the first render after settings load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
+
+  if (!isLoaded) return null;
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
@@ -67,17 +111,12 @@ function RootLayoutInner() {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    Geist_400Regular,
-    Geist_500Medium,
-    Geist_600SemiBold,
-    Geist_700Bold,
+    GoogleSansFlex_400Regular,
+    GoogleSansFlex_500Medium,
+    GoogleSansFlex_600SemiBold,
+    GoogleSansFlex_700Bold,
+    ...MaterialCommunityIcons.font,
   });
-
-  useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [fontsLoaded]);
 
   // Hide scrollbars on web while keeping scroll functionality
   useEffect(() => {
@@ -86,9 +125,9 @@ export default function RootLayout() {
       style.textContent = `
         * { scrollbar-width: none; -ms-overflow-style: none; }
         *::-webkit-scrollbar { display: none; }
-        html, body, #root { background: #f7f6f3; }
+        html, body, #root { background: #f9eef0; }
         @media (prefers-color-scheme: dark) {
-          html, body, #root { background: #0f0e0c; }
+          html, body, #root { background: #171214; }
         }
       `;
       document.head.appendChild(style);
@@ -96,29 +135,17 @@ export default function RootLayout() {
     }
   }, []);
 
-  // Watch for auth redirects if opened as a popup (e.g., returning from Bank Auth on Vercel to Localhost)
+  // Inside the bank-auth popup (e.g. the deployed Vercel app returning to a
+  // localhost opener): hand the result to the opener and close. Target origin
+  // "*" is deliberate — see DECISIONS.md §1.5.
   useEffect(() => {
-    if (Platform.OS === "web") {
-      try {
-        if (typeof window !== "undefined" && window.opener) {
-          const urlParams = new URLSearchParams(window.location.search);
-          const code = urlParams.get("code");
-          const error = urlParams.get("error");
-          
-          if (code || error) {
-            // We are inside a popup and have an auth result! Send it back to the main app.
-            // Using '*' for targetOrigin since localhost port might vary, but ideally it should be restricted if possible.
-            window.opener.postMessage(
-              { type: "BANK_AUTH_RESULT", code, error }, 
-              "*"
-            );
-            // Close the popup automatically
-            setTimeout(() => window.close(), 100);
-          }
-        }
-      } catch (e) {
-        // Ignore cross-origin constraints if any
-      }
+    const result = readAuthRedirect();
+    if (!result || typeof window === "undefined" || !window.opener) return;
+    try {
+      window.opener.postMessage({ type: "BANK_AUTH_RESULT", ...result }, "*");
+      setTimeout(() => window.close(), 100);
+    } catch {
+      // Opener gone or inaccessible — the main-window fallback handles it.
     }
   }, []);
 
@@ -132,11 +159,13 @@ export default function RootLayout() {
             <CategoriesProvider>
               <DebtsProvider>
                 <TransactionsProvider>
-                  <BankStatementsProvider>
-                    <ImportQueueProvider>
-                      <RootLayoutInner />
-                    </ImportQueueProvider>
-                  </BankStatementsProvider>
+                  <TransactionLinksProvider>
+                    <BankStatementsProvider>
+                      <ImportQueueProvider>
+                        <RootLayoutInner />
+                      </ImportQueueProvider>
+                    </BankStatementsProvider>
+                  </TransactionLinksProvider>
                 </TransactionsProvider>
               </DebtsProvider>
             </CategoriesProvider>

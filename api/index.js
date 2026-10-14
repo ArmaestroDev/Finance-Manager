@@ -9,16 +9,38 @@ const { parseStatement, UnsupportedBankError } = require("./parseStatement");
 // debug side-effect that tries to read a bundled sample PDF.
 const pdfParse = require("pdf-parse/lib/pdf-parse.js");
 
-const app = express();
-app.use(cors());
-app.options("*", cors());
-app.use(express.json({ limit: "10mb" }));
-
 // Configuration
 const APP_ID =
   process.env.ENABLE_BANKING_APP_ID || "3325a771-fed9-4e4a-b6c6-f41a1194c853";
 const API_BASE = "https://api.enablebanking.com";
 const REDIRECT_URL = process.env.REDIRECT_URL || "http://localhost:8081";
+
+// CORS: only our own web app (REDIRECT_URL's origin, extra origins from
+// ALLOWED_ORIGINS, comma-separated) and local dev may call the API from a
+// browser, so other websites can't use this backend and eat into the hosting
+// quota. Requests without an Origin header (native app, curl) are unaffected.
+const originOf = (url) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+};
+const ALLOWED_ORIGINS = new Set(
+  [REDIRECT_URL, ...(process.env.ALLOWED_ORIGINS || "").split(",")]
+    .map((u) => originOf(u.trim()))
+    .filter(Boolean),
+);
+const LOCAL_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+const corsOptions = {
+  origin: (origin, callback) =>
+    callback(null, !origin || ALLOWED_ORIGINS.has(origin) || LOCAL_ORIGIN_RE.test(origin)),
+};
+
+const app = express();
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+app.use(express.json({ limit: "10mb" }));
 
 // Health Check
 app.get("/api/health", (req, res) => {
@@ -96,30 +118,78 @@ async function apiRequest(method, endpoint, body = null) {
     options.body = JSON.stringify(body);
   }
   const response = await fetch(url, options);
-  const data = await response.json();
+  const text = await response.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { message: text.slice(0, 500) };
+  }
   if (!response.ok) {
     throw { status: response.status, data };
   }
   return data;
 }
 
+// Send an upstream (Enable Banking) or internal error to the client. Enable
+// Banking reports problems as { code, message, detail }, but the frontend reads
+// `error` — normalise so the real reason reaches the UI instead of a generic
+// "Failed to …" fallback.
+function sendError(res, err, fallback = "Internal error") {
+  const status = (err && err.status) || 500;
+  const data = (err && err.data) || {};
+  // Enable Banking puts a machine code in `error` ("WRONG_AUTHORIZATION_CODE")
+  // and the human-readable text in `message`; prefer the latter.
+  const message =
+    data.message ||
+    data.error ||
+    (typeof data.detail === "string" ? data.detail : null) ||
+    (err && err.message) ||
+    fallback;
+  res.status(status).json({
+    ...data,
+    error: message,
+    ...(typeof data.error === "string" && data.error !== message
+      ? { error_code: data.error }
+      : {}),
+  });
+}
+
+// 400 with the same { error, code } shape as every other error response.
+function badRequest(res, message) {
+  return res.status(400).json({ error: message, code: "BAD_REQUEST" });
+}
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const COUNTRY_RE = /^[A-Z]{2}$/;
+const isNonEmptyString = (v, max = 500) =>
+  typeof v === "string" && v.trim().length > 0 && v.length <= max;
+
 // GET /api/aspsps - List available banks
 app.get("/api/aspsps", async (req, res) => {
   try {
     const { country } = req.query;
-    const endpoint = country ? `/aspsps?country=${country}` : "/aspsps";
+    if (country !== undefined && !COUNTRY_RE.test(String(country))) {
+      return badRequest(res, "country must be a two-letter ISO code");
+    }
+    const endpoint = country
+      ? `/aspsps?country=${encodeURIComponent(country)}`
+      : "/aspsps";
     const data = await apiRequest("GET", endpoint);
     res.json(data);
   } catch (err) {
     console.error("Error fetching ASPSPs:", err);
-    res.status(err.status || 500).json(err.data || { error: "Internal error" });
+    sendError(res, err, "Failed to fetch banks");
   }
 });
 
 // POST /api/auth - Start bank authorization
 app.post("/api/auth", async (req, res) => {
   try {
-    const { aspspName, aspspCountry } = req.body;
+    const { aspspName, aspspCountry } = req.body || {};
+    if (!isNonEmptyString(aspspName) || !COUNTRY_RE.test(String(aspspCountry))) {
+      return badRequest(res, "aspspName and a two-letter aspspCountry are required");
+    }
     console.log("Starting auth for:", aspspName, aspspCountry);
 
     const body = {
@@ -133,26 +203,25 @@ app.post("/api/auth", async (req, res) => {
         country: aspspCountry,
       },
       state: `state_${Date.now()}`,
+      // No psu_type: let the bank decide (personal vs business).
       redirect_url: REDIRECT_URL,
-      // psu_type: "personal", // removing to allow bank to decide
     };
-
-    console.log("Auth request body:", JSON.stringify(body, null, 2));
 
     const data = await apiRequest("POST", "/auth", body);
     res.json(data);
   } catch (err) {
-    console.error("Error starting auth:", JSON.stringify(err, null, 2));
-    res
-      .status(err.status || 500)
-      .json(err.data || { error: "Internal error", details: err });
+    console.error("Error starting auth:", err && err.data ? JSON.stringify(err.data) : err);
+    sendError(res, err, "Failed to start authorization");
   }
 });
 
 // POST /api/sessions - Exchange auth code for session
 app.post("/api/sessions", async (req, res) => {
   try {
-    const { code } = req.body;
+    const { code } = req.body || {};
+    if (!isNonEmptyString(code, 2000)) {
+      return badRequest(res, "Missing authorization code");
+    }
     console.log("Exchanging code for session...");
     let data = await apiRequest("POST", "/sessions", { code });
 
@@ -161,7 +230,7 @@ app.post("/api/sessions", async (req, res) => {
       try {
         const refetchData = await apiRequest(
           "GET",
-          `/sessions/${data.session_id}`,
+          `/sessions/${encodeURIComponent(data.session_id)}`,
         );
         if (refetchData.accounts && refetchData.accounts.length > 0) {
           data = refetchData;
@@ -173,8 +242,8 @@ app.post("/api/sessions", async (req, res) => {
 
     res.json(data);
   } catch (err) {
-    console.error("Error creating session:", JSON.stringify(err, null, 2));
-    res.status(err.status || 500).json(err.data || { error: "Internal error" });
+    console.error("Error creating session:", err && err.data ? JSON.stringify(err.data) : err);
+    sendError(res, err, "Failed to create session");
   }
 });
 
@@ -182,11 +251,14 @@ app.post("/api/sessions", async (req, res) => {
 app.get("/api/accounts/:accountId/balances", async (req, res) => {
   try {
     const { accountId } = req.params;
-    const data = await apiRequest("GET", `/accounts/${accountId}/balances`);
+    const data = await apiRequest(
+      "GET",
+      `/accounts/${encodeURIComponent(accountId)}/balances`,
+    );
     res.json(data);
   } catch (err) {
     console.error("Error fetching balances:", err);
-    res.status(err.status || 500).json(err.data || { error: "Internal error" });
+    sendError(res, err, "Failed to fetch balances");
   }
 });
 
@@ -194,17 +266,25 @@ app.get("/api/accounts/:accountId/balances", async (req, res) => {
 app.get("/api/accounts/:accountId/transactions", async (req, res) => {
   try {
     const { accountId } = req.params;
-    const { date_from, date_to } = req.query;
-    let endpoint = `/accounts/${accountId}/transactions`;
+    const { date_from, date_to, continuation_key } = req.query;
+    for (const [name, value] of [["date_from", date_from], ["date_to", date_to]]) {
+      if (value !== undefined && !ISO_DATE_RE.test(String(value))) {
+        return badRequest(res, `${name} must be YYYY-MM-DD`);
+      }
+    }
+    let endpoint = `/accounts/${encodeURIComponent(accountId)}/transactions`;
     const params = new URLSearchParams();
     if (date_from) params.set("date_from", date_from);
     if (date_to) params.set("date_to", date_to);
+    // Forward pagination — without this the client's continuation loop kept
+    // re-fetching page 1 and older pages were never loaded.
+    if (continuation_key) params.set("continuation_key", continuation_key);
     if (params.toString()) endpoint += `?${params.toString()}`;
     const data = await apiRequest("GET", endpoint);
     res.json(data);
   } catch (err) {
     console.error("Error fetching transactions:", err);
-    res.status(err.status || 500).json(err.data || { error: "Internal error" });
+    sendError(res, err, "Failed to fetch transactions");
   }
 });
 
@@ -213,10 +293,26 @@ app.post("/api/parse-statement", async (req, res) => {
   try {
     const { base64, fileName } = req.body || {};
     if (!base64 || typeof base64 !== "string") {
-      return res.status(400).json({ error: "Missing base64 PDF payload" });
+      return badRequest(res, "Missing base64 PDF payload");
     }
     const buffer = Buffer.from(base64, "base64");
-    const pdfData = await pdfParse(buffer);
+    // Buffer.from silently drops invalid base64; check for the PDF magic bytes
+    // so non-PDF uploads get a clear message instead of a pdf.js error.
+    if (buffer.subarray(0, 5).toString("latin1") !== "%PDF-") {
+      return res
+        .status(422)
+        .json({ error: "The file is not a PDF.", code: "INVALID_PDF" });
+    }
+    let pdfData;
+    try {
+      pdfData = await pdfParse(buffer);
+    } catch (pdfErr) {
+      // Corrupt / non-PDF upload is a client problem, not a server error.
+      return res.status(422).json({
+        error: `Could not read PDF: ${pdfErr.message || "invalid file"}`,
+        code: "INVALID_PDF",
+      });
+    }
     const result = parseStatement(pdfData.text);
     res.json({
       ...result,
@@ -230,9 +326,7 @@ app.post("/api/parse-statement", async (req, res) => {
         .json({ error: err.message, code: "UNSUPPORTED_BANK" });
     }
     console.error("parse-statement error:", err);
-    res
-      .status(500)
-      .json({ error: err.message || "Failed to parse PDF statement" });
+    sendError(res, err, "Failed to parse PDF statement");
   }
 });
 
@@ -240,12 +334,34 @@ app.post("/api/parse-statement", async (req, res) => {
 app.get("/api/sessions/:sessionId", async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const data = await apiRequest("GET", `/sessions/${sessionId}`);
+    const data = await apiRequest(
+      "GET",
+      `/sessions/${encodeURIComponent(sessionId)}`,
+    );
     res.json(data);
   } catch (err) {
     console.error("Error fetching session:", err);
-    res.status(err.status || 500).json(err.data || { error: "Internal error" });
+    sendError(res, err, "Failed to fetch session");
   }
+});
+
+// Unknown API route → JSON 404 (instead of Express' HTML page).
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: `Unknown endpoint ${req.method} ${req.path}`, code: "NOT_FOUND" });
+});
+
+// Body-parser failures (malformed JSON, payload over the 10 MB limit) → JSON.
+// eslint-disable-next-line no-unused-vars -- Express needs the 4-arg signature.
+app.use((err, req, res, next) => {
+  const status = err.status || err.statusCode || 500;
+  const message =
+    err.type === "entity.too.large"
+      ? "The file is too large (max. ~7 MB PDF)."
+      : status < 500
+        ? err.message || "Bad request"
+        : "Internal error";
+  if (status >= 500) console.error("Unhandled API error:", err);
+  res.status(status).json({ error: message, code: err.type || "INTERNAL" });
 });
 
 const PORT = process.env.PORT || 3001;

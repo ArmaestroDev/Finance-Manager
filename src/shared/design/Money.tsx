@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, TextStyle, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMType } from "@/src/constants/theme";
 import { formatEUR } from "./format";
 import { useFMTheme } from "./theme";
 
@@ -23,7 +23,7 @@ interface MoneyProps {
 //   - mono digits for tabular alignment
 export function Money({
   value,
-  size = 14,
+  size = FMType.body,
   total = false,
   masked = false,
   weight,

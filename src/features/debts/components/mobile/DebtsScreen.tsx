@@ -1,31 +1,36 @@
 import { Stack } from "expo-router";
 import React, { useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMType } from "@/src/constants/theme";
 import { MobileShell } from "@/src/shared/components/MobileShell";
 import {
-  Chip,
+  Avatar,
+  Button,
+  Card,
+  EmptyState,
+  IconBank,
+  IconButton,
   IconPeople,
   IconPlus,
   Label,
+  ListItem,
   Money,
-  Pill,
   formatEUR,
   splitForHero,
   useFMTheme,
 } from "@/src/shared/design";
 import { useSettings } from "@/src/shared/context/SettingsContext";
+import { showAlert } from "@/src/shared/utils/alert";
 import { DebtEntity, useDebts } from "../../context/DebtsContext";
 import { useDebtsSummary } from "../../hooks/useDebtsSummary";
-import { AddDebtModal } from "./AddDebtModal";
-import { DebtDetailModal } from "./DebtDetailModal";
-import { ManagePeopleModal } from "./ManagePeopleModal";
+import { AddDebtModal } from "../AddDebtModal";
+import { DebtDetailModal } from "../DebtDetailModal";
+import { ManagePeopleModal } from "../ManagePeopleModal";
 
 export function DebtsScreen() {
   const t = useFMTheme();
-  const { entities, debts, addEntity, updateEntity, deleteEntity, addDebt, getNetBalance } =
-    useDebts();
+  const { entities, debts, addEntity, updateEntity, deleteEntity, addDebt, getNetBalance } = useDebts();
   const { i18n, isBalanceHidden } = useSettings();
   const masked = isBalanceHidden;
 
@@ -34,24 +39,10 @@ export function DebtsScreen() {
   const [isDetailModalVisible, setDetailModalVisible] = useState(false);
   const [detailEntity, setDetailEntity] = useState<DebtEntity | null>(null);
 
-  const {
-    entitiesWithBalance,
-    totalNet,
-    owedToYou,
-    youOwe,
-    activeCount,
-    settledCount,
-  } = useDebtsSummary();
+  const { entitiesWithBalance, totalNet, owedToYou, youOwe } = useDebtsSummary();
 
   const heroParts = splitForHero(totalNet, masked);
-  const heroBg = totalNet < 0 ? t.negSoft : totalNet > 0 ? t.posSoft : t.surface;
   const heroFg = totalNet > 0 ? t.pos : totalNet < 0 ? t.neg : t.ink;
-  const heroExplain =
-    totalNet < 0
-      ? "You owe more than you are owed."
-      : totalNet > 0
-        ? "You are owed more than you owe."
-        : "Settled overall.";
 
   const openDetail = (entity: DebtEntity) => {
     setDetailEntity(entity);
@@ -60,17 +51,10 @@ export function DebtsScreen() {
 
   const handleAddPress = () => {
     if (entities.length === 0) {
-      Alert.alert(
-        i18n.add_person_alert_title ?? "Add a person first",
-        i18n.add_person_alert_msg ?? "You need to add a person before tracking a debt.",
-        [
-          { text: i18n.cancel ?? "Cancel", style: "cancel" },
-          {
-            text: i18n.add_person_btn ?? "Add person",
-            onPress: () => setManageModalVisible(true),
-          },
-        ],
-      );
+      showAlert(i18n.add_person_alert_title, i18n.add_person_alert_msg, [
+        { text: i18n.cancel, style: "cancel" },
+        { text: i18n.add_person_btn, onPress: () => setManageModalVisible(true) },
+      ]);
     } else {
       setAddDebtModalVisible(true);
     }
@@ -79,243 +63,77 @@ export function DebtsScreen() {
   return (
     <MobileShell
       title={i18n.debts_title}
-      sub={`${activeCount} active · ${settledCount} settled`}
       right={
         <>
-          <Chip
-            icon={<IconPlus size={11} color={t.inkSoft} />}
-            onPress={handleAddPress}
-          >
-            {i18n.add_btn ? i18n.add_btn.replace(/^\+\s*/, "") : "Add"}
-          </Chip>
-          <Pressable
-            onPress={() => setManageModalVisible(true)}
-            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, padding: 4 })}
-          >
-            <IconPeople size={18} color={t.inkSoft} />
-          </Pressable>
+          <IconButton icon={<IconPeople size={20} />} label={i18n.manage_people} onPress={() => setManageModalVisible(true)} />
+          <IconButton icon={<IconPlus size={20} />} label={i18n.debt_add} onPress={handleAddPress} />
         </>
       }
     >
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View>
-        {/* Summary header */}
-        <View style={[styles.netCard, { backgroundColor: heroBg, borderColor: t.line }]}>
+      <View style={{ gap: 12 }}>
+        <Card>
           <Label>{i18n.total_net_position}</Label>
           <View style={styles.heroRow}>
-            <Text
-              style={{
-                fontFamily: FMFonts.display,
-                fontSize: 38,
-                color: heroFg,
-                lineHeight: 40,
-                letterSpacing: -0.6,
-              }}
-            >
-              {totalNet > 0 ? "+" : ""}
+            <Text style={[styles.hero, { color: heroFg }]}>
+              {!masked && totalNet > 0 ? "+" : ""}
               {heroParts.sign}
               {heroParts.integer}
-              <Text style={{ color: t.inkMuted }}>{heroParts.fraction}</Text>
+              <Text style={{ color: t.inkSoft }}>{heroParts.fraction}</Text>
             </Text>
-            <Text
-              style={{
-                fontFamily: FMFonts.display,
-                fontSize: 18,
-                color: t.inkSoft,
-                marginLeft: 4,
-              }}
-            >
-              €
-            </Text>
+            <Text style={[styles.heroCur, { color: t.inkSoft }]}>€</Text>
           </View>
-          <Text
-            style={{
-              fontFamily: FMFonts.sans,
-              fontSize: 11.5,
-              color: t.inkSoft,
-              marginTop: 6,
-            }}
-          >
-            {heroExplain}
-          </Text>
-        </View>
+          <View style={styles.statsRow}>
+            <View style={{ flex: 1 }}>
+              <Label>{i18n.they_owe_you}</Label>
+              <Text style={[styles.stat, { color: t.pos }]}>{formatEUR(owedToYou, { masked })}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Label>{i18n.you_owe}</Label>
+              <Text style={[styles.stat, { color: t.neg }]}>{formatEUR(Math.abs(youOwe), { masked })}</Text>
+            </View>
+          </View>
+        </Card>
 
-        {/* They owe you / You owe stats */}
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, { backgroundColor: t.surface, borderColor: t.line }]}>
-            <Label>{i18n.they_owe_you ?? "They owe you"}</Label>
-            <Text
-              style={{
-                fontFamily: FMFonts.monoSemibold,
-                fontSize: 18,
-                color: t.pos,
-                marginTop: 6,
-                fontVariant: ["tabular-nums"],
-              }}
-            >
-              {formatEUR(owedToYou, { masked })}
-            </Text>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: t.surface, borderColor: t.line }]}>
-            <Label>{i18n.you_owe ?? "You owe"}</Label>
-            <Text
-              style={{
-                fontFamily: FMFonts.monoSemibold,
-                fontSize: 18,
-                color: t.neg,
-                marginTop: 6,
-                fontVariant: ["tabular-nums"],
-              }}
-            >
-              {formatEUR(Math.abs(youOwe), { masked })}
-            </Text>
-          </View>
-        </View>
-
-        <Label style={{ marginTop: 18, marginBottom: 8 }}>
-          People & institutions
-        </Label>
-
-        {entitiesWithBalance.length === 0 ? (
-          <View style={[styles.empty, { backgroundColor: t.surface, borderColor: t.lineStrong }]}>
-            <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 14, color: t.ink }}>
-              {i18n.no_people_added ?? "No people yet"}
-            </Text>
-            <Text
-              style={{
-                fontFamily: FMFonts.sans,
-                fontSize: 12,
-                color: t.inkSoft,
-                marginTop: 4,
-                textAlign: "center",
-                lineHeight: 18,
-              }}
-            >
-              Add people or institutions to track who owes whom.
-            </Text>
-            <Pressable
-              onPress={() => setManageModalVisible(true)}
-              style={({ pressed }) => [
-                styles.emptyBtn,
-                { backgroundColor: t.ink, opacity: pressed ? 0.85 : 1 },
-              ]}
-            >
-              <IconPeople size={12} color={t.bg} />
-              <Text
-                style={{
-                  fontFamily: FMFonts.sansMedium,
-                  fontSize: 13,
-                  color: t.bg,
-                  marginLeft: 6,
-                }}
-              >
-                {i18n.manage_people}
-              </Text>
-            </Pressable>
-          </View>
-        ) : (
-          <View style={[styles.tableWrap, { backgroundColor: t.surface, borderColor: t.line }]}>
-            {entitiesWithBalance.map((p, index) => {
-              const settled = p.netBalance === 0;
+        <Card padding={0} style={{ overflow: "hidden", paddingVertical: 8 }}>
+          {entitiesWithBalance.length === 0 ? (
+            <EmptyState
+              icon={<IconPeople />}
+              title={i18n.no_people_added}
+              action={
+                <Button variant="tonal" icon={<IconPeople size={16} />} onPress={() => setManageModalVisible(true)}>
+                  {i18n.manage_people}
+                </Button>
+              }
+            />
+          ) : (
+            entitiesWithBalance.map((p) => {
+              // "Settled" needs history; a person without entries has nothing to settle.
+                const settled = p.netBalance === 0 && (p.owesMe > 0 || p.iOwe > 0);
               const isInstitution = p.type === "institution";
-              const they = debts
-                .filter((d) => d.entityId === p.id && d.type === "OWES_ME")
-                .reduce((s, d) => s + d.amount, 0);
-              const you = debts
-                .filter((d) => d.entityId === p.id && d.type === "I_OWE")
-                .reduce((s, d) => s + d.amount, 0);
-              const subParts: string[] = [];
-              if (they > 0)
-                subParts.push(
-                  `${i18n.they_owe_you ?? "They owe you"} ${formatEUR(they, { masked })}`,
-                );
-              if (you > 0)
-                subParts.push(
-                  `${i18n.you_owe ?? "You owe"} ${formatEUR(you, { masked })}`,
-                );
-              const subLine =
-                subParts.length > 0
-                  ? subParts.join("  ·  ")
-                  : isInstitution
-                    ? "Institution"
-                    : "Person";
+              const parts: string[] = [];
+              if (p.owesMe > 0) parts.push(`${i18n.owes_me} ${formatEUR(p.owesMe, { masked })}`);
+              if (p.iOwe > 0) parts.push(`${i18n.i_owe} ${formatEUR(p.iOwe, { masked })}`);
               return (
-                <Pressable
+                <ListItem
                   key={p.id}
                   onPress={() => openDetail(p)}
-                  style={({ pressed }) => [
-                    styles.entityRow,
-                    {
-                      borderTopColor: t.line,
-                      borderTopWidth: index === 0 ? 0 : 1,
-                      opacity: settled ? 0.6 : pressed ? 0.85 : 1,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.avatar,
-                      {
-                        backgroundColor: isInstitution ? t.surfaceAlt : t.accentSoft,
-                        borderColor: t.line,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        fontFamily: FMFonts.sansSemibold,
-                        fontSize: 13,
-                        color: isInstitution ? t.inkSoft : t.accent,
-                      }}
-                    >
-                      {p.name.charAt(0).toUpperCase()}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
-                    <View style={styles.nameRow}>
-                      <Text
-                        style={{
-                          fontFamily: FMFonts.sansSemibold,
-                          fontSize: 13.5,
-                          color: t.ink,
-                          flexShrink: 1,
-                        }}
-                        numberOfLines={1}
-                      >
-                        {p.name}
-                      </Text>
-                      {settled ? (
-                        <Pill style={{ marginLeft: 8 }}>
-                          {i18n.settled ?? "Settled"}
-                        </Pill>
-                      ) : null}
-                    </View>
-                    <Text
-                      style={{
-                        fontFamily: FMFonts.sans,
-                        fontSize: 10.5,
-                        color: t.inkMuted,
-                        marginTop: 3,
-                      }}
-                      numberOfLines={1}
-                    >
-                      {subLine}
-                    </Text>
-                  </View>
-                  <View style={{ alignItems: "flex-end", marginLeft: 10 }}>
-                    <Money
-                      value={p.netBalance}
-                      masked={masked}
-                      size={14}
-                      total={!settled}
+                  accessibilityLabel={p.name}
+                  leading={
+                    <Avatar
+                      label={p.name}
+                      icon={isInstitution ? <IconBank size={18} color={t.onPrimaryContainer} /> : undefined}
                     />
-                  </View>
-                </Pressable>
+                  }
+                  title={p.name}
+                  subtitle={settled ? i18n.settled : parts.join(" · ")}
+                  trailing={<Money value={p.netBalance} masked={masked} size={FMType.bodyLg} />}
+                />
               );
-            })}
-          </View>
-        )}
+            })
+          )}
+        </Card>
       </View>
 
       <ManagePeopleModal
@@ -347,67 +165,14 @@ export function DebtsScreen() {
 }
 
 const styles = StyleSheet.create({
-  netCard: {
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 18,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  heroRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    marginTop: 6,
-  },
-  statsRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 8,
-  },
-  statCard: {
-    flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  tableWrap: {
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  entityRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderTopWidth: 1,
-  },
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
-  empty: {
-    padding: 28,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  emptyBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 6,
+  heroRow: { flexDirection: "row", alignItems: "baseline", marginTop: 4 },
+  hero: { fontFamily: FMFonts.display, fontSize: 36, lineHeight: 44, fontVariant: ["tabular-nums"] },
+  heroCur: { fontFamily: FMFonts.display, fontSize: FMType.h2, marginLeft: 4 },
+  statsRow: { flexDirection: "row", gap: 16, marginTop: 16 },
+  stat: {
+    fontFamily: FMFonts.monoMedium,
+    fontSize: FMType.subhead,
+    marginTop: 2,
+    fontVariant: ["tabular-nums"],
   },
 });

@@ -1,34 +1,22 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useEffect, useState, useMemo } from "react";
-import { Alert, Platform } from "react-native";
-import type { UnifiedAccount } from "../../accounts/context/AccountsContext";
-import { type Transaction } from "../../../services/enableBanking";
-import { useDateFilter } from "../../../shared/context/DateFilterContext";
-import { useTransactionsContext } from "../context/TransactionsContext";
-
-const MANUAL_ACCOUNTS_KEY = "manual_accounts";
-const ACCOUNT_METADATA_KEY = "account_metadata";
-
-type AccountCategory = "Giro" | "Savings" | "Stock";
+import { useMemo, useState } from "react";
+import { useAccounts, type AccountCategory } from "../../accounts/context/AccountsContext";
+import { useBankStatements } from "../../import/context/BankStatementsContext";
+import type { Transaction } from "../../../services/enableBanking";
+import { useSettings } from "../../../shared/context/SettingsContext";
+import { showAlert } from "../../../shared/utils/alert";
+import { useCategories } from "../context/CategoriesContext";
+import { useTransactionLinks } from "../context/TransactionLinksContext";
+import { useTransactionsContext, type ImportResult } from "../context/TransactionsContext";
 
 interface UseAccountTransactionsParams {
   id: string;
   type: "connected" | "manual";
-  accounts: UnifiedAccount[];
-  updateAccount: (account: UnifiedAccount) => void;
-  refreshAccounts: (showLoading?: boolean) => Promise<void>;
-  i18n: Record<string, string>;
 }
 
-export function useAccountTransactions({
-  id,
-  type,
-  accounts,
-  updateAccount,
-  refreshAccounts,
-  i18n,
-}: UseAccountTransactionsParams) {
-  const { filterDateFrom, filterDateTo, applyDateFilter, applyPreset } = useDateFilter();
+/** Transactions + account-level actions for the account detail screens. */
+export function useAccountTransactions({ id, type }: UseAccountTransactionsParams) {
+  const { i18n } = useSettings();
+  const { accounts, updateAccount, deleteManualAccount } = useAccounts();
   const {
     transactionsByAccount,
     isLoading: globalLoading,
@@ -37,45 +25,26 @@ export function useAccountTransactions({
     updateManualTransaction,
     deleteManualTransaction,
     importBankStatement,
-    deleteTransactionsByIds,
+    purgeAccountTransactions,
   } = useTransactionsContext();
+  const { bulkAssignCategories } = useCategories();
+  const { removeLinksFor } = useTransactionLinks();
+  const { deleteStatementsForAccount } = useBankStatements();
 
-  const [category, setCategory] = useState<AccountCategory>("Giro");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  // Load Category
-  useEffect(() => {
-    if (!id) return;
-    const loadCategory = async () => {
-      try {
-        if (type === "manual") {
-          const manualData = await AsyncStorage.getItem(MANUAL_ACCOUNTS_KEY);
-          if (manualData) {
-            const accs = JSON.parse(manualData);
-            const account = accs.find((a: any) => a.id === id);
-            if (account) setCategory(account.category);
-          }
-        } else {
-          const metaData = await AsyncStorage.getItem(ACCOUNT_METADATA_KEY);
-          if (metaData) {
-            const meta = JSON.parse(metaData);
-            if (meta[id]) setCategory(meta[id].category);
-          }
-        }
-      } catch (e) {}
-    };
-    loadCategory();
-  }, [id, type]);
+  const account = accounts.find((a) => a.id === id);
+  const category: AccountCategory = account?.category ?? "Giro";
 
-  const transactions = useMemo(() => {
-    return transactionsByAccount[id] || [];
-  }, [transactionsByAccount, id]);
+  const transactions = useMemo(() => transactionsByAccount[id] || [], [transactionsByAccount, id]);
 
   const loadTransactions = async () => {
     setLoading(true);
-    await refreshTransactions();
-    setLoading(false);
+    try {
+      await refreshTransactions();
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ── Manual Transaction CRUD ──
@@ -84,114 +53,76 @@ export function useAccountTransactions({
     await addManualTransaction(id, txTitle, txAmount);
   };
 
-  const handleUpdateTransaction = async (
-    editingTx: Transaction,
-    editTitle: string,
-    editAmount: string,
-  ) => {
+  const handleUpdateTransaction = async (editingTx: Transaction, editTitle: string, editAmount: string) => {
     await updateManualTransaction(id, editingTx, editTitle, editAmount);
   };
 
-  const handleDeleteTransaction = async (editingTx: Transaction) => {
-    const performDelete = async () => {
-      await deleteManualTransaction(id, editingTx);
-    };
+  const handleDeleteTransaction = (editingTx: Transaction) => {
+    showAlert(i18n.tx_delete_title, i18n.tx_delete_confirm, [
+      { text: i18n.cancel, style: "cancel" },
+      {
+        text: i18n.delete,
+        style: "destructive",
+        onPress: () => {
+          deleteManualTransaction(id, editingTx).catch((e) => console.error("Failed to delete transaction:", e));
+        },
+      },
+    ]);
+  };
 
-    if (Platform.OS === "web") {
-      if (window.confirm("Are you sure you want to delete this transaction?")) {
-        performDelete();
-      }
-    } else {
-      Alert.alert(
-        "Delete Transaction",
-        "Are you sure you want to delete this transaction?",
-        [
-          { text: i18n.cancel, style: "cancel" },
-          {
-            text: i18n.delete,
-            style: "destructive",
-            onPress: performDelete,
-          },
-        ],
-      );
+  /**
+   * CSV / one-off imports (not tracked as a "bank statement" — no source file
+   * to manage). PDF imports go through the ImportQueue. Returns null (after
+   * telling the user) when the import could not be stored.
+   */
+  const handleImportBankStatement = async (newTxs: Transaction[]): Promise<ImportResult | null> => {
+    try {
+      return await importBankStatement(id, newTxs, type === "manual");
+    } catch (e) {
+      console.error("Failed to import transactions:", e);
+      showAlert(i18n.error_title, i18n.tx_import_failed);
+      return null;
     }
-  };
-
-  // CSV / one-off imports (not tracked as a "bank statement" — no source file
-  // to manage). Statement-based PDF imports go through the ImportQueue and
-  // call importBankStatement with a statementId directly.
-  const handleImportBankStatement = async (newTxs: Transaction[]) => {
-    await importBankStatement(id, newTxs, type === "manual");
-  };
-
-  const handleDeleteStatementTransactions = async (txIds: string[]) => {
-    await deleteTransactionsByIds(id, txIds, type === "manual");
   };
 
   // ── Account Category ──
 
   const updateCategoryValue = async (newCat: AccountCategory) => {
-    setCategory(newCat);
-
-    try {
-      if (type === "manual") {
-        const manualData = await AsyncStorage.getItem(MANUAL_ACCOUNTS_KEY);
-        if (manualData) {
-          const accs = JSON.parse(manualData);
-          const updatedAccounts = accs.map((acc: any) =>
-            acc.id === id ? { ...acc, category: newCat } : acc,
-          );
-          await AsyncStorage.setItem(
-            MANUAL_ACCOUNTS_KEY,
-            JSON.stringify(updatedAccounts),
-          );
-        }
-      } else {
-        const metaData = await AsyncStorage.getItem(ACCOUNT_METADATA_KEY);
-        const meta = metaData ? JSON.parse(metaData) : {};
-        meta[id] = { ...meta[id], category: newCat };
-        await AsyncStorage.setItem(ACCOUNT_METADATA_KEY, JSON.stringify(meta));
-      }
-    } catch (err) {
-      console.error("Failed to update category:", err);
+    // AccountsContext persists it to manual_accounts / account_metadata.
+    if (account && account.category !== newCat) {
+      await updateAccount({ ...account, category: newCat });
     }
   };
 
   // ── Delete Account ──
 
-  const handleDeleteAccount = (
-    deleteManualAccount: (id: string) => Promise<void>,
-    onDeleteComplete: () => void,
-  ) => {
-    if (type !== "manual") return;
-
-    const performDelete = async () => {
-      await deleteManualAccount(id);
-      onDeleteComplete();
-    };
-
-    if (Platform.OS === "web") {
-      if (
-        window.confirm(
-          "Are you sure you want to delete this account? This action cannot be undone.",
-        )
-      ) {
-        performDelete();
-      }
-    } else {
-      Alert.alert(
-        "Delete Account",
-        "Are you sure you want to delete this account? This action cannot be undone.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: performDelete,
-          },
-        ],
-      );
+  // Removes the account and everything that references it: its stored
+  // transactions, their category assignments and links, and its imported
+  // statements. Each piece is cleaned up by the context that owns it.
+  const deleteAccountCascade = async () => {
+    const txIds = await purgeAccountTransactions(id, type === "manual");
+    if (txIds.length > 0) {
+      await bulkAssignCategories(Object.fromEntries(txIds.map((txId) => [txId, null])));
+      await removeLinksFor(txIds);
     }
+    await deleteStatementsForAccount(id);
+    await deleteManualAccount(id);
+  };
+
+  const handleDeleteAccount = (onDeleteComplete: () => void) => {
+    if (type !== "manual") return;
+    showAlert(i18n.delete_account, i18n.delete_account_confirm, [
+      { text: i18n.cancel, style: "cancel" },
+      {
+        text: i18n.delete,
+        style: "destructive",
+        onPress: () => {
+          deleteAccountCascade()
+            .then(onDeleteComplete)
+            .catch((e) => console.error("Failed to delete account:", e));
+        },
+      },
+    ]);
   };
 
   return {
@@ -199,18 +130,12 @@ export function useAccountTransactions({
     loading: globalLoading || loading,
     setLoading,
     refreshing: globalLoading,
-    error,
     category,
-    filterDateFrom,
-    filterDateTo,
-    applyDateFilter,
-    applyPreset,
     loadTransactions,
     handleAddTransaction,
     handleUpdateTransaction,
     handleDeleteTransaction,
     handleImportBankStatement,
-    handleDeleteStatementTransactions,
     updateCategoryValue,
     handleDeleteAccount,
   };

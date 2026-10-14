@@ -1,33 +1,47 @@
 import { Stack, useRouter } from "expo-router";
-import React, { useState } from "react";
-import {
-  Alert,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { FMColors, FMFonts, ThemePalette } from "@/src/constants/theme";
+import { FMColors, FMFonts, FMRadius, ThemePalette } from "@/src/constants/theme";
 import { DesktopShell } from "@/src/shared/components/DesktopShell";
 import { MobileHeader } from "@/src/shared/components/MobileHeader";
+import { Sheet } from "@/src/shared/components/Sheet";
 import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
 import {
+  Avatar,
   Button,
-  IconBack,
+  Chip,
+  Field,
+  IconAI,
+  IconBank,
+  IconCheck,
   IconChevR,
-  Label,
-  Rule,
+  IconEyeOff,
+  IconSliders,
+  IconWarn,
+  ListItem,
+  SegmentedButtons,
+  Switch,
   useFMTheme,
 } from "@/src/shared/design";
 import { useSettings } from "@/src/shared/context/SettingsContext";
 import { useAccounts } from "@/src/features/accounts/context/AccountsContext";
+import { showAlert } from "@/src/shared/utils/alert";
+import { accountBankLabel, accountCategoryLabel, accountDisplayName } from "@/src/features/accounts/utils/accountDisplay";
+import {
+  isLocalProvider,
+  listOllamaModels,
+  normalizeOllamaUrl,
+  ollamaHasModel,
+  type AiProvider,
+} from "@/src/features/transactions/utils/aiProviders";
+import { BrowserAiRow } from "@/src/features/transactions/components/BrowserAiRow";
+
+// The in-browser model needs WebGPU; the native app can only use Ollama.
+const LOCAL_DEFAULT: AiProvider = Platform.OS === "web" ? "browser" : "ollama";
+
+type KeyTarget = "gemini" | "claude";
 
 export default function SettingsScreen() {
   const t = useFMTheme();
@@ -55,6 +69,10 @@ export default function SettingsScreen() {
     setClaudeApiKey,
     aiProvider,
     setAiProvider,
+    ollamaUrl,
+    setOllamaUrl,
+    ollamaModel,
+    setOllamaModel,
     i18n,
   } = useSettings();
 
@@ -67,6 +85,9 @@ export default function SettingsScreen() {
   const [isChangingPin, setIsChangingPin] = useState(false);
 
   const [isMainAccModalVisible, setMainAccModalVisible] = useState(false);
+  const [keyTarget, setKeyTarget] = useState<KeyTarget | null>(null);
+  const [ollamaSheetOpen, setOllamaSheetOpen] = useState(false);
+  const ollamaStatus = useOllamaStatus(aiProvider === "ollama" ? ollamaUrl : null, ollamaModel);
 
   const activeMainAccount =
     accounts.find((a) => a.id === mainAccountId) ||
@@ -97,14 +118,14 @@ export default function SettingsScreen() {
 
   const handlePinSubmit = async () => {
     if (pinInput.length !== 5) {
-      setError("PIN must be 5 digits");
+      setError(i18n.pin_error_length);
       return;
     }
     try {
       if (pinMode === "verify") {
         const isValid = verifyPin(pinInput);
         if (!isValid) {
-          setError("Incorrect PIN");
+          setError(i18n.pin_error_incorrect);
           return;
         }
         if (isChangingPin) {
@@ -121,90 +142,137 @@ export default function SettingsScreen() {
         if (!isChangingPin) await toggleBalanceHidden(pinInput);
         setIsChangingPin(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : i18n.generic_error);
     }
   };
 
+  const maskKey = (k: string | null) => (k ? k.slice(0, 4) + "•••••" + k.slice(-4) : i18n.not_set);
+
   const sections = (
     <>
-      <SettingsSection title={i18n.dashboard_section} desc="Defaults that drive the Overview screen.">
-        <SettingsRow
-          label={i18n.main_account}
-          value={activeMainAccount ? activeMainAccount.name : i18n.not_set}
+      <SettingsGroup title={i18n.settings_general}>
+        <ListItem
+          leading={<RowIcon icon={<IconBank size={18} />} />}
+          title={i18n.main_account}
+          subtitle={activeMainAccount ? accountDisplayName(activeMainAccount, i18n) : i18n.not_set}
+          trailing={<IconChevR size={16} color={t.inkSoft} />}
           onPress={() => setMainAccModalVisible(true)}
+          accessibilityLabel={i18n.main_account}
         />
-      </SettingsSection>
+        <ControlRow label={i18n.language}>
+          <SegmentedButtons
+            options={[
+              { label: i18n.german, value: "de" },
+              { label: i18n.english, value: "en" },
+            ]}
+            value={language}
+            onChange={(v) => setLanguage(v as "en" | "de")}
+            full
+          />
+        </ControlRow>
+      </SettingsGroup>
 
-      <SettingsSection title={i18n.language} desc="App language and regional formatting.">
-        <SegmentedToggle
-          options={[
-            { label: i18n.german, value: "de" },
-            { label: i18n.english, value: "en" },
-          ]}
-          active={language}
-          onSelect={(v) => setLanguage(v as "en" | "de")}
-        />
-      </SettingsSection>
+      <SettingsGroup title={i18n.appearance}>
+        <ControlRow>
+          <SegmentedButtons
+            options={[
+              { label: i18n.theme_system, value: "system" },
+              { label: i18n.theme_light, value: "light" },
+              { label: i18n.theme_dark, value: "dark" },
+            ]}
+            value={theme}
+            onChange={(v) => setTheme(v as "system" | "light" | "dark")}
+            full
+          />
+        </ControlRow>
+        <ControlRow label={i18n.palette}>
+          <PaletteSwatches active={palette} onSelect={setPalette} />
+        </ControlRow>
+      </SettingsGroup>
 
-      <SettingsSection title={i18n.appearance} desc={i18n.appearance_sub}>
-        <SegmentedToggle
-          options={[
-            { label: i18n.theme_system, value: "system" },
-            { label: i18n.theme_light, value: "light" },
-            { label: i18n.theme_dark, value: "dark" },
-          ]}
-          active={theme}
-          onSelect={(v) => setTheme(v as "system" | "light" | "dark")}
-        />
-        <PaletteSwatchRow
-          label={i18n.palette}
-          active={palette}
-          onSelect={setPalette}
-        />
-      </SettingsSection>
+      <SettingsGroup title={i18n.ai_section}>
+        <ControlRow>
+          <SegmentedButtons
+            options={[
+              { label: i18n.ai_provider_gemini, value: "gemini" },
+              { label: i18n.ai_provider_claude, value: "claude" },
+              { label: i18n.ai_provider_ollama, value: "local" },
+            ]}
+            value={isLocalProvider(aiProvider) ? "local" : aiProvider}
+            onChange={(v) => {
+              if (v !== "local") void setAiProvider(v as AiProvider);
+              else if (!isLocalProvider(aiProvider)) void setAiProvider(LOCAL_DEFAULT);
+            }}
+            full
+          />
+        </ControlRow>
+        {aiProvider === "browser" ? (
+          <BrowserAiRow leading={(icon) => <RowIcon icon={icon as React.ReactElement<{ color?: string }>} />} />
+        ) : null}
+        {isLocalProvider(aiProvider) && Platform.OS === "web" ? (
+          <ListItem
+            leading={<RowIcon icon={<IconSliders size={18} />} />}
+            title={i18n.ai_browser_use_ollama}
+            subtitle={i18n.ai_browser_use_ollama_sub}
+            trailingAction={
+              <Switch
+                value={aiProvider === "ollama"}
+                onValueChange={() => setAiProvider(aiProvider === "ollama" ? "browser" : "ollama")}
+                label={i18n.ai_browser_use_ollama}
+              />
+            }
+            onPress={() => setAiProvider(aiProvider === "ollama" ? "browser" : "ollama")}
+            accessibilityLabel={i18n.ai_browser_use_ollama}
+          />
+        ) : null}
+        {aiProvider === "gemini" ? (
+          <ListItem
+            leading={<RowIcon icon={<IconAI size={18} />} />}
+            title={i18n.ai_gemini_key_label}
+            subtitle={maskKey(geminiApiKey)}
+            trailingAction={<Button variant="text" size="sm" onPress={() => setKeyTarget("gemini")}>{geminiApiKey ? i18n.ai_key_change : i18n.ai_key_add}</Button>}
+            onPress={() => setKeyTarget("gemini")}
+            accessibilityLabel={i18n.ai_gemini_key_label}
+          />
+        ) : null}
+        {aiProvider === "claude" ? (
+          <ListItem
+            leading={<RowIcon icon={<IconAI size={18} />} />}
+            title={i18n.ai_claude_key_label}
+            subtitle={maskKey(claudeApiKey)}
+            trailingAction={<Button variant="text" size="sm" onPress={() => setKeyTarget("claude")}>{claudeApiKey ? i18n.ai_key_change : i18n.ai_key_add}</Button>}
+            onPress={() => setKeyTarget("claude")}
+            accessibilityLabel={i18n.ai_claude_key_label}
+          />
+        ) : null}
+        {aiProvider === "ollama" ? (
+          <ListItem
+            leading={<RowIcon icon={<IconAI size={18} />} />}
+            title={ollamaModel}
+            subtitle={ollamaStatusText(ollamaStatus, ollamaModel, i18n)}
+            lines={2}
+            trailing={<OllamaStatusIcon status={ollamaStatus} />}
+            onPress={() => setOllamaSheetOpen(true)}
+            accessibilityLabel={i18n.ai_ollama_title}
+          />
+        ) : null}
+      </SettingsGroup>
 
-      <SettingsSection title={i18n.ai_section} desc={i18n.ai_provider_sub}>
-        <SegmentedToggle
-          options={[
-            { label: i18n.ai_provider_gemini, value: "gemini" },
-            { label: i18n.ai_provider_claude, value: "claude" },
-          ]}
-          active={aiProvider}
-          onSelect={(v) => setAiProvider(v as "gemini" | "claude")}
+      <SettingsGroup title={i18n.privacy}>
+        <ListItem
+          leading={<RowIcon icon={<IconEyeOff size={18} />} />}
+          title={i18n.hide_total}
+          subtitle={i18n.hide_total_sub}
+          lines={2}
+          trailingAction={<Switch value={isBalanceHidden} onValueChange={handleToggleBalance} label={i18n.hide_total} />}
+          onPress={handleToggleBalance}
+          accessibilityLabel={i18n.hide_total}
         />
-        <ApiKeyRow
-          label={i18n.ai_gemini_key_label}
-          explainer={i18n.ai_gemini_explainer}
-          placeholder="AIza…"
-          apiKey={geminiApiKey}
-          onSave={setGeminiApiKey}
-          setLabel={i18n.ai_gemini_key_set}
-          updateLabel={i18n.ai_gemini_key_update}
-          saveLabel={i18n.ai_gemini_key_save}
-        />
-        <ApiKeyRow
-          label={i18n.ai_claude_key_label}
-          explainer={i18n.ai_claude_explainer}
-          placeholder="sk-ant-…"
-          apiKey={claudeApiKey}
-          onSave={setClaudeApiKey}
-          setLabel={i18n.ai_claude_key_set}
-          updateLabel={i18n.ai_claude_key_update}
-          saveLabel={i18n.ai_gemini_key_save}
-        />
-      </SettingsSection>
-
-      <SettingsSection title={i18n.privacy} desc="Mask balances and protect with a PIN.">
-        <SettingsToggle
-          label={i18n.hide_total}
-          desc={i18n.hide_total_sub}
-          value={isBalanceHidden}
-          onChange={handleToggleBalance}
-        />
-        <SettingsRow
-          label={userPin ? i18n.change_pin : i18n.set_privacy_pin}
-          value={userPin ? i18n.update_pin_sub : i18n.protect_balances_sub}
+        <ListItem
+          leading={<RowIcon icon={<IconSliders size={18} />} />}
+          title={userPin ? i18n.change_pin : i18n.set_privacy_pin}
+          trailing={<IconChevR size={16} color={t.inkSoft} />}
           onPress={() => {
             if (userPin) {
               setPinMode("verify");
@@ -214,289 +282,179 @@ export default function SettingsScreen() {
               setIsChangingPin(false);
             }
             setPinInput("");
+            setError(null);
             setPinModalVisible(true);
           }}
         />
-      </SettingsSection>
+      </SettingsGroup>
+
+      <Text style={[styles.footer, { color: t.inkSoft }]}>{i18n.settings_footer_note}</Text>
     </>
   );
 
   const modals = (
     <>
-      <Modal
+      <Sheet
         visible={isPinModalVisible}
-        transparent
-        animationType={Platform.OS === "web" ? "fade" : "slide"}
-        onRequestClose={() => setPinModalVisible(false)}
+        onClose={() => setPinModalVisible(false)}
+        width={400}
+        title={
+          pinMode === "create"
+            ? isChangingPin
+              ? i18n.enter_new_pin
+              : i18n.create_pin
+            : isChangingPin
+              ? i18n.enter_current_pin
+              : i18n.enter_pin
+        }
+        actions={
+          <>
+            <Button variant="text" onPress={() => setPinModalVisible(false)}>
+              {i18n.cancel}
+            </Button>
+            <Button onPress={handlePinSubmit}>
+              {pinMode === "create" ? i18n.set_pin_btn : i18n.confirm_btn}
+            </Button>
+          </>
+        }
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: t.surface, borderColor: t.lineStrong }]}>
-            <Text style={{ fontFamily: FMFonts.display, fontSize: 22, color: t.ink, letterSpacing: -0.3 }}>
-              {pinMode === "create"
-                ? isChangingPin
-                  ? i18n.enter_new_pin
-                  : i18n.create_pin
-                : isChangingPin
-                  ? i18n.enter_current_pin
-                  : i18n.enter_pin}
-            </Text>
-            <TextInput
-              style={[
-                styles.pinInput,
-                { color: t.ink, borderColor: error ? t.neg : t.lineStrong, backgroundColor: t.bg, fontFamily: FMFonts.sansSemibold },
-              ]}
-              value={pinInput}
-              onChangeText={(text) => {
-                if (/^\d*$/.test(text) && text.length <= 5) {
-                  setPinInput(text);
-                  setError(null);
-                }
-              }}
-              keyboardType="number-pad"
-              maxLength={5}
-              secureTextEntry
-              autoFocus
-            />
-            {error ? (
-              <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.neg, marginTop: 8 }}>
-                {error}
-              </Text>
-            ) : null}
-            <View style={styles.modalActions}>
-              <Button variant="ghost" onPress={() => setPinModalVisible(false)}>
-                {i18n.cancel}
-              </Button>
-              <Button variant="primary" onPress={handlePinSubmit}>
-                {pinMode === "create" ? i18n.set_pin_btn : i18n.confirm_btn}
-              </Button>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        <Field
+          // Remount per step so autoFocus moves to the "new PIN" field after verifying.
+          key={pinMode}
+          label="PIN"
+          value={pinInput}
+          onChangeText={(text) => {
+            if (/^\d*$/.test(text) && text.length <= 5) {
+              setPinInput(text);
+              setError(null);
+            }
+          }}
+          onSubmitEditing={handlePinSubmit}
+          keyboardType="number-pad"
+          maxLength={5}
+          secureTextEntry
+          autoFocus
+          mono
+          error={error ?? undefined}
+          containerStyle={{ marginBottom: 0 }}
+        />
+      </Sheet>
 
-      <Modal
+      <Sheet
         visible={isMainAccModalVisible}
-        transparent
-        animationType={Platform.OS === "web" ? "fade" : "slide"}
-        onRequestClose={() => setMainAccModalVisible(false)}
+        onClose={() => setMainAccModalVisible(false)}
+        title={i18n.select_main_account}
+        width={440}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: t.surface, borderColor: t.lineStrong }]}>
-            <Text style={{ fontFamily: FMFonts.display, fontSize: 22, color: t.ink, letterSpacing: -0.3 }}>
-              {i18n.select_main_account}
-            </Text>
-            <ScrollView style={{ width: "100%", maxHeight: 320, marginTop: 12 }}>
-              {accounts.length === 0 ? (
-                <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkMuted, textAlign: "center", padding: 20 }}>
-                  {i18n.no_accounts}
-                </Text>
-              ) : (
-                accounts.map((acc, i) => {
-                  const isActive = activeMainAccount?.id === acc.id;
-                  return (
-                    <Pressable
-                      key={acc.id}
-                      onPress={async () => {
-                        await setMainAccountId(acc.id);
-                        setMainAccModalVisible(false);
-                      }}
-                      style={({ pressed }) => [
-                        styles.selectionRow,
-                        {
-                          borderTopColor: i === 0 ? "transparent" : t.line,
-                          borderTopWidth: i === 0 ? 0 : 1,
-                          backgroundColor: isActive ? t.accentSoft : "transparent",
-                          opacity: pressed ? 0.85 : 1,
-                        },
-                      ]}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink }}>
-                          {acc.name}
-                        </Text>
-                        <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkMuted, marginTop: 2 }}>
-                          {acc.bankName} · {acc.category}
-                        </Text>
-                      </View>
-                      {isActive ? (
-                        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: t.accent }}>
-                          ✓
-                        </Text>
-                      ) : null}
-                    </Pressable>
-                  );
-                })
-              )}
-            </ScrollView>
-            <View style={[styles.modalActions, { marginTop: 14 }]}>
-              <Button variant="ghost" full onPress={() => setMainAccModalVisible(false)}>
-                {i18n.cancel}
-              </Button>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        <ScrollView style={{ maxHeight: 400, marginHorizontal: -24 }}>
+          {accounts.length === 0 ? (
+            <Text style={[styles.empty, { color: t.inkSoft }]}>{i18n.no_accounts}</Text>
+          ) : (
+            accounts.map((acc) => {
+              const isActive = activeMainAccount?.id === acc.id;
+              const name = accountDisplayName(acc, i18n);
+              return (
+                <ListItem
+                  key={acc.id}
+                  leading={<Avatar label={name} />}
+                  title={name}
+                  subtitle={`${accountBankLabel(acc, i18n)} · ${accountCategoryLabel(acc.category, i18n)}`}
+                  trailing={isActive ? <IconCheck size={18} color={t.primary} /> : undefined}
+                  selected={isActive}
+                  onPress={async () => {
+                    await setMainAccountId(acc.id);
+                    setMainAccModalVisible(false);
+                  }}
+                  accessibilityLabel={name}
+                  style={{ paddingHorizontal: 24 }}
+                />
+              );
+            })
+          )}
+        </ScrollView>
+      </Sheet>
+
+      <ApiKeySheet
+        target={keyTarget}
+        onClose={() => setKeyTarget(null)}
+        gemini={{ value: geminiApiKey, save: setGeminiApiKey }}
+        claude={{ value: claudeApiKey, save: setClaudeApiKey }}
+      />
+
+      <OllamaSheet
+        visible={ollamaSheetOpen}
+        onClose={() => {
+          setOllamaSheetOpen(false);
+          ollamaStatus.recheck();
+        }}
+        url={ollamaUrl}
+        model={ollamaModel}
+        onSave={async (url, model) => {
+          await Promise.all([setOllamaUrl(url), setOllamaModel(model)]);
+        }}
+      />
     </>
   );
 
   if (!isMobile) {
     return (
-      <DesktopShell breadcrumb={i18n.settings_title} activeId="overview">
+      <DesktopShell title={i18n.settings_title} onBack={() => router.back()}>
         <Stack.Screen options={{ headerShown: false }} />
-        <ScrollView contentContainerStyle={[styles.desktopPage, { backgroundColor: t.bg }]} showsVerticalScrollIndicator={false}>
-          <Pressable onPress={() => router.back()} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
-            <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkMuted, marginBottom: 4 }}>
-              ← {i18n.tab_home ?? "Overview"}
-            </Text>
-          </Pressable>
-          <Text style={{ fontFamily: FMFonts.display, fontSize: 30, color: t.ink, letterSpacing: -0.5, lineHeight: 32 }}>
-            {i18n.settings_title}
-          </Text>
-          <View style={{ marginTop: 18 }}>{sections}</View>
-        </ScrollView>
+        <View style={styles.desktopPage}>{sections}</View>
         {modals}
       </DesktopShell>
     );
   }
 
   return (
-    <View style={[styles.root, { backgroundColor: t.bg, paddingTop: insets.top + 12 }]}>
+    <View style={[styles.root, { backgroundColor: t.bg }]}>
       <Stack.Screen options={{ headerShown: false }} />
-      <View style={styles.backRow}>
-        <Pressable onPress={() => router.back()} style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}>
-          <IconBack size={15} color={t.inkSoft} />
-        </Pressable>
-        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.inkSoft, marginLeft: 4 }}>
-          {i18n.tab_home ?? "Overview"}
-        </Text>
-      </View>
-      <MobileHeader title={i18n.settings_title} />
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <MobileHeader title={i18n.settings_title} onBack={() => router.back()} />
+      <ScrollView
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]}
+        showsVerticalScrollIndicator={false}
+      >
         {sections}
-        <Text style={{ textAlign: "center", fontFamily: FMFonts.sans, color: t.inkMuted, fontSize: 10, marginTop: 8 }}>
-          Finance Manager · all data on this device
-        </Text>
       </ScrollView>
       {modals}
     </View>
   );
 }
 
-interface SettingsSectionProps {
-  title: string;
-  desc?: string;
-  children: React.ReactNode;
+function RowIcon({ icon }: { icon: React.ReactElement<{ color?: string }> }) {
+  const t = useFMTheme();
+  return <View style={{ width: 40, alignItems: "center" }}>{React.cloneElement(icon, { color: t.onSurfaceVariant })}</View>;
 }
 
-function SettingsSection({ title, desc, children }: SettingsSectionProps) {
+// Android-settings style group: primary-coloured title, rows in one rounded card.
+function SettingsGroup({ title, children }: { title: string; children: React.ReactNode }) {
   const t = useFMTheme();
-  const isMobile = useIsMobileLayout();
-
-  if (!isMobile) {
-    return (
-      <View style={[styles.desktopSection, { borderTopColor: t.line }]}>
-        <View style={{ width: 240 }}>
-          <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 15, color: t.ink }}>{title}</Text>
-          {desc ? (
-            <Text style={{ fontFamily: FMFonts.sans, fontSize: 12.5, color: t.inkMuted, marginTop: 6, lineHeight: 18 }}>
-              {desc}
-            </Text>
-          ) : null}
-        </View>
-        <View style={{ flex: 1 }}>{children}</View>
-      </View>
-    );
-  }
-
-  const items = React.Children.toArray(children);
   return (
-    <View style={{ marginBottom: 18 }}>
-      <Label style={{ marginBottom: 8, paddingHorizontal: 2, fontSize: 12 }}>{title}</Label>
-      <View style={[styles.sectionList, { backgroundColor: t.surface, borderColor: t.line }]}>
-        {items.map((c, i) => (
-          <View key={i}>
-            {c}
-            {i < items.length - 1 ? <Rule style={{ marginLeft: 16 }} /> : null}
-          </View>
-        ))}
-      </View>
+    <View style={{ marginBottom: 24 }}>
+      <Text
+        accessibilityRole="header"
+        style={{ fontFamily: FMFonts.sansMedium, fontSize: 14, lineHeight: 20, color: t.primary, marginBottom: 8, marginLeft: 16 }}
+      >
+        {title}
+      </Text>
+      <View style={[styles.group, { backgroundColor: t.surface }]}>{children}</View>
     </View>
   );
 }
 
-interface SettingsRowProps {
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  mono?: boolean;
-  icon?: React.ReactNode;
-}
-
-function SettingsRow({ label, value, onPress, mono, icon }: SettingsRowProps) {
+// Row that hosts a control (segmented buttons, swatches) under an optional label.
+function ControlRow({ label, children }: { label?: string; children: React.ReactNode }) {
   const t = useFMTheme();
   return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [styles.row, { opacity: pressed ? 0.85 : 1 }]}
-    >
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>
+    <View style={styles.controlRow}>
+      {label ? (
+        <Text style={{ fontFamily: FMFonts.sans, fontSize: 16, lineHeight: 22, color: t.ink, marginBottom: 12 }}>
           {label}
         </Text>
-      </View>
-      {value ? (
-        <Text
-          style={{
-            fontFamily: mono ? FMFonts.mono : FMFonts.sans,
-            fontSize: 13.5,
-            color: t.inkSoft,
-            marginRight: 8,
-            ...(mono ? { fontVariant: ["tabular-nums"] as any } : {}),
-          }}
-          numberOfLines={1}
-        >
-          {value}
-        </Text>
       ) : null}
-      {icon ?? <IconChevR size={13} color={t.inkMuted} />}
-    </Pressable>
-  );
-}
-
-interface SettingsToggleProps {
-  label: string;
-  desc?: string;
-  value: boolean;
-  onChange: () => void;
-}
-
-function SettingsToggle({ label, desc, value, onChange }: SettingsToggleProps) {
-  const t = useFMTheme();
-  return (
-    <View style={styles.row}>
-      <View style={{ flex: 1, paddingRight: 12 }}>
-        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>{label}</Text>
-        {desc ? (
-          <Text style={{ fontFamily: FMFonts.sans, fontSize: 12.5, color: t.inkMuted, marginTop: 3, lineHeight: 17 }}>
-            {desc}
-          </Text>
-        ) : null}
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        trackColor={{ false: t.lineStrong, true: t.accent }}
-        thumbColor="#fff"
-        ios_backgroundColor={t.lineStrong}
-      />
+      {children}
     </View>
   );
-}
-
-interface PaletteSwatchRowProps {
-  label: string;
-  active: ThemePalette;
-  onSelect: (p: ThemePalette) => Promise<void>;
 }
 
 type PaletteLabelKey =
@@ -514,116 +472,44 @@ const PALETTE_ORDER: { value: ThemePalette; labelKey: PaletteLabelKey }[] = [
   { value: "turquoise", labelKey: "palette_turquoise" },
 ];
 
-function PaletteSwatchRow({ label, active, onSelect }: PaletteSwatchRowProps) {
+function PaletteSwatches({ active, onSelect }: { active: ThemePalette; onSelect: (p: ThemePalette) => Promise<void> }) {
   const t = useFMTheme();
   const { i18n } = useSettings();
-  const isMobile = useIsMobileLayout();
   return (
-    <View style={[styles.row, { flexWrap: "wrap", gap: 12 }]}>
-      <View style={{ flex: 1, minWidth: 120 }}>
-        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>
-          {label}
-        </Text>
-      </View>
-      <View
-        style={
-          !isMobile
-            ? { flexDirection: "row", alignItems: "flex-start", gap: 14 }
-            : {
-                flexDirection: "row",
-                alignItems: "flex-start",
-                flexWrap: "wrap",
-                gap: 14,
-                rowGap: 14,
-                justifyContent: "flex-end",
-              }
-        }
-      >
-        {PALETTE_ORDER.map((opt) => {
-          const swatchColor = FMColors[opt.value].light.accent;
-          const isActive = active === opt.value;
-          return (
-            <Pressable
-              key={opt.value}
-              onPress={() => {
-                onSelect(opt.value);
-              }}
-              style={({ pressed }) => [
-                styles.swatchWrap,
-                { opacity: pressed ? 0.7 : 1 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel={i18n[opt.labelKey] as string}
-              accessibilityState={{ selected: isActive }}
-            >
-              <View
-                style={[
-                  styles.swatchDot,
-                  {
-                    backgroundColor: swatchColor,
-                    borderColor: isActive ? t.ink : "transparent",
-                  },
-                ]}
-              />
-              <Text
-                style={{
-                  fontFamily: isActive ? FMFonts.sansSemibold : FMFonts.sans,
-                  fontSize: 11,
-                  color: isActive ? t.ink : t.inkMuted,
-                  marginTop: 6,
-                  textAlign: "center",
-                }}
-                numberOfLines={1}
-              >
-                {i18n[opt.labelKey] as string}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
-interface SegmentedToggleProps<T extends string> {
-  options: { label: string; value: T }[];
-  active: T;
-  onSelect: (value: T) => void | Promise<void>;
-}
-
-function SegmentedToggle<T extends string>({ options, active, onSelect }: SegmentedToggleProps<T>) {
-  const t = useFMTheme();
-  const isMobile = useIsMobileLayout();
-  return (
-    <View style={styles.segmentedRow}>
-      {options.map((opt) => {
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "space-between", maxWidth: 360 }} accessibilityRole="radiogroup">
+      {PALETTE_ORDER.map((opt) => {
+        const p = FMColors[opt.value].light;
         const isActive = active === opt.value;
         return (
           <Pressable
             key={opt.value}
             onPress={() => onSelect(opt.value)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: isActive }}
-            style={({ pressed }) => [
-              styles.segment,
-              {
-                backgroundColor: isActive ? t.accentSoft : t.surface,
-                borderColor: isActive ? t.accent : t.lineStrong,
-                opacity: pressed ? 0.85 : 1,
-              },
-              isMobile && { paddingHorizontal: 8 },
-            ]}
+            accessibilityRole="radio"
+            accessibilityLabel={i18n[opt.labelKey]}
+            accessibilityState={{ checked: isActive, selected: isActive }}
+            style={{ alignItems: "center", width: 58 }}
           >
+            <View
+              style={[
+                styles.swatchRing,
+                { borderColor: isActive ? t.ink : "transparent" },
+              ]}
+            >
+              {/* M3 dynamic-colour style swatch: primary over its container tones */}
+              <View style={[styles.swatch, { backgroundColor: p.primaryContainer }]}>
+                <View style={[styles.swatchHalf, { backgroundColor: p.primary }]} />
+              </View>
+            </View>
             <Text
               style={{
-                fontFamily: isActive ? FMFonts.sansSemibold : FMFonts.sansMedium,
-                fontSize: isMobile ? 14 : 15,
-                color: isActive ? t.accentInk : t.ink,
-                textAlign: "center",
+                fontFamily: isActive ? FMFonts.sansMedium : FMFonts.sans,
+                fontSize: 12,
+                color: isActive ? t.ink : t.inkSoft,
+                marginTop: 4,
               }}
               numberOfLines={1}
             >
-              {opt.label}
+              {i18n[opt.labelKey]}
             </Text>
           </Pressable>
         );
@@ -632,227 +518,307 @@ function SegmentedToggle<T extends string>({ options, active, onSelect }: Segmen
   );
 }
 
-interface ApiKeyRowProps {
-  label: string;
-  explainer: string;
-  placeholder: string;
-  apiKey: string | null;
-  onSave: (key: string) => Promise<void>;
-  setLabel: string;
-  updateLabel: string;
-  saveLabel: string;
+interface KeyStore {
+  value: string | null;
+  save: (key: string) => Promise<void>;
 }
 
-function ApiKeyRow({
-  label,
-  explainer,
-  placeholder,
-  apiKey,
-  onSave,
-  setLabel,
-  updateLabel,
-  saveLabel,
-}: ApiKeyRowProps) {
-  const t = useFMTheme();
+function ApiKeySheet({
+  target,
+  onClose,
+  gemini,
+  claude,
+}: {
+  target: KeyTarget | null;
+  onClose: () => void;
+  gemini: KeyStore;
+  claude: KeyStore;
+}) {
   const { i18n } = useSettings();
-  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [openFor, setOpenFor] = useState<KeyTarget | null>(null);
+  const store = target === "claude" ? claude : gemini;
 
-  const masked = apiKey ? apiKey.slice(0, 4) + "•••••••" + apiKey.slice(-4) : null;
+  // Seed the draft when the sheet opens for a provider.
+  if (target !== openFor) {
+    setOpenFor(target);
+    setDraft(target ? (store.value ?? "") : "");
+  }
 
-  const startEdit = () => {
-    setDraft(apiKey ?? "");
-    setEditing(true);
-  };
-  const cancel = () => {
-    setEditing(false);
-    setDraft("");
-  };
   const save = async () => {
     const trimmed = draft.trim();
     if (!trimmed) return;
     setSaving(true);
     try {
-      await onSave(trimmed);
-      setEditing(false);
-      setDraft("");
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? String(e));
+      await store.save(trimmed);
+      onClose();
+    } catch (e) {
+      showAlert(i18n.error_title, e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
   };
 
-  if (editing) {
-    return (
-      <View style={styles.aiBlock}>
-        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>
-          {label}
-        </Text>
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          placeholder={placeholder}
-          placeholderTextColor={t.inkMuted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          secureTextEntry={false}
-          style={{
-            marginTop: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 12,
-            borderWidth: 1,
-            borderColor: t.line,
-            borderRadius: 8,
-            fontFamily: FMFonts.mono,
-            fontSize: 14,
-            color: t.ink,
-            backgroundColor: t.surface,
-          }}
-        />
-        <View style={{ flexDirection: "row", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
-          <Button variant="primary" disabled={!draft.trim() || saving} onPress={save}>
-            {saving ? "…" : saveLabel}
-          </Button>
-          <Button variant="ghost" onPress={cancel}>
+  return (
+    <Sheet
+      visible={target !== null}
+      onClose={onClose}
+      width={440}
+      title={target === "claude" ? i18n.ai_claude_key_label : i18n.ai_gemini_key_label}
+      actions={
+        <>
+          <Button variant="text" onPress={onClose}>
             {i18n.cancel}
           </Button>
-        </View>
-      </View>
-    );
+          <Button disabled={!draft.trim()} loading={saving} onPress={save}>
+            {i18n.save}
+          </Button>
+        </>
+      }
+    >
+      <Field
+        label={i18n.api_key}
+        value={draft}
+        onChangeText={setDraft}
+        placeholder={target === "claude" ? "sk-ant-…" : "AIza…"}
+        hint={target === "claude" ? i18n.ai_claude_explainer : i18n.ai_gemini_explainer}
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoFocus
+        mono
+        containerStyle={{ marginBottom: 0 }}
+      />
+    </Sheet>
+  );
+}
+
+// ── Local AI (Ollama) ──
+
+type OllamaState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "unreachable" }
+  | { kind: "ok"; installed: string[]; hasModel: boolean };
+
+type Strings = ReturnType<typeof useSettings>["i18n"];
+
+async function checkOllama(url: string, model: string): Promise<OllamaState> {
+  try {
+    const installed = await listOllamaModels(url);
+    return { kind: "ok", installed, hasModel: ollamaHasModel(installed, model) };
+  } catch {
+    return { kind: "unreachable" };
+  }
+}
+
+/** Reachability + model presence of the configured server; `url` null = off. */
+function useOllamaStatus(url: string | null, model: string) {
+  const [state, setState] = useState<OllamaState>({ kind: "idle" });
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!url) return;
+    let alive = true;
+    setState({ kind: "checking" });
+    checkOllama(url, model).then((s) => {
+      if (alive) setState(s);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [url, model, tick]);
+  const recheck = useCallback(() => setTick((n) => n + 1), []);
+  return { ...state, recheck };
+}
+
+function ollamaStatusText(s: OllamaState, model: string, i18n: Strings): string {
+  if (s.kind === "checking" || s.kind === "idle") return i18n.ai_ollama_checking;
+  if (s.kind === "unreachable") return i18n.ai_ollama_unreachable;
+  return s.hasModel ? i18n.ai_ollama_ok : i18n.ai_ollama_model_missing.replace(/\{model\}/g, model);
+}
+
+function OllamaStatusIcon({ status }: { status: OllamaState }) {
+  const t = useFMTheme();
+  if (status.kind === "checking" || status.kind === "idle") {
+    return <ActivityIndicator size="small" color={t.inkSoft} />;
+  }
+  if (status.kind === "ok" && status.hasModel) return <IconCheck size={20} color={t.pos} />;
+  return <IconWarn size={20} color={t.error} />;
+}
+
+function OllamaSheet({
+  visible,
+  onClose,
+  url,
+  model,
+  onSave,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  url: string;
+  model: string;
+  onSave: (url: string, model: string) => Promise<void>;
+}) {
+  const t = useFMTheme();
+  const { i18n } = useSettings();
+  const [draftUrl, setDraftUrl] = useState(url);
+  const [draftModel, setDraftModel] = useState(model);
+  const [status, setStatus] = useState<OllamaState>({ kind: "idle" });
+  const [wasVisible, setWasVisible] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  // Seed drafts each time the sheet opens.
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) {
+      setDraftUrl(url);
+      setDraftModel(model);
+      setStatus({ kind: "idle" });
+    }
   }
 
+  const test = useCallback(async (u: string, m: string) => {
+    setStatus({ kind: "checking" });
+    setStatus(await checkOllama(normalizeOllamaUrl(u), m.trim()));
+  }, []);
+
+  // Fetch the installed models once on open, for the chips.
+  useEffect(() => {
+    if (visible) test(url, model);
+  }, [visible, url, model, test]);
+
+  const installed = status.kind === "ok" ? status.installed : [];
+  // Model presence follows the field as the user types or picks a chip.
+  const live: OllamaState =
+    status.kind === "ok" ? { ...status, hasModel: ollamaHasModel(status.installed, draftModel) } : status;
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onSave(draftUrl, draftModel);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const statusColor =
+    live.kind === "ok" && live.hasModel ? t.pos : live.kind === "checking" ? t.inkSoft : t.error;
+
   return (
-    <View style={styles.aiBlock}>
-      <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 15, color: t.ink }}>
-        {label}
-      </Text>
-      <Text style={{ fontFamily: FMFonts.sans, fontSize: 12.5, color: t.inkMuted, marginTop: 6, lineHeight: 17 }}>
-        {explainer}
-      </Text>
-      {masked ? (
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      width={460}
+      title={i18n.ai_ollama_title}
+      actions={
+        <>
+          <Button variant="text" onPress={() => test(draftUrl, draftModel)}>
+            {i18n.ai_ollama_test}
+          </Button>
+          <View style={{ flex: 1 }} />
+          <Button variant="text" onPress={onClose}>
+            {i18n.cancel}
+          </Button>
+          <Button disabled={!draftModel.trim()} loading={saving} onPress={save}>
+            {i18n.save}
+          </Button>
+        </>
+      }
+    >
+      <Field
+        label={i18n.ai_ollama_model}
+        value={draftModel}
+        onChangeText={setDraftModel}
+        placeholder="qwen3.5:9b"
+        autoCapitalize="none"
+        autoCorrect={false}
+        mono
+      />
+      {installed.length > 0 ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: -4, marginBottom: 16 }}>
+          {installed.map((m) => (
+            <Chip key={m} filter active={m === draftModel.trim()} onPress={() => setDraftModel(m)}>
+              {m}
+            </Chip>
+          ))}
+        </View>
+      ) : null}
+      <Field
+        label={i18n.ai_ollama_url}
+        value={draftUrl}
+        onChangeText={setDraftUrl}
+        placeholder="http://localhost:11434"
+        autoCapitalize="none"
+        autoCorrect={false}
+        keyboardType="url"
+        mono
+        hint={Platform.OS !== "web" ? i18n.ai_ollama_native_hint : undefined}
+      />
+      {status.kind !== "idle" ? (
         <Text
-          numberOfLines={1}
-          style={{
-            fontFamily: FMFonts.mono,
-            fontSize: 13.5,
-            color: t.inkSoft,
-            marginTop: 10,
-            fontVariant: ["tabular-nums"],
-          }}
+          accessibilityLiveRegion="polite"
+          style={{ fontFamily: FMFonts.sans, fontSize: 14, lineHeight: 20, color: statusColor }}
         >
-          {masked}
+          {ollamaStatusText(live, draftModel.trim(), i18n)}
         </Text>
       ) : null}
-      <View style={{ marginTop: 12, alignSelf: "flex-start" }}>
-        <Button variant={apiKey ? "secondary" : "primary"} onPress={startEdit}>
-          {apiKey ? updateLabel : setLabel}
-        </Button>
-      </View>
-    </View>
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  backRow: {
-    paddingHorizontal: 18,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingBottom: 8,
-  },
-  iconBtn: { padding: 6 },
   scrollContent: {
-    paddingHorizontal: 18,
-    paddingBottom: 32,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   desktopPage: {
-    padding: 24,
-  },
-  desktopSection: {
-    flexDirection: "row",
-    gap: 32,
-    paddingVertical: 24,
-    borderTopWidth: 1,
-  },
-  sectionList: {
-    borderWidth: 1,
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  selectionRow: {
+    paddingHorizontal: 24,
+    paddingBottom: 32,
     width: "100%",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
+    maxWidth: 760,
+    alignSelf: "center",
   },
-  segmentedRow: {
-    flexDirection: "row",
-    gap: 8,
-    paddingHorizontal: 12,
+  group: {
+    borderRadius: FMRadius.lg,
+    overflow: "hidden",
+    paddingVertical: 4,
+  },
+  controlRow: {
+    paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  segment: {
-    flex: 1,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalCard: {
-    width: "100%",
-    maxWidth: 400,
-    padding: 22,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "stretch",
-  },
-  pinInput: {
-    width: "100%",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 24,
-    textAlign: "center",
-    letterSpacing: 8,
-    marginTop: 14,
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 14,
-    justifyContent: "flex-end",
-  },
-  swatchWrap: {
-    alignItems: "center",
-    width: Platform.OS === "web" ? 52 : 50,
-  },
-  swatchDot: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  swatchRing: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  aiBlock: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+  swatch: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    overflow: "hidden",
+  },
+  swatchHalf: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 19,
+  },
+  footer: {
+    textAlign: "center",
+    fontFamily: FMFonts.sans,
+    fontSize: 12,
+    marginTop: 4,
+  },
+  empty: {
+    fontFamily: FMFonts.sans,
+    fontSize: 14,
+    textAlign: "center",
+    padding: 24,
   },
 });

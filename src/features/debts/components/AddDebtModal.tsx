@@ -1,9 +1,11 @@
 import React, { useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import type { Strings } from "@/src/constants/Strings";
 import { Sheet } from "@/src/shared/components/Sheet";
-import { Button, Field, Label, useFMTheme } from "@/src/shared/design";
+import { Button, Chip, Field, Label, SegmentedButtons } from "@/src/shared/design";
+import { showAlert } from "@/src/shared/utils/alert";
+import { parseLocaleNumber, roundCents } from "@/src/shared/utils/number";
 import type { DebtEntity } from "../context/DebtsContext";
 
 interface AddDebtModalProps {
@@ -17,14 +19,11 @@ interface AddDebtModalProps {
     date: string,
   ) => Promise<void> | Promise<string>;
   onClose: () => void;
-  backgroundColor?: string;
-  textColor?: string;
-  tintColor?: string;
-  i18n: Record<string, string>;
+  i18n: typeof Strings.de;
 }
 
+// Add a debt entry: person (filter chips), direction (segmented), amount, note.
 export function AddDebtModal({ visible, entities, onAdd, onClose, i18n }: AddDebtModalProps) {
-  const t = useFMTheme();
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [debtAmount, setDebtAmount] = useState("");
   const [debtDesc, setDebtDesc] = useState("");
@@ -39,12 +38,18 @@ export function AddDebtModal({ visible, entities, onAdd, onClose, i18n }: AddDeb
 
   const handleAddDebt = async () => {
     if (!selectedEntityId || !debtAmount) return;
-    const amount = parseFloat(debtAmount.replace(",", "."));
+    const amount = roundCents(parseLocaleNumber(debtAmount));
     if (isNaN(amount) || amount <= 0) {
-      Alert.alert("Invalid amount", "Please enter a valid positive amount.");
+      showAlert(i18n.invalid_amount_title, i18n.invalid_amount_msg);
       return;
     }
-    await onAdd(selectedEntityId, amount, debtDesc || "Debt", debtDirection, new Date().toISOString());
+    await onAdd(
+      selectedEntityId,
+      amount,
+      debtDesc.trim() || i18n.debt_default_desc,
+      debtDirection,
+      new Date().toISOString(),
+    );
     reset();
     onClose();
   };
@@ -58,142 +63,70 @@ export function AddDebtModal({ visible, entities, onAdd, onClose, i18n }: AddDeb
     <Sheet
       visible={visible}
       onClose={handleClose}
-      title={i18n.add_debt_title ?? "Add debt"}
-      width={460}
+      title={i18n.add_debt_title}
+      width={480}
       actions={
         <>
-          <Button variant="ghost" onPress={handleClose}>{i18n.cancel}</Button>
-          <Button
-            variant="primary"
-            onPress={handleAddDebt}
-            disabled={!selectedEntityId || !debtAmount}
-          >
+          <Button variant="text" onPress={handleClose}>
+            {i18n.cancel}
+          </Button>
+          <Button onPress={handleAddDebt} disabled={!selectedEntityId || !debtAmount}>
             {i18n.save}
           </Button>
         </>
       }
     >
-      <View style={{ marginBottom: 12 }}>
-        <Label style={{ marginBottom: 6 }}>{i18n.person_label ?? "Person"}</Label>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-          {entities.map((e) => {
-            const active = selectedEntityId === e.id;
-            return (
-              <Pressable
-                key={e.id}
-                onPress={() => setSelectedEntityId(e.id)}
-                style={({ pressed }) => [
-                  styles.chip,
-                  {
-                    backgroundColor: active ? t.ink : t.surface,
-                    borderColor: active ? t.ink : t.lineStrong,
-                    opacity: pressed ? 0.85 : 1,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    fontFamily: FMFonts.sansMedium,
-                    fontSize: 12,
-                    color: active ? t.bg : t.ink,
-                  }}
-                >
-                  {e.name}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+      <Label style={{ marginBottom: 8 }}>{i18n.person_label}</Label>
+      <View style={styles.chips}>
+        {entities.map((e) => (
+          <Chip
+            key={e.id}
+            filter
+            active={selectedEntityId === e.id}
+            onPress={() => setSelectedEntityId(e.id)}
+          >
+            {e.name}
+          </Chip>
+        ))}
       </View>
 
+      <SegmentedButtons
+        full
+        value={debtDirection}
+        onChange={setDebtDirection}
+        options={[
+          // Same order as the entry editor and the debt table.
+          { value: "OWES_ME", label: i18n.owes_me },
+          { value: "I_OWE", label: i18n.i_owe },
+        ]}
+        style={{ marginBottom: 16 }}
+      />
+
       <Field
-        label={i18n.amount_label ?? "Amount"}
+        label={i18n.amount_label}
         placeholder="0,00"
         value={debtAmount}
         onChangeText={setDebtAmount}
-        keyboardType="numeric"
+        keyboardType="decimal-pad"
         suffix="€"
         mono
       />
       <Field
-        label={i18n.desc_label ?? "Description"}
-        placeholder={i18n.placeholder_desc ?? "e.g. concert tickets"}
+        label={i18n.desc_label}
+        placeholder={i18n.placeholder_desc}
         value={debtDesc}
         onChangeText={setDebtDesc}
+        containerStyle={{ marginBottom: 0 }}
       />
-
-      <View style={{ marginBottom: 4 }}>
-        <Label style={{ marginBottom: 6 }}>{i18n.who_owes_who ?? "Direction"}</Label>
-        <View style={styles.dirRow}>
-          <Pressable
-            onPress={() => setDebtDirection("I_OWE")}
-            style={({ pressed }) => [
-              styles.dirBtn,
-              {
-                backgroundColor: debtDirection === "I_OWE" ? t.negSoft : t.surface,
-                borderColor: debtDirection === "I_OWE" ? t.neg : t.lineStrong,
-                opacity: pressed ? 0.85 : 1,
-              },
-            ]}
-          >
-            <Text
-              style={{
-                fontFamily: FMFonts.sansSemibold,
-                fontSize: 12,
-                color: debtDirection === "I_OWE" ? t.neg : t.inkSoft,
-              }}
-            >
-              {i18n.i_owe_them}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setDebtDirection("OWES_ME")}
-            style={({ pressed }) => [
-              styles.dirBtn,
-              {
-                backgroundColor: debtDirection === "OWES_ME" ? t.posSoft : t.surface,
-                borderColor: debtDirection === "OWES_ME" ? t.pos : t.lineStrong,
-                opacity: pressed ? 0.85 : 1,
-              },
-            ]}
-          >
-            <Text
-              style={{
-                fontFamily: FMFonts.sansSemibold,
-                fontSize: 12,
-                color: debtDirection === "OWES_ME" ? t.pos : t.inkSoft,
-              }}
-            >
-              {i18n.they_owe_me}
-            </Text>
-          </Pressable>
-        </View>
-      </View>
     </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  chipRow: {
+  chips: {
     flexDirection: "row",
-    gap: 6,
-    paddingVertical: 2,
-  },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  dirRow: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  dirBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 6,
-    borderWidth: 1,
-    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 16,
   },
 });

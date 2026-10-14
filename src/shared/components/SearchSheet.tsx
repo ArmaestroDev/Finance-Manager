@@ -16,11 +16,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TextStyle,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMType } from "@/src/constants/theme";
 import { useAccounts } from "@/src/features/accounts/context/AccountsContext";
 import {
   useCategories,
@@ -33,11 +34,22 @@ import {
   pickTransactionTitle,
 } from "@/src/features/transactions/utils/transactions";
 import type { Transaction } from "@/src/services/enableBanking";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import {
+  Avatar,
+  IconBack,
+  IconButton,
+  IconClose,
+  IconSearch,
+  Label,
+  ListItem,
   Money,
+  elevation,
   useFMTheme,
 } from "@/src/shared/design";
+import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
 import { formatDate } from "@/src/shared/utils/date";
+import { accountDisplayName } from "@/src/features/accounts/utils/accountDisplay";
 
 interface SearchContext {
   open: () => void;
@@ -106,9 +118,11 @@ const MAX_RESULTS = 50;
 function SearchSheet({ visible, onClose }: SearchSheetProps) {
   const t = useFMTheme();
   const insets = useSafeAreaInsets();
+  const { i18n } = useSettings();
+  const isWeb = !useIsMobileLayout();
   const { transactionsByAccount } = useTransactionsContext();
   const { accounts } = useAccounts();
-  const { categories, getCategoryForTransaction } = useCategories();
+  const { getCategoryForTransaction } = useCategories();
 
   const [query, setQuery] = useState("");
 
@@ -116,11 +130,21 @@ function SearchSheet({ visible, onClose }: SearchSheetProps) {
     if (!visible) setQuery("");
   }, [visible]);
 
+  // autoFocus alone doesn't stick inside a react-native-web Modal: its focus
+  // trap moves focus to the first focusable element (the scrim) when the fade
+  // ends. Focus again on show and after the animation.
+  const inputRef = useRef<TextInput>(null);
+  const focusInput = useCallback(() => inputRef.current?.focus(), []);
+  useEffect(() => {
+    if (!visible) return;
+    const ids = [60, 350].map((ms) => setTimeout(focusInput, ms));
+    return () => ids.forEach(clearTimeout);
+  }, [visible, focusInput]);
+
   const groups = useMemo<ResultGroup[]>(() => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
 
-    const byId = new Map(accounts.map((a) => [a.id, a]));
     const out: ResultGroup[] = [];
     let total = 0;
 
@@ -139,7 +163,7 @@ function SearchSheet({ visible, onClose }: SearchSheetProps) {
           cat?.name?.toLowerCase() ?? "",
           (tx.remittance_information ?? []).join(" ").toLowerCase(),
           String(getTransactionAmount(tx)),
-          acc.name.toLowerCase(),
+          accountDisplayName(acc, i18n).toLowerCase(),
         ].join("  ");
 
         if (haystack.includes(q)) {
@@ -148,21 +172,21 @@ function SearchSheet({ visible, onClose }: SearchSheetProps) {
         }
       }
 
-      if (rows.length > 0 && byId.has(acc.id)) {
-        out.push({ accountId: acc.id, accountName: acc.name, rows });
+      if (rows.length > 0) {
+        out.push({ accountId: acc.id, accountName: accountDisplayName(acc, i18n), rows });
       }
     }
 
     return out;
-  }, [query, transactionsByAccount, accounts, categories, getCategoryForTransaction]);
+  }, [query, transactionsByAccount, accounts, getCategoryForTransaction, i18n]);
 
-  const isWeb = Platform.OS === "web";
   const trimmed = query.trim();
   const hasResults = groups.some((g) => g.rows.length > 0);
 
-  function handleRowPress(accountId: string) {
+  // Opens the account with the row selected (the detail screens read `tx`).
+  function handleRowPress(accountId: string, txId: string) {
     onClose();
-    router.push(`/account/${accountId}` as never);
+    router.push({ pathname: `/account/${accountId}`, params: { tx: txId } } as never);
   }
 
   return (
@@ -171,152 +195,94 @@ function SearchSheet({ visible, onClose }: SearchSheetProps) {
       transparent
       animationType={isWeb ? "fade" : "slide"}
       onRequestClose={onClose}
+      onShow={focusInput}
     >
-      <Pressable style={styles.scrim} onPress={onClose}>
+      <Pressable
+        style={[styles.scrim, { backgroundColor: t.scrim }, isWeb ? styles.scrimDialog : null]}
+        onPress={onClose}
+        accessibilityLabel={i18n.close}
+      >
         <Pressable
           style={[
             isWeb ? styles.dialog : styles.sheet,
             {
-              backgroundColor: t.surface,
-              borderColor: t.lineStrong,
-              paddingBottom: 16 + (isWeb ? 0 : insets.bottom),
+              backgroundColor: t.surfaceContainerHigh,
+              paddingTop: isWeb ? 0 : insets.top,
+              paddingBottom: isWeb ? 8 : insets.bottom,
             },
+            elevation(3),
           ]}
           onPress={(e) => e.stopPropagation()}
+          accessibilityViewIsModal
         >
-          {!isWeb ? (
-            <View style={[styles.handle, { backgroundColor: t.lineStrong }]} />
-          ) : null}
-
-          <Text
-            style={{
-              fontFamily: FMFonts.display,
-              fontSize: 22,
-              color: t.ink,
-              marginBottom: 14,
-              letterSpacing: -0.3,
-            }}
-          >
-            Search
-          </Text>
-
-          <View
-            style={[
-              styles.inputRow,
-              { borderColor: t.lineStrong, backgroundColor: t.surfaceAlt },
-            ]}
-          >
+          {/* M3 search bar: leading back/close · input · clear */}
+          <View style={styles.inputRow}>
+            <IconButton icon={<IconBack size={20} />} label={i18n.close} onPress={onClose} />
             <TextInput
+              ref={inputRef}
               autoFocus
               value={query}
               onChangeText={setQuery}
-              placeholder="Search transactions, categories, accounts…"
-              placeholderTextColor={t.inkMuted}
-              style={{
-                flex: 1,
-                fontFamily: FMFonts.sansMedium,
-                fontSize: 13,
-                color: t.ink,
-                paddingVertical: 0,
-              }}
+              placeholder={i18n.search_placeholder}
+              placeholderTextColor={t.onSurfaceVariant}
+              accessibilityLabel={i18n.search_label}
+              selectionColor={t.primary}
+              style={[
+                NO_WEB_OUTLINE,
+                {
+                  flex: 1,
+                  minWidth: 0,
+                  fontFamily: FMFonts.sans,
+                  fontSize: FMType.subhead,
+                  color: t.ink,
+                  paddingVertical: 0,
+                  marginLeft: 4,
+                },
+              ]}
             />
+            {query ? (
+              <IconButton icon={<IconClose size={20} />} label={i18n.clear} onPress={() => setQuery("")} />
+            ) : (
+              <View style={{ width: 40, alignItems: "center" }}>
+                <IconSearch size={20} color={t.onSurfaceVariant} />
+              </View>
+            )}
           </View>
+          <View style={[styles.divider, { backgroundColor: t.outlineVariant }]} />
 
-          <View style={styles.resultsWrap}>
+          <View style={[styles.resultsWrap, !isWeb && { flex: 1 }]}>
             {trimmed.length === 0 ? (
-              <Text style={[styles.hint, { color: t.inkMuted }]}>
-                Type to search transactions across all accounts.
-              </Text>
+              <Text style={[styles.hint, { color: t.inkSoft }]}>{i18n.search_empty_hint}</Text>
             ) : !hasResults ? (
-              <Text style={[styles.hint, { color: t.inkMuted }]}>
-                No matches in the current date range.
-              </Text>
+              <Text style={[styles.hint, { color: t.inkSoft }]}>{i18n.search_no_matches}</Text>
             ) : (
               <ScrollView
-                style={{ maxHeight: isWeb ? 420 : 360 }}
+                style={isWeb ? { maxHeight: 480 } : { flex: 1 }}
                 showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
               >
                 {groups.map((group) => (
-                  <View key={group.accountId} style={{ marginBottom: 10 }}>
-                    <Text
-                      style={{
-                        fontFamily: FMFonts.sansSemibold,
-                        fontSize: 10,
-                        color: t.inkMuted,
-                        letterSpacing: 1,
-                        textTransform: "uppercase",
-                        paddingHorizontal: 4,
-                        paddingTop: 6,
-                        paddingBottom: 6,
-                      }}
-                    >
+                  <View key={group.accountId} style={{ marginBottom: 8 }}>
+                    <Label style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 }}>
                       {group.accountName}
-                    </Text>
+                    </Label>
                     {group.rows.map((row, i) => {
                       const txId = getStableTxId(row.tx);
                       const title = pickTransactionTitle(row.tx);
                       const amount = getTransactionAmount(row.tx);
                       const date = row.tx.booking_date || row.tx.value_date || "";
-                      const dateLabel = formatDate(date);
                       const cat = row.category;
                       return (
-                        <Pressable
+                        <ListItem
                           key={`${group.accountId}-${txId}-${i}`}
-                          onPress={() => handleRowPress(group.accountId)}
-                          style={({ pressed }) => [
-                            styles.row,
-                            {
-                              borderTopColor: i === 0 ? "transparent" : t.line,
-                              borderTopWidth: i === 0 ? 0 : 1,
-                              opacity: pressed ? 0.7 : 1,
-                            },
-                          ]}
-                        >
-                          <View style={styles.dotCol}>
-                            {cat ? (
-                              <View
-                                style={[
-                                  styles.dot,
-                                  { backgroundColor: cat.color },
-                                ]}
-                              />
-                            ) : (
-                              <View
-                                style={[
-                                  styles.dotDashed,
-                                  { borderColor: t.lineStrong },
-                                ]}
-                              />
-                            )}
-                          </View>
-                          <View style={{ flex: 1, marginLeft: 12 }}>
-                            <Text
-                              style={{
-                                fontFamily: FMFonts.sansMedium,
-                                fontSize: 13,
-                                color: t.ink,
-                              }}
-                              numberOfLines={1}
-                            >
-                              {title}
-                            </Text>
-                            <Text
-                              style={{
-                                fontFamily: FMFonts.sans,
-                                fontSize: 11,
-                                color: t.inkMuted,
-                                marginTop: 2,
-                              }}
-                              numberOfLines={1}
-                            >
-                              {dateLabel}
-                              {cat ? ` · ${cat.name}` : ""}
-                            </Text>
-                          </View>
-                          <View style={{ marginLeft: 10 }}>
-                            <Money value={amount} size={13} />
-                          </View>
-                        </Pressable>
+                          onPress={() => handleRowPress(group.accountId, txId)}
+                          background={t.surfaceContainerHigh}
+                          leading={<Avatar label={title} color={cat?.color} size={36} />}
+                          title={title}
+                          subtitle={`${formatDate(date)}${cat ? ` · ${cat.name}` : ""}`}
+                          trailing={<Money value={amount} size={FMType.body} />}
+                          accessibilityLabel={title}
+                        />
                       );
                     })}
                   </View>
@@ -330,77 +296,44 @@ function SearchSheet({ visible, onClose }: SearchSheetProps) {
   );
 }
 
+// The input draws its own container; drop the browser focus ring.
+const NO_WEB_OUTLINE = { outlineStyle: "none" } as unknown as TextStyle;
+
 const styles = StyleSheet.create({
   scrim: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "flex-end",
+  },
+  scrimDialog: {
+    alignItems: "center",
+    paddingTop: 72,
   },
   sheet: {
+    flex: 1,
     width: "100%",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    borderTopWidth: 1,
-    paddingHorizontal: 20,
-    paddingTop: 14,
   },
   dialog: {
-    alignSelf: "center",
-    marginBottom: "auto",
-    marginTop: "auto",
-    width: 560,
-    maxWidth: "92%" as unknown as number,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: 16,
+    width: 640,
+    maxWidth: "92%",
+    borderRadius: 28,
+    overflow: "hidden",
   },
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 10,
+    height: 64,
+    paddingHorizontal: 8,
+  },
+  divider: {
+    height: 1,
   },
   resultsWrap: {
     minHeight: 80,
   },
   hint: {
     fontFamily: FMFonts.sans,
-    fontSize: 12,
-    paddingVertical: 18,
-    paddingHorizontal: 4,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-  },
-  dotCol: {
-    width: 14,
-    alignItems: "center",
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  dotDashed: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    backgroundColor: "transparent",
+    fontSize: FMType.body,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    textAlign: "center",
   },
 });

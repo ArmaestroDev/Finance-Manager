@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
   Animated,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,22 +8,30 @@ import {
   View,
 } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMRadius, FMType } from "@/src/constants/theme";
 import {
+  Button,
+  IconButton,
   IconChevD,
   IconChevR,
   IconClose,
   IconRefresh,
   IconUpload,
-  Label,
+  PressState,
+  elevation,
+  stateColor,
   useFMTheme,
 } from "@/src/shared/design";
+import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import { useImportQueue } from "../context/ImportQueueContext";
 import type { QueueItemStatus } from "../context/ImportQueueContext";
 
 export function ImportQueueOverlay(): React.ReactElement | null {
   const t = useFMTheme();
+  const { i18n } = useSettings();
   const { items, removeItem, retryItem } = useImportQueue();
+  const isMobile = useIsMobileLayout();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [slideAnim] = useState(() => new Animated.Value(0));
 
@@ -47,9 +54,11 @@ export function ImportQueueOverlay(): React.ReactElement | null {
     <Animated.View
       style={[
         styles.container,
+        // Mobile: full width above the navigation bar + quick-add FAB.
+        isMobile ? { left: 16, right: 16, bottom: 160, width: undefined } : null,
+        elevation(3),
         {
-          backgroundColor: t.surface,
-          borderColor: t.lineStrong,
+          backgroundColor: t.surfaceContainerHigh,
           transform: [
             {
               translateY: slideAnim.interpolate({
@@ -63,34 +72,39 @@ export function ImportQueueOverlay(): React.ReactElement | null {
       ]}
     >
       <Pressable
-        style={[styles.header, { borderBottomColor: t.line }]}
+        style={(s) => [styles.header, { backgroundColor: stateColor(t.surfaceContainerHigh, t.ink, s as PressState) }]}
         onPress={() => setIsCollapsed(!isCollapsed)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded: !isCollapsed }}
       >
         <View style={styles.headerLeft}>
-          <IconUpload size={14} color={t.accent} />
+          <IconUpload size={18} color={t.primary} />
           <Text
             style={{
-              fontFamily: FMFonts.sansSemibold,
-              fontSize: 12,
+              fontFamily: FMFonts.sansMedium,
+              fontSize: FMType.body,
               color: t.ink,
               marginLeft: 8,
             }}
           >
-            Importing {totalCount} statement{totalCount === 1 ? "" : "s"}
+            {i18n.import_importing_count.replace("{count}", String(totalCount))}
           </Text>
         </View>
         <View style={styles.headerRight}>
-          <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkMuted, marginRight: 8 }}>
-            {completedCount} of {totalCount} complete
+          <Text style={{ fontFamily: FMFonts.sans, fontSize: FMType.caption, color: t.inkSoft, marginRight: 8, fontVariant: ["tabular-nums"] }}>
+            {i18n.import_progress
+              .replace("{done}", String(completedCount))
+              .replace("{total}", String(totalCount))}
           </Text>
-          {isCollapsed ? <IconChevR size={11} color={t.inkMuted} /> : <IconChevD size={11} color={t.inkMuted} />}
+          {isCollapsed ? <IconChevR size={14} color={t.inkSoft} /> : <IconChevD size={14} color={t.inkSoft} />}
         </View>
       </Pressable>
 
-      <View style={[styles.progressBg, { backgroundColor: t.surfaceAlt }]}>
+      <View style={[styles.progressBg, { backgroundColor: t.surfaceContainerHighest }]}>
         <View
           style={{
-            backgroundColor: t.accent,
+            backgroundColor: t.primary,
+            borderRadius: 2,
             height: "100%",
             width: totalCount > 0 ? `${(completedCount / totalCount) * 100}%` : "0%",
           }}
@@ -98,13 +112,13 @@ export function ImportQueueOverlay(): React.ReactElement | null {
       </View>
 
       {processingItem && !isCollapsed ? (
-        <View style={[styles.processingBanner, { backgroundColor: t.accentSoft }]}>
-          <IconRefresh size={11} color={t.accent} />
+        <View style={[styles.processingBanner, { backgroundColor: t.secondaryContainer }]}>
+          <IconRefresh size={14} color={t.onSecondaryContainer} />
           <Text
             style={{
               fontFamily: FMFonts.sansMedium,
-              fontSize: 11,
-              color: t.accent,
+              fontSize: FMType.caption,
+              color: t.onSecondaryContainer,
               marginLeft: 6,
               flex: 1,
             }}
@@ -149,27 +163,28 @@ interface ItemRowProps {
 
 function ItemRow({ item, isFirst, onRetry, onDismiss }: ItemRowProps) {
   const t = useFMTheme();
+  const { i18n } = useSettings();
   const dotColor =
     item.status === "completed"
       ? t.pos
       : item.status === "processing"
-        ? t.accent
+        ? t.primary
         : item.status === "failed"
-          ? t.neg
+          ? t.error
           : t.inkMuted;
 
   return (
     <View
       style={[
         styles.itemRow,
-        { borderTopColor: t.line, borderTopWidth: isFirst ? 0 : 1 },
+        { borderTopColor: t.outlineVariant, borderTopWidth: isFirst ? 0 : 1 },
       ]}
     >
       <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: dotColor, marginRight: 8 }} />
       <Text
         style={{
           fontFamily: FMFonts.mono,
-          fontSize: 11,
+          fontSize: FMType.caption,
           color: t.inkSoft,
           flex: 1,
           fontVariant: ["tabular-nums"],
@@ -180,19 +195,19 @@ function ItemRow({ item, isFirst, onRetry, onDismiss }: ItemRowProps) {
       </Text>
       {item.status === "processing" ? (
         <View style={{ flex: 1.4, flexDirection: "row", alignItems: "center", marginRight: 6 }}>
-          <View style={[styles.miniBar, { backgroundColor: t.surfaceAlt }]}>
+          <View style={[styles.miniBar, { backgroundColor: t.surfaceContainerHighest }]}>
             <View
               style={{
                 width: `${item.progress ?? 0}%` as `${number}%`,
                 height: "100%",
-                backgroundColor: t.accent,
+                backgroundColor: t.primary,
               }}
             />
           </View>
           <Text
             style={{
               fontFamily: FMFonts.mono,
-              fontSize: 10,
+              fontSize: FMType.caption,
               color: t.inkMuted,
               width: 32,
               textAlign: "right",
@@ -203,30 +218,28 @@ function ItemRow({ item, isFirst, onRetry, onDismiss }: ItemRowProps) {
           </Text>
         </View>
       ) : item.status === "completed" ? (
-        <Text style={{ fontFamily: FMFonts.mono, fontSize: 11, color: t.inkSoft, marginRight: 6, fontVariant: ["tabular-nums"] }}>
-          {item.importedCount ?? 0} imp ·{" "}
+        <Text style={{ fontFamily: FMFonts.mono, fontSize: FMType.caption, color: t.inkSoft, marginRight: 6, fontVariant: ["tabular-nums"] }}>
+          {i18n.import_imp_short.replace("{count}", String(item.importedCount ?? 0))} ·{" "}
           <Text style={{ color: (item.skippedCount ?? 0) > 0 ? t.warn : t.inkMuted }}>
-            {item.skippedCount ?? 0} dup
+            {i18n.import_dup_short.replace("{count}", String(item.skippedCount ?? 0))}
           </Text>
         </Text>
       ) : item.status === "failed" ? (
-        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.neg, marginRight: 6, flex: 1 }} numberOfLines={1}>
-          {item.error ?? "Failed"}
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: FMType.caption, color: t.neg, marginRight: 6, flex: 1 }} numberOfLines={1}>
+          {item.error ?? i18n.import_status_failed}
         </Text>
       ) : (
-        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.inkMuted, marginRight: 6 }}>
-          Pending
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: FMType.caption, color: t.inkMuted, marginRight: 6 }}>
+          {i18n.import_status_pending}
         </Text>
       )}
       {item.status === "failed" ? (
-        <Pressable onPress={onRetry} hitSlop={6} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1, marginRight: 6 })}>
-          <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 10.5, color: t.accent }}>RETRY</Text>
-        </Pressable>
+        <Button variant="text" size="sm" onPress={onRetry}>
+          {i18n.import_retry_short}
+        </Button>
       ) : null}
       {item.status === "completed" || item.status === "failed" ? (
-        <Pressable onPress={onDismiss} hitSlop={6} style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1 })}>
-          <IconClose size={12} color={t.inkMuted} />
-        </Pressable>
+        <IconButton icon={<IconClose size={16} />} label={i18n.close} onPress={onDismiss} size={32} />
       ) : null}
     </View>
   );
@@ -235,27 +248,20 @@ function ItemRow({ item, isFirst, onRetry, onDismiss }: ItemRowProps) {
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    bottom: Platform.OS === "web" ? 20 : 96,
-    right: 20,
+    bottom: 24,
+    right: 24,
     width: 360,
     maxHeight: 420,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: FMRadius.lg,
     overflow: "hidden",
     zIndex: 10000,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 30,
-    elevation: 8,
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
   },
   headerLeft: {
     flexDirection: "row",
@@ -266,27 +272,33 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   progressBg: {
-    height: 2,
-    width: "100%",
+    height: 4,
+    borderRadius: 2,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    overflow: "hidden",
   },
   processingBanner: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
+    marginHorizontal: 12,
+    borderRadius: FMRadius.sm,
   },
   list: {
     flexGrow: 0,
     maxHeight: 280,
   },
   listContent: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     paddingBottom: 8,
   },
   itemRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 8,
+    minHeight: 44,
+    paddingVertical: 4,
   },
   miniBar: {
     flex: 1,

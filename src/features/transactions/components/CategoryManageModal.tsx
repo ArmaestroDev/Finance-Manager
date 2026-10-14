@@ -1,19 +1,24 @@
 import React, { useEffect, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMType } from "@/src/constants/theme";
 import { Sheet } from "@/src/shared/components/Sheet";
 import { useSettings } from "@/src/shared/context/SettingsContext";
 import {
   Button,
+  EmptyState,
   Field,
   IconBack,
-  IconEdit,
+  IconButton,
   IconPlus,
   IconTrash,
   Label,
+  ListItem,
+  Pill,
+  SectionTitle,
   useFMTheme,
 } from "@/src/shared/design";
+import { ColorSwatches } from "./ColorSwatches";
 import { useCategories } from "@/src/features/transactions/context/CategoriesContext";
 import {
   CategoryBudgetEditor,
@@ -21,6 +26,7 @@ import {
   itemsToRows,
   rowsToItems,
 } from "./CategoryBudgetEditor";
+import { showAlert } from "@/src/shared/utils/alert";
 
 interface TransactionCategory {
   id: string;
@@ -37,9 +43,6 @@ interface CategoryManageModalProps {
   onUpdate: (id: string, updates: { name: string; color: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onClose: () => void;
-  backgroundColor?: string;
-  textColor?: string;
-  tintColor?: string;
 }
 
 export function CategoryManageModal({
@@ -73,17 +76,10 @@ export function CategoryManageModal({
   };
 
   const handleDelete = (cat: TransactionCategory) => {
-    const performDelete = async () => {
-      await onDelete(cat.id);
-    };
-    if (Platform.OS === "web") {
-      if (window.confirm(`Delete "${cat.name}"?`)) performDelete();
-    } else {
-      Alert.alert("Delete category", `Delete "${cat.name}"?`, [
-        { text: "Cancel", style: "cancel" },
-        { text: "Delete", style: "destructive", onPress: performDelete },
-      ]);
-    }
+    showAlert(i18n.cat_delete_title, i18n.cat_delete_confirm.replace("{name}", cat.name), [
+      { text: i18n.cancel, style: "cancel" },
+      { text: i18n.delete, style: "destructive", onPress: () => void onDelete(cat.id) },
+    ]);
   };
 
   if (editing) {
@@ -91,16 +87,15 @@ export function CategoryManageModal({
       <Sheet
         visible={visible}
         onClose={handleClose}
-        title={editing.id ? "Edit category" : "New category"}
+        title={editing.id ? i18n.cat_edit : i18n.cat_new}
         width={500}
         leftActions={
-          <Button variant="secondary" icon={<IconBack size={11} color={t.ink} />} onPress={() => setEditing(null)}>
-            Back
+          <Button variant="text" icon={<IconBack size={16} />} onPress={() => setEditing(null)}>
+            {i18n.back}
           </Button>
         }
         actions={
           <Button
-            variant="primary"
             disabled={!editing.name.trim()}
             onPress={async () => {
               if (!editing.name.trim()) return;
@@ -113,7 +108,7 @@ export function CategoryManageModal({
               setEditing(null);
             }}
           >
-            Save
+            {i18n.save}
           </Button>
         }
       >
@@ -123,42 +118,29 @@ export function CategoryManageModal({
           keyboardShouldPersistTaps="handled"
         >
           <Field
-            label="Name"
-            placeholder="Groceries, Rent, …"
+            label={i18n.name_label}
+            placeholder={i18n.cat_name_examples_ph}
             value={editing.name}
             onChangeText={(s) => setEditing({ ...editing, name: s })}
           />
-          <Label style={{ marginBottom: 8 }}>Color</Label>
-          <View style={styles.swatchRow}>
-            {categoryColors.map((c) => {
-              const active = editing.color === c;
-              return (
-                <Pressable
-                  key={c}
-                  onPress={() => setEditing({ ...editing, color: c })}
-                  style={({ pressed }) => [
-                    styles.swatch,
-                    {
-                      backgroundColor: c,
-                      borderColor: active ? t.ink : "transparent",
-                      opacity: pressed ? 0.85 : 1,
-                    },
-                  ]}
-                />
-              );
-            })}
-          </View>
+          <Label style={{ marginBottom: 8 }}>{i18n.color_label}</Label>
+          <ColorSwatches
+            colors={categoryColors}
+            value={editing.color}
+            onChange={(c) => setEditing({ ...editing, color: c })}
+            label={i18n.color_label}
+          />
 
           {editing.id ? (
-            <View style={[styles.budgetSection, { borderTopColor: t.line }]}>
-              <Label style={{ marginBottom: 2 }}>{i18n.monthly_estimate}</Label>
+            <View style={styles.budgetSection}>
+              <SectionTitle>{i18n.monthly_estimate}</SectionTitle>
               <Text
                 style={{
                   fontFamily: FMFonts.sans,
-                  fontSize: 11,
-                  color: t.inkMuted,
+                  fontSize: FMType.small,
+                  color: t.inkSoft,
                   marginBottom: 12,
-                  lineHeight: 16,
+                  lineHeight: 18,
                 }}
               >
                 {i18n.budget_hint}
@@ -180,83 +162,43 @@ export function CategoryManageModal({
     <Sheet
       visible={visible}
       onClose={handleClose}
-      title="Manage categories"
-      subtitle={`${categories.length} categories · 12-color palette`}
+      title={i18n.manage_categories}
       width={520}
       leftActions={
         <Button
-          variant="secondary"
-          icon={<IconPlus size={11} color={t.ink} />}
+          variant="tonal"
+          icon={<IconPlus size={16} />}
           onPress={() => setEditing({ id: "", name: "", color: categoryColors[0] })}
         >
-          New category
+          {i18n.cat_new}
         </Button>
       }
-      actions={<Button variant="primary" onPress={handleClose}>Done</Button>}
+      actions={<Button onPress={handleClose}>{i18n.done}</Button>}
     >
-      <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
         {categories.length === 0 ? (
-          <Text
-            style={{
-              fontFamily: FMFonts.sans,
-              fontSize: 12,
-              color: t.inkMuted,
-              textAlign: "center",
-              paddingVertical: 18,
-            }}
-          >
-            No categories yet.
-          </Text>
+          <EmptyState title={i18n.no_categories} />
         ) : (
-          categories.map((cat, i) => (
-            <View
+          categories.map((cat) => (
+            <ListItem
               key={cat.id}
-              style={[
-                styles.row,
-                {
-                  borderTopColor: t.line,
-                  borderTopWidth: i === 0 ? 0 : 1,
-                },
-              ]}
-            >
-              <View style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: cat.color }} />
-              <Text style={{ flex: 1, fontFamily: FMFonts.sansMedium, fontSize: 13, color: t.ink, marginLeft: 12 }}>
-                {cat.name}
-              </Text>
-              <Pressable
-                onPress={() => setEditing({ id: cat.id, name: cat.name, color: cat.color })}
-                style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 6 })}
-              >
-                <IconEdit size={13} color={t.inkSoft} />
-              </Pressable>
-              {cat.system === "ignore" ? (
-                <View
-                  style={[
-                    styles.systemPill,
-                    { backgroundColor: t.surfaceAlt, borderColor: t.line },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      fontFamily: FMFonts.sansSemibold,
-                      fontSize: 9,
-                      color: t.inkMuted,
-                      letterSpacing: 0.4,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    system
-                  </Text>
-                </View>
-              ) : (
-                <Pressable
-                  onPress={() => handleDelete(cat)}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 6 })}
-                >
-                  <IconTrash size={13} color={t.neg} />
-                </Pressable>
-              )}
-            </View>
+              onPress={() => setEditing({ id: cat.id, name: cat.name, color: cat.color })}
+              accessibilityLabel={`${i18n.edit}: ${cat.name}`}
+              background={t.surface}
+              style={styles.item}
+              leading={<View style={[styles.dot, { backgroundColor: cat.color }]} />}
+              title={cat.name}
+              trailing={cat.system === "ignore" ? <Pill>{i18n.system_pill}</Pill> : undefined}
+              trailingAction={
+                cat.system === "ignore" ? undefined : (
+                  <IconButton
+                    icon={<IconTrash size={18} />}
+                    label={`${i18n.delete}: ${cat.name}`}
+                    onPress={() => handleDelete(cat)}
+                  />
+                )
+              }
+            />
           ))
         )}
       </ScrollView>
@@ -265,32 +207,20 @@ export function CategoryManageModal({
 }
 
 const styles = StyleSheet.create({
-  swatchRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
+  list: {
+    maxHeight: 420,
+    marginHorizontal: -24,
   },
-  swatch: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    borderWidth: 2,
+  item: {
+    paddingHorizontal: 24,
+    minHeight: 52,
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
+  dot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
   },
   budgetSection: {
-    marginTop: 20,
-    paddingTop: 18,
-    borderTopWidth: 1,
-  },
-  systemPill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-    borderWidth: 1,
-    marginHorizontal: 6,
+    marginTop: 24,
   },
 });

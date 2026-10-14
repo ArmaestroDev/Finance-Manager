@@ -1,195 +1,118 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View, ViewStyle } from "react-native";
+import { StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMType } from "@/src/constants/theme";
 import {
+  Avatar,
   Balance,
+  Button,
+  Card,
   Label,
+  ListItem,
+  SectionTitle,
   formatEUR,
-  formatEURCompact,
   useFMTheme,
 } from "@/src/shared/design";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import { useDebtsSummary } from "../../hooks/useDebtsSummary";
 
 interface DebtsSummaryCardProps {
   onManage: () => void;
   masked?: boolean;
-  style?: ViewStyle;
+  /** Mobile metrics (16dp padding). */
+  compact?: boolean;
+  style?: StyleProp<ViewStyle>;
 }
 
-export function DebtsSummaryCard({
-  onManage,
-  masked = false,
-  style,
-}: DebtsSummaryCardProps) {
+// Dashboard card: net debt position, both directions, top open people.
+export function DebtsSummaryCard({ onManage, masked = false, compact, style }: DebtsSummaryCardProps) {
   const t = useFMTheme();
-  const {
-    totalNet,
-    owedToYou,
-    youOwe,
-    activeCount,
-    settledCount,
-    topActiveEntities,
-  } = useDebtsSummary();
+  const { i18n } = useSettings();
+  const { totalNet, owedToYou, youOwe, activeCount, settledCount, topActiveEntities } = useDebtsSummary();
+  const pad = compact ? 16 : 24;
 
   const heroColor = totalNet > 0 ? t.pos : totalNet < 0 ? t.neg : t.ink;
   const empty = topActiveEntities.length === 0;
-  const emptyText =
-    settledCount > 0 ? `All settled · ${settledCount} people` : "No debts yet";
 
   return (
-    <View
-      style={[
-        styles.card,
-        { backgroundColor: t.surface, borderColor: t.line },
-        style,
-      ]}
-    >
+    <Card padding={pad} style={style}>
       <View style={styles.header}>
-        <Label>{`Debts · ${activeCount} active`}</Label>
-        <Pressable onPress={onManage}>
-          <Text
-            style={{
-              fontFamily: FMFonts.sansMedium,
-              fontSize: 11,
-              color: t.accent,
-            }}
-          >
-            Manage debts →
-          </Text>
-        </Pressable>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <SectionTitle>{i18n.debts_title}</SectionTitle>
+          {activeCount > 0 ? (
+            <Text style={{ fontFamily: FMFonts.sans, fontSize: FMType.small, color: t.inkSoft }}>
+              {i18n.debt_open_count.replace("{count}", String(activeCount))}
+            </Text>
+          ) : null}
+        </View>
+        <Button variant="text" size="sm" onPress={onManage} style={{ marginRight: -12 }}>
+          {i18n.debt_manage_short}
+        </Button>
       </View>
 
       <Text
         style={{
           fontFamily: FMFonts.display,
-          fontSize: 28,
+          fontSize: 32,
+          lineHeight: 40,
           color: heroColor,
-          letterSpacing: -0.4,
-          lineHeight: 30,
-          marginTop: 10,
+          marginTop: 8,
+          fontVariant: ["tabular-nums"],
         }}
       >
-        {formatEURCompact(totalNet, { masked })}
+        {formatEUR(totalNet, { masked })}
       </Text>
 
       <View style={styles.summaryRow}>
-        <View style={styles.summaryItem}>
-          <Label>They owe you</Label>
-          <Text
-            style={{
-              fontFamily: FMFonts.monoSemibold,
-              fontSize: 14,
-              color: t.pos,
-              marginTop: 4,
-              fontVariant: ["tabular-nums"],
-            }}
-          >
-            {formatEUR(owedToYou, { masked })}
-          </Text>
+        <View style={{ flex: 1 }}>
+          <Label>{i18n.they_owe_you}</Label>
+          <Text style={[styles.stat, { color: t.pos }]}>{formatEUR(owedToYou, { masked })}</Text>
         </View>
-        <View style={styles.summaryItem}>
-          <Label>You owe</Label>
-          <Text
-            style={{
-              fontFamily: FMFonts.monoSemibold,
-              fontSize: 14,
-              color: t.neg,
-              marginTop: 4,
-              fontVariant: ["tabular-nums"],
-            }}
-          >
-            {formatEUR(Math.abs(youOwe), { masked })}
-          </Text>
+        <View style={{ flex: 1 }}>
+          <Label>{i18n.you_owe}</Label>
+          <Text style={[styles.stat, { color: t.neg }]}>{formatEUR(Math.abs(youOwe), { masked })}</Text>
         </View>
       </View>
 
-      <View style={styles.list}>
+      <View style={{ marginTop: 8, marginHorizontal: -pad }}>
         {empty ? (
-          <Text
-            style={{
-              fontFamily: FMFonts.sans,
-              fontSize: 12,
-              color: t.inkMuted,
-            }}
-          >
-            {emptyText}
+          <Text style={{ fontFamily: FMFonts.sans, fontSize: FMType.body, color: t.inkSoft, paddingHorizontal: pad, paddingTop: 8 }}>
+            {settledCount > 0
+              ? i18n.debt_all_settled.replace("{count}", String(settledCount))
+              : i18n.debt_none_yet}
           </Text>
         ) : (
           topActiveEntities.map((e) => (
-            <View key={e.id} style={styles.listRow}>
-              <View
-                style={[
-                  styles.avatar,
-                  { backgroundColor: t.surfaceAlt, borderColor: t.line },
-                ]}
-              >
-                <Text
-                  style={{
-                    fontFamily: FMFonts.sansSemibold,
-                    fontSize: 11,
-                    color: t.inkSoft,
-                  }}
-                >
-                  {e.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <Text
-                style={{
-                  flex: 1,
-                  marginLeft: 10,
-                  fontFamily: FMFonts.sansMedium,
-                  fontSize: 12,
-                  color: t.ink,
-                }}
-                numberOfLines={1}
-              >
-                {e.name}
-              </Text>
-              <View style={{ alignItems: "flex-end" }}>
-                <Balance value={e.netBalance} masked={masked} size={12} />
-              </View>
-            </View>
+            <ListItem
+              key={e.id}
+              onPress={onManage}
+              accessibilityLabel={e.name}
+              leading={<Avatar label={e.name} size={32} />}
+              title={e.name}
+              trailing={<Balance value={e.netBalance} masked={masked} size={FMType.body} />}
+              style={{ paddingHorizontal: pad, minHeight: 48 }}
+            />
           ))
         )}
       </View>
-    </View>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    padding: 30,
-    borderWidth: 1,
-    borderRadius: 14,
-  },
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
   },
   summaryRow: {
     flexDirection: "row",
     gap: 16,
-    marginTop: 14,
+    marginTop: 12,
   },
-  summaryItem: {
-    flex: 1,
-  },
-  list: {
-    marginTop: 14,
-    gap: 10,
-  },
-  listRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  avatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
+  stat: {
+    fontFamily: FMFonts.monoMedium,
+    fontSize: FMType.subhead,
+    marginTop: 2,
+    fontVariant: ["tabular-nums"],
   },
 });

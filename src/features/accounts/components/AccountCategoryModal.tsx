@@ -1,79 +1,52 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
 import { Sheet } from "@/src/shared/components/Sheet";
-import { Button, useFMTheme } from "@/src/shared/design";
-
-type AccountCategory = "Giro" | "Savings" | "Stock";
-const CATEGORIES: readonly AccountCategory[] = ["Giro", "Savings", "Stock"];
+import { useSettings } from "@/src/shared/context/SettingsContext";
+import { IconCheck, ListItem, useFMTheme } from "@/src/shared/design";
+import type { AccountCategory } from "../context/AccountsContext";
+import { ACCOUNT_CATEGORIES, accountCategoryHint, accountCategoryLabel } from "../utils/accountDisplay";
 
 interface AccountCategoryModalProps {
   visible: boolean;
   currentCategory: AccountCategory;
   onSelect: (category: AccountCategory) => void;
   onClose: () => void;
-  backgroundColor?: string;
-  textColor?: string;
-  tintColor?: string;
 }
 
-export function AccountCategoryModal({ visible, currentCategory, onSelect, onClose }: AccountCategoryModalProps) {
+// Account-category picker (dialog on desktop, bottom sheet on mobile):
+// single-select list; the current choice is highlighted with a check.
+export function AccountCategoryModal({
+  visible,
+  currentCategory,
+  onSelect,
+  onClose,
+}: AccountCategoryModalProps) {
   const t = useFMTheme();
+  const { i18n } = useSettings();
   return (
-    <Sheet
-      visible={visible}
-      onClose={onClose}
-      title="Account category"
-      width={420}
-      actions={<Button variant="ghost" onPress={onClose}>Close</Button>}
-    >
-      <View style={styles.row}>
-        {CATEGORIES.map((cat) => {
+    <Sheet visible={visible} onClose={onClose} title={i18n.acct_category_title} width={440}>
+      <View style={{ marginHorizontal: -24, marginBottom: 16 }} accessibilityRole="radiogroup">
+        {ACCOUNT_CATEGORIES.map((cat) => {
           const active = currentCategory === cat;
+          const label = accountCategoryLabel(cat, i18n);
           return (
-            <Pressable
+            <ListItem
               key={cat}
+              selected={active}
+              title={label}
+              subtitle={accountCategoryHint(cat, i18n)}
+              trailing={active ? <IconCheck size={20} color={t.onSecondaryContainer} /> : undefined}
+              accessibilityLabel={label}
               onPress={() => {
                 onSelect(cat);
                 onClose();
               }}
-              style={({ pressed }) => [
-                styles.btn,
-                {
-                  backgroundColor: active ? t.ink : t.surface,
-                  borderColor: active ? t.ink : t.lineStrong,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  fontFamily: FMFonts.sansMedium,
-                  fontSize: 12.5,
-                  color: active ? t.bg : t.ink,
-                }}
-              >
-                {cat}
-              </Text>
-            </Pressable>
+              style={{ paddingHorizontal: 24 }}
+            />
           );
         })}
       </View>
     </Sheet>
   );
 }
-
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: "row",
-    gap: 6,
-  },
-  btn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 6,
-    borderWidth: 1,
-    alignItems: "center",
-  },
-});

@@ -1,12 +1,8 @@
-import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   SectionList,
@@ -15,34 +11,37 @@ import {
   View,
 } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMType } from "@/src/constants/theme";
 import { MobileShell } from "@/src/shared/components/MobileShell";
 import {
+  Avatar,
   Balance,
-  Button,
+  Card,
   Chip,
+  EmptyState,
+  Fab,
   IconAI,
-  IconBack,
+  IconButton,
+  IconCalendar,
   IconDoc,
   IconPlus,
   IconRefresh,
-  IconSearch,
+  IconSliders,
   IconTrash,
   IconUpload,
   Label,
+  ListItem,
   Money,
   Pill,
-  Rule,
   formatEUR,
   splitForHero,
   useFMTheme,
 } from "@/src/shared/design";
+import { useTransactionLinks } from "@/src/features/transactions/context/TransactionLinksContext";
 import { CategoryFilterBar } from "@/src/shared/components/CategoryFilterBar";
 import { DateFilterModal } from "@/src/shared/components/DateFilterModal";
-import { Sheet } from "@/src/shared/components/Sheet";
 import { useDateFilter } from "@/src/shared/context/DateFilterContext";
 import { useSettings } from "@/src/shared/context/SettingsContext";
-import { useImportQueue } from "@/src/features/import/context/ImportQueueContext";
 import { StatementsModal } from "@/src/features/import/components/StatementsModal";
 import { CsvMappingModal } from "@/src/features/import/components/CsvMappingModal";
 import {
@@ -50,25 +49,42 @@ import {
   useCategories,
 } from "@/src/features/transactions/context/CategoriesContext";
 import { AddTransactionModal } from "@/src/features/transactions/components/AddTransactionModal";
+import { AiCategorizeSheet } from "@/src/features/transactions/components/AiCategorizeSheet";
 import { CategoryManageModal } from "@/src/features/transactions/components/CategoryManageModal";
 import { EditTransactionModal } from "@/src/features/transactions/components/EditTransactionModal";
 import { TransactionDetailModal } from "@/src/features/transactions/components/TransactionDetailModal";
 import { useAccountTransactions } from "@/src/features/transactions/hooks/useAccountTransactions";
 import { useAutoCategorize } from "@/src/features/transactions/hooks/useAutoCategorize";
+import { LinkedInfo } from "@/src/features/transactions/components/LinkedInfo";
+import { RangeCoverageHint } from "@/src/features/transactions/components/RangeCoverageHint";
+import { useTransactionsContext } from "@/src/features/transactions/context/TransactionsContext";
 import {
   getStableTxId,
-  getTransactionAmount,
   pickTransactionTitle,
 } from "@/src/features/transactions/utils/transactions";
 import type { Transaction } from "@/src/services/enableBanking";
 import { useAccounts } from "../../context/AccountsContext";
 import { useAccountStats } from "../../hooks/useAccountStats";
-import { AccountCategoryModal } from "./AccountCategoryModal";
-import { formatDate, formatWeekday } from "@/src/shared/utils/date";
+import { UncategorizedHint } from "../UncategorizedHint";
+import { useAccountFileImport } from "../../hooks/useAccountFileImport";
+import { AccountCategoryModal } from "../AccountCategoryModal";
+import {
+  accountBankLabel,
+  accountCategoryLabel,
+  currencySymbol,
+  dateRangeLabel,
+  formatGroupHeader,
+  transactionSource,
+  accountDisplayName,
+} from "../../utils/accountDisplay";
 
 export function AccountDetailScreen() {
   const t = useFMTheme();
-  const { id, name, type } = useLocalSearchParams<{
+  const insets = useSafeAreaInsets();
+  const { id, name, type: typeParam, qa, tx: txParam } = useLocalSearchParams<{
+    qa?: string;
+    /** Stable id of a transaction to open (links navigate here). */
+    tx?: string;
     id: string;
     name: string;
     type: "connected" | "manual";
@@ -76,22 +92,22 @@ export function AccountDetailScreen() {
   const router = useRouter();
   const {
     isBalanceHidden,
-    geminiApiKey,
-    claudeApiKey,
-    aiProvider,
     i18n,
     language,
   } = useSettings();
-  const { deleteManualAccount, refreshAccounts, updateAccount, accounts } =
-    useAccounts();
+  const { accounts } = useAccounts();
+  // The `type` route param is only set when navigating from the Accounts
+  // list; links from the dashboard/search pass just the id. Resolve the type
+  // from the loaded account so manual-only actions (Add transaction, edit)
+  // don't silently disappear.
+  const type: "connected" | "manual" | undefined =
+    accounts.find((a) => a.id === id)?.type ?? typeParam;
   const {
     categories,
     addCategory,
     updateCategory: updateCategoryCtx,
     deleteCategory: deleteCategoryCtx,
     assignCategory,
-    bulkAssignCategories,
-    bulkAddCategories,
     getCategoryForTransaction,
   } = useCategories();
   const {
@@ -107,7 +123,6 @@ export function AccountDetailScreen() {
     loading,
     setLoading,
     refreshing,
-    error,
     category,
     loadTransactions,
     handleAddTransaction,
@@ -119,32 +134,21 @@ export function AccountDetailScreen() {
   } = useAccountTransactions({
     id,
     type: type as "connected" | "manual",
-    accounts,
-    updateAccount,
-    refreshAccounts,
-    i18n,
   });
 
-  const { accountIncome, accountExpenses } = useAccountStats({
+  // Row amounts / subtotals follow the shared link rules (utils/links.ts).
+  const { getDisplayAmount, getStatAmount } = useTransactionLinks();
+  const { findTransaction } = useTransactionsContext();
+
+  const { accountIncome, accountExpenses, uncategorizedCount } = useAccountStats({
     transactions,
     getCategoryForTransaction,
   });
 
-  const { autoCategorizeTransactions, isCategorizing } = useAutoCategorize({
+  const { autoCategorizeTransactions, isCategorizing, progress: aiProgress } = useAutoCategorize({
     transactions,
-    categories,
-    aiProvider,
-    geminiApiKey,
-    claudeApiKey,
-    language,
-    getCategoryForTransaction,
-    assignCategory,
-    bulkAssignCategories,
-    bulkAddCategories,
     categoryColors: CATEGORY_COLORS,
     setLoading,
-    router,
-    i18n,
     onFinish: () => setAICatModalVisible(false),
   });
 
@@ -155,12 +159,52 @@ export function AccountDetailScreen() {
   const [isCatModalVisible, setCatModalVisible] = useState(false);
   const [isDetailModalVisible, setDetailModalVisible] = useState(false);
   const [detailTx, setDetailTx] = useState<Transaction | null>(null);
+  // Keep the open detail sheet in sync after edits / re-categorization /
+  // deletion (mirrors the desktop side panel); otherwise it showed the stale
+  // transaction object captured when the row was tapped.
+  useEffect(() => {
+    if (!detailTx) return;
+    const txKey = getStableTxId(detailTx);
+    // Linked transactions opened from the sheet may lie outside the range.
+    const fresh = transactions.find((tx) => getStableTxId(tx) === txKey) ?? findTransaction(txKey)?.tx ?? null;
+    if (fresh !== detailTx) setDetailTx(fresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transactions]);
   const [isCatManageModalVisible, setCatManageModalVisible] = useState(false);
   const [isAICatModalVisible, setAICatModalVisible] = useState(false);
   const [isStatementsModalVisible, setStatementsModalVisible] = useState(false);
-  const [csvQueue, setCsvQueue] = useState<
-    { fileName: string; content: string }[]
-  >([]);
+
+  // Quick-add deep links: ?qa=tx opens "Add transaction" (manual accounts
+  // only), ?qa=import opens the statements/import modal. Fired once, then
+  // the param is cleared so going back doesn't reopen the modal.
+  useEffect(() => {
+    if (!qa) return;
+    if (qa === "tx" && type === "manual") setTxModalVisible(true);
+    else if (qa === "import") setStatementsModalVisible(true);
+    else if (qa === "tx" && !type) return; // wait for accounts to load
+    router.setParams({ qa: undefined } as never);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qa, type]);
+
+  // ?tx=<id>: open a transaction (navigated to from a linked transaction).
+  useEffect(() => {
+    if (!txParam) return;
+    const found = findTransaction(txParam);
+    if (!found) return; // wait for storage to load
+    setDetailTx(found.tx);
+    setDetailModalVisible(true);
+    router.setParams({ tx: undefined } as never);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txParam, findTransaction]);
+  const openLinkedTransaction = (txId: string, accountId: string) => {
+    if (accountId === id) {
+      const found = findTransaction(txId);
+      if (found) setDetailTx(found.tx);
+    } else {
+      setDetailModalVisible(false);
+      router.push({ pathname: `/account/${accountId}` as never, params: { tx: txId } } as never);
+    }
+  };
 
   const [tempFrom, setTempFrom] = useState("");
   const [tempTo, setTempTo] = useState("");
@@ -177,7 +221,7 @@ export function AccountDetailScreen() {
     const groups: Record<string, Transaction[]> = {};
     filteredTransactions.forEach((tx) => {
       const dateStr = tx.booking_date || tx.value_date || "";
-      const date = dateStr || "Unknown";
+      const date = dateStr;
       if (!groups[date]) groups[date] = [];
       groups[date].push(tx);
     });
@@ -190,11 +234,11 @@ export function AccountDetailScreen() {
   const currentAccount = accounts.find((a) => a.id === id);
   const currentBalance = currentAccount?.balance ?? 0;
   const currentCurrency = currentAccount?.currency || "EUR";
+  const fallbackName = typeof name === "string" && name ? name : i18n.acct_fallback_name;
   const currentBankName =
-    currentAccount?.bankName || (typeof name === "string" ? name : "Account");
+    (currentAccount ? accountBankLabel(currentAccount, i18n) : undefined) || fallbackName;
   const currentIban = currentAccount?.iban;
-  const accountName =
-    currentAccount?.name || (typeof name === "string" ? name : "Account");
+  const accountName = currentAccount ? accountDisplayName(currentAccount, i18n) : fallbackName;
   const masked = isBalanceHidden;
   const heroParts = splitForHero(currentBalance, masked);
   const net = accountIncome - accountExpenses;
@@ -220,313 +264,134 @@ export function AccountDetailScreen() {
     setEditModalVisible(true);
   };
 
-  const { addFiles } = useImportQueue();
-
-  const handleImportPress = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ["text/csv", "application/pdf"],
-        multiple: true,
-        copyToCacheDirectory: true,
-      });
-      if (result.canceled || result.assets.length === 0) return;
-
-      const pdfAssets = result.assets.filter(
-        (a) =>
-          a.uri.toLowerCase().endsWith(".pdf") ||
-          a.mimeType === "application/pdf",
-      );
-      const csvAssets = result.assets.filter(
-        (a) =>
-          !a.uri.toLowerCase().endsWith(".pdf") &&
-          a.mimeType !== "application/pdf",
-      );
-
-      if (pdfAssets.length > 0) {
-        addFiles(
-          pdfAssets.map((asset) => ({
-            uri: asset.uri,
-            name: asset.name,
-            mimeType: asset.mimeType || "application/pdf",
-            file: asset.file,
-            accountId: id,
-            accountType: type as "connected" | "manual",
-            currency: currentCurrency,
-          })),
-        );
-      }
-
-      const csvItems: { fileName: string; content: string }[] = [];
-      for (const csvAsset of csvAssets) {
-        try {
-          let fileContent = "";
-          if (Platform.OS === "web") {
-            const file = csvAsset.file;
-            if (!file) throw new Error("File object not found on web");
-            fileContent = await new Promise<string>((resolve, reject) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result as string);
-              reader.onerror = reject;
-              reader.readAsText(file);
-            });
-          } else {
-            fileContent = await FileSystem.readAsStringAsync(csvAsset.uri);
-          }
-          if (fileContent.trim()) {
-            csvItems.push({ fileName: csvAsset.name, content: fileContent });
-          } else {
-            Alert.alert("Empty file", `${csvAsset.name} has no content.`);
-          }
-        } catch (csvErr) {
-          console.error(csvErr);
-          Alert.alert("Error", `Failed to read CSV: ${csvAsset.name}`);
-        }
-      }
-      if (csvItems.length > 0)
-        setCsvQueue((prev) => [...prev, ...csvItems]);
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Failed to open file picker.");
-    }
-  };
+  const { pickAndImport, currentCsv, cancelCsv, confirmCsv } = useAccountFileImport({
+    accountId: id,
+    accountType: type as "connected" | "manual",
+    currency: currentCurrency,
+    importTransactions: handleImportBankStatement,
+  });
 
   if (loading && transactions.length === 0) {
     return (
-      <View style={[styles.center, { backgroundColor: t.bg }]}>
+      <MobileShell title={accountName} onBack={() => router.back()} tabBar={false} scrollable={false}>
         <Stack.Screen options={{ headerShown: false }} />
-        <ActivityIndicator size="large" color={t.accent} />
-        <Text
-          style={{
-            fontFamily: FMFonts.sans,
-            fontSize: 13,
-            color: t.inkSoft,
-            marginTop: 12,
-          }}
-        >
-          Loading transactions…
-        </Text>
-      </View>
-    );
-  }
-
-  if (error && transactions.length === 0) {
-    return (
-      <View style={[styles.center, { backgroundColor: t.bg }]}>
-        <Stack.Screen options={{ headerShown: false }} />
-        <Text
-          style={{
-            fontFamily: FMFonts.sansSemibold,
-            fontSize: 16,
-            color: t.ink,
-            textAlign: "center",
-          }}
-        >
-          {error}
-        </Text>
-        <View style={{ marginTop: 16 }}>
-          <Button variant="primary" onPress={() => loadTransactions()}>
-            Retry
-          </Button>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={t.primary} accessibilityLabel={i18n.tx_loading} />
         </View>
-      </View>
+      </MobileShell>
     );
   }
 
-  // Clean header: back row + title + pills for bank/category + IBAN.
-  const header = (
-    <View style={styles.headerWrap}>
-      <View style={styles.backRow}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}
+  const headerRight = (
+    <>
+      <IconButton
+        icon={<IconAI size={20} />}
+        label={i18n.auto_categorize}
+        onPress={() => setAICatModalVisible(true)}
+      />
+      <IconButton icon={<IconRefresh size={20} />} label={i18n.shared_refresh} onPress={() => loadTransactions()} />
+    </>
+  );
+
+  // Balance hero + Income / Expenses / Net.
+  const heroCard = (
+    <Card padding={20}>
+      <Label>{i18n.acct_current_balance}</Label>
+      <View style={styles.balanceHero}>
+        <Text
+          style={{
+            fontFamily: FMFonts.display,
+            fontSize: 36,
+            lineHeight: 44,
+            color: t.ink,
+            fontVariant: ["tabular-nums"],
+          }}
         >
-          <IconBack size={15} color={t.inkSoft} />
-        </Pressable>
-        <Pressable onPress={() => router.back()}>
-          <Text
-            style={{
-              fontFamily: FMFonts.sansMedium,
-              fontSize: 12,
-              color: t.inkSoft,
-              marginLeft: 2,
-            }}
-          >
-            {i18n.accounts_title}
-          </Text>
-        </Pressable>
+          {heroParts.sign}
+          {heroParts.integer}
+          <Text style={{ color: t.inkSoft }}>{heroParts.fraction}</Text>
+        </Text>
+        <Text style={{ fontFamily: FMFonts.display, fontSize: FMType.h2, color: t.inkSoft, marginLeft: 4 }}>
+          {currencySymbol(currentCurrency)}
+        </Text>
       </View>
-      <Text
-        style={{
-          fontFamily: FMFonts.display,
-          fontSize: 27,
-          color: t.ink,
-          lineHeight: 30,
-          letterSpacing: -0.4,
-          marginTop: 8,
-        }}
-        numberOfLines={1}
-      >
-        {accountName}
-      </Text>
       <View style={styles.pillRow}>
         <Pill onPress={() => setCatModalVisible(true)}>{currentBankName}</Pill>
-        <Pill onPress={() => setCatModalVisible(true)}>{category}</Pill>
+        <Pill onPress={() => setCatModalVisible(true)}>{accountCategoryLabel(category, i18n)}</Pill>
         {currentIban ? (
           <Text
-            style={{
-              fontFamily: FMFonts.sans,
-              fontSize: 10.5,
-              color: t.inkMuted,
-              fontVariant: ["tabular-nums"],
-            }}
+            style={{ fontFamily: FMFonts.sans, fontSize: FMType.small, color: t.inkSoft, fontVariant: ["tabular-nums"] }}
             numberOfLines={1}
           >
             ·· {currentIban.slice(-9)}
           </Text>
         ) : null}
       </View>
-    </View>
-  );
-
-  // Balance hero + Income / Expenses / Net split (Rule dividers).
-  const heroCard = (
-    <View
-      style={[
-        styles.balanceCard,
-        { backgroundColor: t.surface, borderColor: t.line },
-      ]}
-    >
-      <Label>Current balance</Label>
-      <View style={styles.balanceHero}>
-        <Text
-          style={{
-            fontFamily: FMFonts.display,
-            fontSize: 34,
-            color: t.ink,
-            lineHeight: 36,
-            letterSpacing: -0.5,
-          }}
-        >
-          {heroParts.sign}
-          {heroParts.integer}
-          <Text style={{ color: t.inkMuted }}>{heroParts.fraction}</Text>
-        </Text>
-        <Text
-          style={{
-            fontFamily: FMFonts.display,
-            fontSize: 18,
-            color: t.inkSoft,
-            marginLeft: 4,
-          }}
-        >
-          {currencySymbol(currentCurrency)}
-        </Text>
-      </View>
       <View style={styles.statsRow}>
         <StatCell label={i18n.income_label} value={accountIncome} masked={masked} />
-        <Rule vertical />
-        <StatCell
-          label={i18n.expenses_label}
-          value={-accountExpenses}
-          masked={masked}
-        />
-        <Rule vertical />
-        <StatCell label="Net" value={net} masked={masked} total />
+        <StatCell label={i18n.expenses_label} value={-accountExpenses} masked={masked} />
+        <StatCell label={i18n.net} value={net} masked={masked} total />
       </View>
-    </View>
+      <UncategorizedHint count={uncategorizedCount} onPress={() => setAICatModalVisible(true)} />
+    </Card>
   );
 
-  // Surface ALL desktop header actions — not buried behind a single "More".
+  // Secondary actions as M3 assist chips (Add transaction is the FAB).
   const actions = (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.actionsRow}
-    >
-      <ActionChip
-        icon={<IconDoc size={11} color={t.inkSoft} />}
-        label="All statements"
-        onPress={() => setStatementsModalVisible(true)}
-      />
-      <ActionChip
-        icon={<IconUpload size={11} color={t.inkSoft} />}
-        label="Import"
-        onPress={handleImportPress}
-      />
-      <ActionChip
-        icon={<IconSearch size={11} color={t.inkSoft} />}
-        label="Categories"
-        onPress={() => setCatManageModalVisible(true)}
-      />
-      <ActionChip
-        icon={<IconAI size={11} color={t.inkSoft} />}
-        label={i18n.auto_categorize}
-        onPress={() => setAICatModalVisible(true)}
-      />
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionsRow}>
+      <Chip icon={<IconDoc size={16} />} onPress={() => setStatementsModalVisible(true)}>
+        {i18n.acct_statements_short}
+      </Chip>
+      <Chip icon={<IconUpload size={16} />} onPress={pickAndImport}>
+        {i18n.import}
+      </Chip>
+      <Chip icon={<IconSliders size={16} />} onPress={() => setCatManageModalVisible(true)}>
+        {i18n.categories}
+      </Chip>
       {type === "manual" ? (
-        <ActionChip
-          icon={<IconPlus size={11} color={t.inkSoft} />}
-          label="Add transaction"
-          onPress={() => setTxModalVisible(true)}
-        />
-      ) : null}
-      <ActionChip
-        icon={<IconRefresh size={11} color={t.inkSoft} />}
-        label="Refresh"
-        onPress={() => loadTransactions()}
-      />
-      {type === "manual" ? (
-        <ActionChip
-          icon={<IconTrash size={11} color={t.neg} />}
-          label="Delete"
-          danger
-          onPress={() =>
-            handleDeleteAccount(deleteManualAccount, () => router.back())
-          }
-        />
+        <Chip icon={<IconTrash size={16} />} onPress={() => handleDeleteAccount(() => router.back())}>
+          {i18n.delete}
+        </Chip>
       ) : null}
     </ScrollView>
   );
 
   return (
-    <MobileShell scrollable={false} tabBar={false} headerOverride={header}>
+    <MobileShell
+      scrollable={false}
+      tabBar={false}
+      title={accountName}
+      onBack={() => router.back()}
+      right={headerRight}
+    >
       <Stack.Screen options={{ headerShown: false }} />
 
       <SectionList
         sections={groupedTransactions}
         keyExtractor={(item, i) => getStableTxId(item) + i}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, type === "manual" && { paddingBottom: 104 }]}
         showsVerticalScrollIndicator={false}
         stickySectionHeadersEnabled
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => loadTransactions()}
-            tintColor={t.accent}
+            tintColor={t.primary}
           />
         }
         ListHeaderComponent={
-          <View style={{ marginBottom: 6 }}>
+          <View style={{ gap: 12, marginBottom: 8 }}>
             {heroCard}
             {actions}
             {/* Date + category filter bar */}
             <View style={styles.filterBar}>
               <Chip
                 onPress={openDateModal}
-                icon={
-                  <View
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: t.accent,
-                    }}
-                  />
-                }
+                icon={<IconCalendar size={16} />}
+                accessibilityLabel={i18n.filter_by_date}
               >
-                {dateRangeLabel(filterDateFrom, filterDateTo)}
+                {dateRangeLabel(filterDateFrom, filterDateTo, i18n)}
               </Chip>
-              <Rule vertical style={{ marginHorizontal: 8, height: 16 }} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <CategoryFilterBar
                   categories={categories}
@@ -534,26 +399,20 @@ export function AccountDetailScreen() {
                   getCategoryForTransaction={getCategoryForTransaction}
                   selectedFilter={selectedCategoryId}
                   onSelectFilter={setSelectedCategoryId}
-                  accountIncome={accountIncome}
-                  accountExpenses={accountExpenses}
-                  isBalanceHidden={isBalanceHidden}
-                  textColor={t.ink}
-                  tintColor={t.accent}
                   i18n={i18n}
-                  showStats={false}
                 />
               </View>
             </View>
+            <RangeCoverageHint accountId={id} />
           </View>
         }
         renderSectionHeader={({ section: { title, data } }) => (
           <View style={[styles.sectionHeader, { backgroundColor: t.bg }]}>
-            <Text style={[styles.sectionTitle, { color: t.inkMuted }]}>
-              {formatGroupHeader(title)}
-            </Text>
+            <Label>{formatGroupHeader(title, i18n, language)}</Label>
             <Text style={[styles.sectionSubtotal, { color: t.inkSoft }]}>
               {formatEUR(
-                data.reduce((s, x) => s + getTransactionAmount(x), 0),
+                // Net: linked children excluded, reimbursed expenses at the user's share.
+                data.reduce((s, x) => s + (getStatAmount(x) ?? 0), 0),
                 { showSign: true, masked },
               )}
             </Text>
@@ -564,138 +423,67 @@ export function AccountDetailScreen() {
           const isLast = index === section.data.length - 1;
           const txId = getStableTxId(item);
           const cat = getCategoryForTransaction(txId);
-          const amount = getTransactionAmount(item);
           const title = pickTransactionTitle(item);
-          const source = (item as any)?.source
-            ?.toString()
-            .slice(0, 4)
-            .toUpperCase();
+          // No source label for manual entries (it used to wrongly say BANK).
+          const source =
+            transactionSource(item)?.slice(0, 4).toUpperCase() ??
+            (type === "connected" ? i18n.tx_source_bank : null);
+          const rowDisplayAmount = getDisplayAmount(item);
           return (
-            <Pressable
-              onPress={() => handleTransactionPress(item)}
-              style={({ pressed }) => [
-                styles.txRow,
-                {
-                  backgroundColor: t.surface,
-                  borderColor: t.line,
-                  borderTopLeftRadius: isFirst ? 12 : 0,
-                  borderTopRightRadius: isFirst ? 12 : 0,
-                  borderBottomLeftRadius: isLast ? 12 : 0,
-                  borderBottomRightRadius: isLast ? 12 : 0,
-                  borderTopWidth: isFirst ? 1 : 0,
-                  borderBottomWidth: 1,
-                  borderLeftWidth: 1,
-                  borderRightWidth: 1,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
+            <View
+              style={{
+                backgroundColor: t.surface,
+                overflow: "hidden",
+                borderTopLeftRadius: isFirst ? 16 : 0,
+                borderTopRightRadius: isFirst ? 16 : 0,
+                borderBottomLeftRadius: isLast ? 16 : 0,
+                borderBottomRightRadius: isLast ? 16 : 0,
+              }}
             >
-              <View
-                style={{
-                  width: 9,
-                  height: 9,
-                  borderRadius: 5,
-                  backgroundColor: cat ? cat.color : "transparent",
-                  borderWidth: cat ? 0 : 1.5,
-                  borderStyle: cat ? "solid" : "dashed",
-                  borderColor: t.inkMuted,
-                }}
-              />
-              <View style={{ flex: 1, marginLeft: 11, minWidth: 0 }}>
-                <Text
-                  style={{
-                    fontFamily: FMFonts.sansMedium,
-                    fontSize: 12.5,
-                    color: t.ink,
-                  }}
-                  numberOfLines={1}
-                >
-                  {title}
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: FMFonts.sans,
-                    fontSize: 10,
-                    color: t.inkMuted,
-                    marginTop: 2,
-                  }}
-                  numberOfLines={1}
-                >
-                  {cat ? (
-                    cat.name
-                  ) : (
-                    <Text
-                      style={{
-                        color: t.warn,
-                        fontFamily: FMFonts.sansSemibold,
-                      }}
-                    >
-                      {i18n.uncategorized}
+              <ListItem
+                onPress={() => handleTransactionPress(item)}
+                background={t.surface}
+                accessibilityLabel={title}
+                leading={<Avatar label={title} color={cat?.color} />}
+                title={title}
+                subtitle={
+                  <View>
+                    <Text style={{ fontFamily: FMFonts.sans, fontSize: FMType.body, color: t.inkSoft }} numberOfLines={1}>
+                      {cat ? (
+                        cat.name
+                      ) : (
+                        <Text style={{ color: t.warn, fontFamily: FMFonts.sansMedium }}>{i18n.uncategorized}</Text>
+                      )}
+                      {source ? ` · ${source}` : ""}
                     </Text>
-                  )}
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.sourceTag,
-                  {
-                    backgroundColor: t.surfaceAlt,
-                    color: t.inkMuted,
-                  },
-                ]}
-              >
-                {source || "BANK"}
-              </Text>
-              <View style={{ minWidth: 78, alignItems: "flex-end" }}>
-                <Money value={amount} masked={masked} size={12.5} />
-              </View>
-            </Pressable>
+                    <LinkedInfo txId={txId} masked={masked} align="flex-start" />
+                  </View>
+                }
+                trailing={<Money value={rowDisplayAmount} masked={masked} size={FMType.bodyLg} />}
+              />
+            </View>
           );
         }}
         SectionSeparatorComponent={() => <View style={{ height: 8 }} />}
         ListEmptyComponent={
-          <View
-            style={[
-              styles.empty,
-              { backgroundColor: t.surface, borderColor: t.line },
-            ]}
-          >
-            <Text
-              style={{
-                fontFamily: FMFonts.sansSemibold,
-                fontSize: 14,
-                color: t.ink,
-              }}
-            >
-              No transactions
-            </Text>
-            <Text
-              style={{
-                fontFamily: FMFonts.sans,
-                fontSize: 11.5,
-                color: t.inkSoft,
-                marginTop: 4,
-              }}
-            >
-              {filterDateFrom} – {filterDateTo}
-            </Text>
-          </View>
-        }
-        ListFooterComponent={
-          <Text
-            style={{
-              textAlign: "center",
-              fontFamily: FMFonts.sans,
-              color: t.inkMuted,
-              fontSize: 11,
-              paddingVertical: 24,
-            }}
-          >
-            {filteredTransactions.length} transaction
-            {filteredTransactions.length === 1 ? "" : "s"}
-          </Text>
+          <Card>
+            <EmptyState
+              icon={<IconDoc />}
+              title={i18n.tx_none}
+              body={dateRangeLabel(filterDateFrom, filterDateTo, i18n)}
+            />
+          </Card>
         }
       />
+
+      {type === "manual" ? (
+        <Fab
+          icon={<IconPlus size={22} />}
+          label={i18n.acct_add_transaction}
+          onPress={() => setTxModalVisible(true)}
+          style={[styles.fab, { bottom: 16 + insets.bottom }]}
+        />
+      ) : null}
 
       {/* ── Modals ── */}
       <DateFilterModal
@@ -707,10 +495,6 @@ export function AccountDetailScreen() {
         onTempToChange={setTempTo}
         onApply={handleApplyDateFilter}
         onCancel={() => setFilterModalVisible(false)}
-        backgroundColor={t.bg}
-        textColor={t.ink}
-        tintColor={t.accent}
-        i18n={i18n}
       />
 
       <TransactionDetailModal
@@ -724,9 +508,8 @@ export function AccountDetailScreen() {
         onClose={() => setDetailModalVisible(false)}
         onEdit={type === "manual" ? openEditModal : undefined}
         type={type as "connected" | "manual"}
-        backgroundColor={t.bg}
-        textColor={t.ink}
-        tintColor={t.accent}
+        accountId={id}
+        onOpenTransaction={openLinkedTransaction}
       />
 
       <CategoryManageModal
@@ -739,9 +522,6 @@ export function AccountDetailScreen() {
         onUpdate={async (catId, updates) => updateCategoryCtx(catId, updates)}
         onDelete={async (catId) => deleteCategoryCtx(catId)}
         onClose={() => setCatManageModalVisible(false)}
-        backgroundColor={t.bg}
-        textColor={t.ink}
-        tintColor={t.accent}
       />
 
       <AccountCategoryModal
@@ -749,9 +529,6 @@ export function AccountDetailScreen() {
         currentCategory={category}
         onSelect={updateCategoryValue}
         onClose={() => setCatModalVisible(false)}
-        backgroundColor={t.bg}
-        textColor={t.ink}
-        tintColor={t.accent}
       />
 
       <AddTransactionModal
@@ -761,9 +538,6 @@ export function AccountDetailScreen() {
           setTxModalVisible(false);
         }}
         onClose={() => setTxModalVisible(false)}
-        backgroundColor={t.bg}
-        textColor={t.ink}
-        tintColor={t.accent}
         i18n={i18n}
       />
 
@@ -779,97 +553,33 @@ export function AccountDetailScreen() {
           setEditModalVisible(false);
         }}
         onClose={() => setEditModalVisible(false)}
-        backgroundColor={t.bg}
-        textColor={t.ink}
-        tintColor={t.accent}
         i18n={i18n}
       />
 
-      {/* AI categorization choice / progress */}
-      <Sheet
+      <AiCategorizeSheet
         visible={isAICatModalVisible}
-        onClose={() =>
-          isCategorizing ? undefined : setAICatModalVisible(false)
-        }
-        title={i18n.ai_categorization_title ?? "Auto-categorize"}
-        subtitle={
-          isCategorizing
-            ? undefined
-            : i18n.ai_categorization_desc ??
-              "Pick which transactions to send for categorization."
-        }
-        closeButton={!isCategorizing}
-      >
-        {isCategorizing ? (
-          <View style={{ alignItems: "center", paddingVertical: 24 }}>
-            <ActivityIndicator size="large" color={t.accent} />
-            <Text
-              style={{
-                fontFamily: FMFonts.sansMedium,
-                color: t.ink,
-                fontSize: 14,
-                textAlign: "center",
-                marginTop: 18,
-              }}
-            >
-              {i18n.ai_processing ?? "Categorizing…"}
-            </Text>
-          </View>
-        ) : (
-          <View style={{ gap: 8 }}>
-            <Button
-              variant="primary"
-              full
-              onPress={() => autoCategorizeTransactions(false)}
-            >
-              {i18n.uncategorized_only}
-            </Button>
-            <Button
-              variant="secondary"
-              full
-              onPress={() => autoCategorizeTransactions(true)}
-            >
-              {i18n.recategorize_all}
-            </Button>
-            <Button
-              variant="ghost"
-              full
-              onPress={() => setAICatModalVisible(false)}
-            >
-              {i18n.cancel ?? "Cancel"}
-            </Button>
-          </View>
-        )}
-      </Sheet>
+        busy={isCategorizing}
+        progress={aiProgress}
+        onRun={autoCategorizeTransactions}
+        onClose={() => setAICatModalVisible(false)}
+      />
 
       <StatementsModal
         visible={isStatementsModalVisible}
         accountId={id}
         accountType={type as "connected" | "manual"}
         onClose={() => setStatementsModalVisible(false)}
-        onImport={handleImportPress}
+        onImport={pickAndImport}
       />
 
-      {csvQueue.length > 0 ? (
+      {currentCsv ? (
         <CsvMappingModal
           visible
-          fileName={csvQueue[0].fileName}
-          fileContent={csvQueue[0].content}
+          fileName={currentCsv.fileName}
+          fileContent={currentCsv.content}
           currency={currentCurrency}
-          onCancel={() => setCsvQueue((q) => q.slice(1))}
-          onConfirm={async (txns) => {
-            const fileName = csvQueue[0].fileName;
-            setCsvQueue((q) => q.slice(1));
-            if (txns.length > 0) {
-              await handleImportBankStatement(txns);
-              Alert.alert(
-                "Imported",
-                `Added ${txns.length} transaction${
-                  txns.length === 1 ? "" : "s"
-                } from ${fileName}.`,
-              );
-            }
-          }}
+          onCancel={cancelCsv}
+          onConfirm={confirmCsv}
         />
       ) : null}
     </MobileShell>
@@ -884,81 +594,16 @@ interface StatCellProps {
 }
 
 function StatCell({ label, value, masked, total }: StatCellProps) {
-  const t = useFMTheme();
   return (
-    <View style={{ flex: 1 }}>
-      <Text
-        style={{
-          fontFamily: FMFonts.sansSemibold,
-          fontSize: 9.5,
-          color: t.inkMuted,
-          letterSpacing: 0.6,
-          textTransform: "uppercase",
-        }}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-      <View style={{ marginTop: 5 }}>
-        <Balance value={value} masked={masked} size={13} total={total} />
+    // Content-sized columns (flexBasis auto) so the wider signed Net figure
+    // isn't squeezed into a third and wrapped onto two lines.
+    <View style={{ flexGrow: 1, flexShrink: 1, flexBasis: "auto", minWidth: 0 }}>
+      <Label>{label}</Label>
+      <View style={{ marginTop: 4 }}>
+        <Balance value={value} masked={masked} size={FMType.bodyLg} total={total} />
       </View>
     </View>
   );
-}
-
-interface ActionChipProps {
-  icon?: React.ReactNode;
-  label: string;
-  danger?: boolean;
-  onPress: () => void;
-}
-
-function ActionChip({ icon, label, danger, onPress }: ActionChipProps) {
-  const t = useFMTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.actionChip,
-        {
-          backgroundColor: t.surface,
-          borderColor: danger ? t.negSoft : t.lineStrong,
-          opacity: pressed ? 0.7 : 1,
-        },
-      ]}
-    >
-      {icon ? <View style={{ marginRight: 5 }}>{icon}</View> : null}
-      <Text
-        style={{
-          fontFamily: FMFonts.sansMedium,
-          fontSize: 11,
-          color: danger ? t.neg : t.inkSoft,
-          letterSpacing: -0.1,
-        }}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function dateRangeLabel(from: string, to: string): string {
-  if (!from || !to) return "All time";
-  return `${from} → ${to}`;
-}
-
-function formatGroupHeader(iso: string): string {
-  if (!iso || iso === "Unknown") return "Unknown date";
-  const date = formatDate(iso);
-  const weekday = formatWeekday(iso, true);
-  return weekday ? `${date} · ${weekday}` : date;
-}
-
-function currencySymbol(currency: string): string {
-  if (currency === "EUR") return "€";
-  if (currency === "USD") return "$";
-  if (currency === "GBP") return "£";
-  return currency;
 }
 
 const styles = StyleSheet.create({
@@ -968,100 +613,51 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 24,
   },
-  headerWrap: {
-    paddingHorizontal: 18,
-    paddingTop: 14,
-    paddingBottom: 10,
-  },
-  backRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  iconBtn: { padding: 6 },
   scrollContent: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingBottom: 40,
   },
   pillRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    gap: 6,
-    marginTop: 10,
-  },
-  balanceCard: {
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 18,
-    borderWidth: 1,
-    borderRadius: 12,
-    marginBottom: 12,
+    gap: 8,
+    marginTop: 12,
   },
   balanceHero: {
     flexDirection: "row",
     alignItems: "baseline",
-    marginTop: 6,
+    marginTop: 4,
   },
   statsRow: {
     flexDirection: "row",
-    gap: 14,
-    marginTop: 16,
+    gap: 16,
+    marginTop: 20,
   },
   actionsRow: {
     flexDirection: "row",
-    gap: 6,
-    paddingBottom: 10,
-  },
-  actionChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 6,
-    borderWidth: 1,
+    gap: 8,
   },
   filterBar: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 8,
+    gap: 8,
   },
   sectionHeader: {
-    paddingTop: 6,
-    paddingBottom: 6,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 8,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "baseline",
   },
-  sectionTitle: {
-    fontFamily: FMFonts.sansSemibold,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-  },
   sectionSubtotal: {
     fontFamily: FMFonts.sansMedium,
-    fontSize: 11,
+    fontSize: FMType.caption,
     fontVariant: ["tabular-nums"],
   },
-  txRow: {
-    paddingVertical: 11,
-    paddingHorizontal: 13,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  sourceTag: {
-    fontFamily: FMFonts.sansMedium,
-    fontSize: 9.5,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    letterSpacing: 0.4,
-    marginHorizontal: 8,
-    overflow: "hidden",
-  },
-  empty: {
-    padding: 28,
-    borderWidth: 1,
-    borderRadius: 12,
-    alignItems: "center",
+  fab: {
+    position: "absolute",
+    right: 16,
   },
 });

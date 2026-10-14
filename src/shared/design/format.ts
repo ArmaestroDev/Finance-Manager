@@ -3,7 +3,6 @@
 
 const MASK = "••••••";
 const MASK_SHORT = "••••";
-const MASK_TINY = "••";
 
 export interface FormatMoneyOptions {
   showSign?: boolean;
@@ -31,11 +30,6 @@ export function formatEURCompact(value: number, opts: FormatMoneyOptions = {}): 
   if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M €`;
   if (abs >= 1_000) return `${sign}${Math.round(abs / 1000)}k €`;
   return formatEUR(value, opts);
-}
-
-export function formatPercent(value: number, masked = false): string {
-  if (masked) return MASK_TINY;
-  return `${Math.round(value * 100)}%`;
 }
 
 // Split a number into integer / fraction parts for hero display so the

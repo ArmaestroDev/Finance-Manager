@@ -62,7 +62,7 @@ export function GrowthChart({ data, width = 320, height = 140, masked = false }:
         strokeDasharray="3 3"
         opacity={masked ? 0.3 : 0.85}
       />
-      <Path d={valueLine} stroke={t.accent} strokeWidth={1.75} fill="none" opacity={masked ? 0.35 : 1} />
+      <Path d={valueLine} stroke={t.accent} strokeWidth={2.5} strokeLinecap="round" fill="none" opacity={masked ? 0.35 : 1} />
     </Svg>
   );
 }

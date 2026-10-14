@@ -8,8 +8,10 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert, Platform } from "react-native";
+import { showAlert } from "../../../shared/utils/alert";
 import { useSettings } from "@/src/shared/context/SettingsContext";
+import { useReadyGate } from "@/src/shared/hooks/useReadyGate";
+import { SYSTEM_IGNORE_ID } from "../utils/systemCategories";
 
 // --- Types ---
 export interface TransactionCategory {
@@ -42,7 +44,7 @@ const TX_CATEGORY_MAP_KEY = "tx_category_map";
 const CATEGORY_BUDGETS_KEY = "tx_category_budgets";
 
 // --- System category IDs ---
-export const SYSTEM_IGNORE_ID = "cat_system_ignore";
+export { SYSTEM_IGNORE_ID };
 export const SYSTEM_IGNORE_COLOR = "#8a847a";
 
 // --- Default color palette ---
@@ -87,6 +89,12 @@ interface CategoriesContextType {
   bulkAssignCategories: (
     assignments: Record<string, string | null>,
   ) => Promise<void>;
+  /**
+   * Move assignments from old transaction ids to new ones (a statement row
+   * replaced by the bank's version of the same booking). An existing
+   * assignment on the new id wins.
+   */
+  remapTransactionIds: (remap: Record<string, string>) => Promise<void>;
   bulkAddCategories: (
     newCategories: { name: string; color: string }[],
   ) => Promise<TransactionCategory[]>;
@@ -103,6 +111,7 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
     useState<TransactionCategoryMap>({});
   const [categoryBudgets, setCategoryBudgets] = useState<CategoryBudgetMap>({});
   const bootstrappedRef = useRef(false);
+  const gate = useReadyGate();
 
   // Refs mirror state so async callers always read the latest value, even when
   // multiple awaited mutations run before React commits a re-render.
@@ -144,7 +153,7 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
       let cats: TransactionCategory[] = catData ? JSON.parse(catData) : [];
       let mutated = false;
       const ignoreIdx = cats.findIndex((c) => c.id === SYSTEM_IGNORE_ID);
-      const ignoreName = i18n.cat_ignore ?? "Ignore";
+      const ignoreName = i18n.cat_ignore;
 
       if (ignoreIdx === -1) {
         cats = [
@@ -170,6 +179,8 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
       if (budgetData) commitBudgets(JSON.parse(budgetData));
     } catch (e) {
       console.error("Failed to load categories:", e);
+    } finally {
+      gate.open();
     }
   };
 
@@ -186,15 +197,17 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
   };
 
   const addCategory = useCallback(async (name: string, color: string) => {
+      await gate.wait();
     const id = `cat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const next = [...categoriesRef.current, { id, name, color }];
     commitCategories(next);
     await persistCategories(next);
     return id;
-  }, []);
+  }, [gate]);
 
   const bulkAddCategories = useCallback(
     async (newCatsInput: { name: string; color: string }[]) => {
+      await gate.wait();
       const newCats: TransactionCategory[] = newCatsInput.map((Input) => ({
         id: `cat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}_${Math.random()
           .toString(36)
@@ -207,12 +220,11 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
       commitCategories(next);
       await persistCategories(next);
       return newCats;
-    },
-    [],
-  );
+    }, [gate]);
 
   const updateCategory = useCallback(
     async (id: string, updates: { name?: string; color?: string }) => {
+      await gate.wait();
       const next = categoriesRef.current.map((cat) =>
         cat.id === id
           ? {
@@ -224,22 +236,14 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
       );
       commitCategories(next);
       await persistCategories(next);
-    },
-    [],
-  );
+    }, [gate]);
 
   const deleteCategory = useCallback(
     async (id: string) => {
+      await gate.wait();
       const target = categoriesRef.current.find((c) => c.id === id);
       if (target?.system === "ignore") {
-        const msg =
-          i18n.system_category_delete_blocked ??
-          "System category — cannot be deleted.";
-        if (Platform.OS === "web") {
-          if (typeof window !== "undefined") window.alert(msg);
-        } else {
-          Alert.alert("Cannot delete", msg);
-        }
+        showAlert(i18n.cat_delete_blocked_title, i18n.system_category_delete_blocked);
         return;
       }
 
@@ -267,12 +271,11 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
         commitBudgets(nextBudgets);
         await persistBudgets(nextBudgets);
       }
-    },
-    [i18n.system_category_delete_blocked],
-  );
+    }, [gate, i18n.cat_delete_blocked_title, i18n.system_category_delete_blocked]);
 
   const assignCategory = useCallback(
     async (transactionId: string, categoryId: string | null) => {
+      await gate.wait();
       const updatedMap = { ...mapRef.current };
       if (categoryId === null) {
         if (updatedMap[transactionId] === undefined) return;
@@ -283,12 +286,11 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
       }
       commitMap(updatedMap);
       await persistMap(updatedMap);
-    },
-    [],
-  );
+    }, [gate]);
 
   const bulkAssignCategories = useCallback(
     async (assignments: Record<string, string | null>) => {
+      await gate.wait();
       const updatedMap = { ...mapRef.current };
       let changed = false;
       for (const [txId, catId] of Object.entries(assignments)) {
@@ -305,14 +307,30 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
       if (!changed) return;
       commitMap(updatedMap);
       await persistMap(updatedMap);
-    },
-    [],
-  );
+    }, [gate]);
+
+  const remapTransactionIds = useCallback(
+    async (remap: Record<string, string>) => {
+      await gate.wait();
+      const updatedMap = { ...mapRef.current };
+      let changed = false;
+      for (const [oldId, newId] of Object.entries(remap)) {
+        const catId = updatedMap[oldId];
+        if (catId === undefined) continue;
+        delete updatedMap[oldId];
+        if (updatedMap[newId] === undefined) updatedMap[newId] = catId;
+        changed = true;
+      }
+      if (!changed) return;
+      commitMap(updatedMap);
+      await persistMap(updatedMap);
+    }, [gate]);
 
   // Replace a category's budget with the given line items (empty array clears
   // it). Items are stored verbatim — callers normalize labels/amounts.
   const setCategoryBudget = useCallback(
     async (categoryId: string, items: BudgetLineItem[]) => {
+      await gate.wait();
       const next = { ...budgetsRef.current };
       const cleaned = items.filter(
         (it) => it.label.trim().length > 0 || it.amount !== 0,
@@ -325,9 +343,7 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
       }
       commitBudgets(next);
       await persistBudgets(next);
-    },
-    [],
-  );
+    }, [gate]);
 
   // Sum of a category's line items (0 when none). Reads state so consumers
   // re-render when budgets change.
@@ -366,6 +382,7 @@ export function CategoriesProvider({ children }: { children: ReactNode }) {
         deleteCategory,
         assignCategory,
         bulkAssignCategories,
+        remapTransactionIds,
         getCategoryForTransaction,
       }}
     >

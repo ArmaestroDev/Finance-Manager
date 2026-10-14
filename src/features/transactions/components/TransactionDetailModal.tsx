@@ -1,21 +1,28 @@
 import React, { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMRadius, FMType } from "@/src/constants/theme";
 import { Sheet } from "@/src/shared/components/Sheet";
 import {
   Button,
+  Chip,
   IconEdit,
   Label,
-  Rule,
-  formatEUR,
   splitForHero,
   useFMTheme,
 } from "@/src/shared/design";
 import type { Transaction } from "@/src/services/enableBanking";
-import { cleanRemittanceInfo } from "@/src/shared/utils/financeHelpers";
-import { getStableTxId, getTransactionAmount, pickTransactionTitle } from "../utils/transactions";
+import { useSettings } from "@/src/shared/context/SettingsContext";
+import { formatDate } from "@/src/shared/utils/date";
+import {
+  cleanRemittanceInfo,
+  getStableTxId,
+  getTransactionAmount,
+  pickTransactionTitle,
+} from "../utils/transactions";
 import { CategoryPickerModal } from "./CategoryPickerModal";
+import { useTransactionLinks } from "../context/TransactionLinksContext";
+import { TransactionLinkPanel } from "./TransactionLinkPanel";
 
 interface TransactionCategory {
   id: string;
@@ -35,9 +42,10 @@ interface TransactionDetailModalProps {
   onClose: () => void;
   onEdit?: (tx: Transaction) => void;
   type: "connected" | "manual";
-  backgroundColor?: string;
-  textColor?: string;
-  tintColor?: string;
+  /** Account of the transaction (for the link picker). */
+  accountId?: string;
+  /** Open a linked transaction (e.g. navigate to it). */
+  onOpenTransaction?: (txId: string, accountId: string) => void;
 }
 
 export function TransactionDetailModal({
@@ -51,8 +59,12 @@ export function TransactionDetailModal({
   onClose,
   onEdit,
   type,
+  accountId,
+  onOpenTransaction,
 }: TransactionDetailModalProps) {
   const t = useFMTheme();
+  const { i18n } = useSettings();
+  const { getDisplayAmount } = useTransactionLinks();
   const [pickerVisible, setPickerVisible] = useState(false);
   if (!transaction) return null;
 
@@ -60,65 +72,63 @@ export function TransactionDetailModal({
   const isNeg = amount < 0;
   const txId = getStableTxId(transaction);
   const txCat = getCategoryForTransaction(txId);
-  const heroParts = splitForHero(amount);
+  // A reimbursed expense shows the user's share (utils/links.ts).
+  const displayAmount = getDisplayAmount(transaction);
+  const heroParts = splitForHero(displayAmount);
 
   return (
     <Sheet
       visible={visible}
       onClose={onClose}
       title={pickTransactionTitle(transaction)}
-      subtitle={`${transaction.booking_date || transaction.value_date || ""} · ${
-        type === "manual" ? "Manual" : "Connected"
+      subtitle={`${formatDate(transaction.booking_date || transaction.value_date)} · ${
+        type === "manual" ? i18n.tx_source_manual : i18n.tx_source_connected
       }`}
       width={520}
       actions={
-        <>
-          {type === "manual" && onEdit ? (
-            <Button
-              variant="secondary"
-              icon={<IconEdit size={11} color={t.ink} />}
-              onPress={() => {
-                onClose();
-                onEdit(transaction);
-              }}
-            >
-              Edit
-            </Button>
-          ) : null}
-          <Button variant="primary" onPress={onClose}>Close</Button>
-        </>
+        type === "manual" && onEdit ? (
+          <Button
+            variant="tonal"
+            icon={<IconEdit size={16} />}
+            onPress={() => {
+              onClose();
+              onEdit(transaction);
+            }}
+          >
+            {i18n.edit}
+          </Button>
+        ) : undefined
       }
     >
       <ScrollView style={{ maxHeight: 480 }} showsVerticalScrollIndicator={false}>
         {/* Hero amount */}
-        <View style={[styles.heroCard, { backgroundColor: t.surfaceAlt, borderColor: t.line }]}>
-          <Label>Amount</Label>
+        <View style={styles.heroCard} accessibilityLabel={i18n.amount_label}>
           <View style={styles.heroRow}>
             <Text
               style={{
                 fontFamily: FMFonts.display,
-                fontSize: 30,
-                color: isNeg ? t.neg : t.pos,
-                lineHeight: 32,
-                letterSpacing: -0.4,
+                fontSize: 36,
+                color: displayAmount < 0 ? t.neg : displayAmount > 0 ? t.pos : t.inkSoft,
+                lineHeight: 44,
+                fontVariant: ["tabular-nums"],
               }}
             >
-              {isNeg ? "−" : "+"}
+              {displayAmount < 0 ? "−" : displayAmount > 0 ? "+" : ""}
               {heroParts.integer}
-              <Text style={{ color: t.inkMuted }}>{heroParts.fraction}</Text>
+              <Text style={{ color: t.inkSoft }}>{heroParts.fraction}</Text>
             </Text>
-            <Text style={{ fontFamily: FMFonts.display, fontSize: 16, color: t.inkSoft, marginLeft: 4 }}>
+            <Text style={{ fontFamily: FMFonts.display, fontSize: FMType.title, color: t.inkSoft, marginLeft: 4 }}>
               {currencySymbol(transaction.transaction_amount?.currency)}
             </Text>
           </View>
         </View>
 
         {/* Category picker */}
-        <View style={{ marginTop: 14 }}>
-          <Label style={{ marginBottom: 8 }}>Category</Label>
+        <View style={{ marginTop: 16 }}>
+          <Label style={{ marginBottom: 8 }}>{i18n.category_label}</Label>
           <View style={styles.catPills}>
             <CatPill
-              label="None"
+              label={i18n.tx_cat_none}
               active={!txCat}
               onPress={() => onAssignCategory(txId, null)}
             />
@@ -143,7 +153,7 @@ export function TransactionDetailModal({
                 />
               );
             })}
-            <CatPill label="+ New" onPress={() => setPickerVisible(true)} />
+            <CatPill label={i18n.tx_cat_new_short} onPress={() => setPickerVisible(true)} />
           </View>
         </View>
 
@@ -157,57 +167,49 @@ export function TransactionDetailModal({
           onCreate={onCreateCategory}
         />
 
-        <Rule style={{ marginVertical: 16 }} />
+        {/* Links: reimbursements / "pay from account" / linked expense */}
+        <View style={{ marginTop: 16 }}>
+          <TransactionLinkPanel
+            transaction={transaction}
+            accountId={accountId}
+            onOpenTransaction={onOpenTransaction}
+          />
+        </View>
 
         {/* Detail rows */}
-        <View style={{ gap: 8 }}>
-          {transaction.creditor?.name ? (
-            <DetailRow label="Creditor" value={transaction.creditor.name} />
+        <View style={[styles.details, { backgroundColor: t.surfaceContainerHigh }]}>
+          {/* "Self" is the placeholder party of manual/imported rows, not a name. */}
+          {isRealParty(transaction.creditor?.name) ? (
+            <DetailRow label={i18n.tx_creditor} value={transaction.creditor!.name!} />
           ) : null}
-          {transaction.debtor?.name ? (
-            <DetailRow label="Debtor" value={transaction.debtor.name} />
+          {isRealParty(transaction.debtor?.name) ? (
+            <DetailRow label={i18n.tx_debtor} value={transaction.debtor!.name!} />
           ) : null}
           {transaction.booking_date ? (
-            <DetailRow label="Booking date" value={transaction.booking_date} mono />
+            <DetailRow label={i18n.tx_booking_date} value={formatDate(transaction.booking_date)} mono />
           ) : null}
           {transaction.value_date ? (
-            <DetailRow label="Value date" value={transaction.value_date} mono />
+            <DetailRow label={i18n.tx_value_date} value={formatDate(transaction.value_date)} mono />
           ) : null}
           {transaction.credit_debit_indicator ? (
             <DetailRow
-              label="Type"
-              value={transaction.credit_debit_indicator === "CRDT" ? "Credit" : "Debit"}
+              label={i18n.tx_type}
+              value={transaction.credit_debit_indicator === "CRDT" ? i18n.tx_type_credit : i18n.tx_type_debit}
             />
           ) : null}
           {transaction.remittance_information && transaction.remittance_information.length > 0 ? (
             <View style={styles.detailColumn}>
-              <Label>Reference</Label>
+              <Label>{i18n.tx_reference}</Label>
               <Text
                 style={{
                   fontFamily: FMFonts.sans,
-                  fontSize: 11.5,
-                  color: t.inkSoft,
+                  fontSize: FMType.body,
+                  color: t.ink,
                   marginTop: 4,
-                  lineHeight: 17,
+                  lineHeight: 20,
                 }}
               >
                 {cleanRemittanceInfo(transaction.remittance_information)}
-              </Text>
-            </View>
-          ) : null}
-          {transaction.transaction_id ? (
-            <View style={styles.detailColumn}>
-              <Label>Transaction ID</Label>
-              <Text
-                style={{
-                  fontFamily: FMFonts.mono,
-                  fontSize: 10.5,
-                  color: t.inkMuted,
-                  marginTop: 4,
-                  fontVariant: ["tabular-nums"],
-                }}
-              >
-                {transaction.transaction_id}
               </Text>
             </View>
           ) : null}
@@ -230,43 +232,34 @@ function CatPill({
   disabled?: boolean;
   onPress: () => void;
 }) {
-  const t = useFMTheme();
-  const bg = active ? (color ?? t.ink) : t.surface;
-  const fg = active ? "#fff" : t.inkSoft;
   return (
-    <Pressable
-      onPress={disabled ? undefined : onPress}
-      disabled={disabled}
-      style={({ pressed }) => [
-        styles.catPill,
-        {
-          backgroundColor: bg,
-          borderColor: color && !active ? color + "55" : active ? bg : t.lineStrong,
-          opacity: disabled ? 0.35 : pressed ? 0.85 : 1,
-        },
-      ]}
-    >
-      {color && !active ? (
-        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color, marginRight: 6 }} />
-      ) : null}
-      <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: active ? fg : t.ink }}>
+    <View style={{ opacity: disabled ? 0.38 : 1 }}>
+      <Chip
+        active={active}
+        filter={!color}
+        icon={color ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} /> : undefined}
+        onPress={disabled ? undefined : onPress}
+      >
         {label}
-      </Text>
-    </Pressable>
+      </Chip>
+    </View>
   );
 }
+
+const isRealParty = (name: string | null | undefined): boolean =>
+  !!name && name.trim().toLowerCase() !== "self";
 
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   const t = useFMTheme();
   return (
     <View style={styles.detailRow}>
-      <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11.5, color: t.inkMuted }}>{label}</Text>
+      <Text style={{ fontFamily: FMFonts.sans, fontSize: FMType.body, color: t.inkSoft }}>{label}</Text>
       <Text
         style={{
           fontFamily: mono ? FMFonts.mono : FMFonts.sans,
-          fontSize: 12.5,
+          fontSize: FMType.body,
           color: t.ink,
-          ...(mono ? { fontVariant: ["tabular-nums"] as any } : {}),
+          fontVariant: mono ? ["tabular-nums"] : undefined,
         }}
         numberOfLines={2}
       >
@@ -285,28 +278,23 @@ function currencySymbol(currency: string | undefined): string {
 
 const styles = StyleSheet.create({
   heroCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderRadius: 12,
+    paddingBottom: 4,
   },
   heroRow: {
     flexDirection: "row",
     alignItems: "baseline",
-    marginTop: 4,
+  },
+  details: {
+    marginTop: 16,
+    borderRadius: FMRadius.md,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
   },
   catPills: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
-  },
-  catPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 1,
+    gap: 8,
   },
   detailRow: {
     flexDirection: "row",

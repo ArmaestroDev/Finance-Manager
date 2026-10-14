@@ -2,30 +2,38 @@ import { Stack } from "expo-router";
 import React from "react";
 import {
   ActivityIndicator,
-  Pressable,
-  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMRadius, FMType } from "@/src/constants/theme";
 import { DesktopShell } from "@/src/shared/components/DesktopShell";
 import {
+  Avatar,
   Button,
-  Chip,
-  IconMore,
+  Card,
+  EmptyState,
+  Field,
+  IconButton,
+  IconLink,
   IconPlus,
   IconRefresh,
+  IconTrash,
   IconWarn,
-  Label,
+  ListItem,
+  SectionTitle,
   useFMTheme,
 } from "@/src/shared/design";
+import type { Strings } from "@/src/constants/Strings";
 import { useSettings } from "@/src/shared/context/SettingsContext";
+import { showAlert } from "@/src/shared/utils/alert";
+import { useAccounts } from "../../context/AccountsContext";
 import { useBankConnections, type StoredSession } from "../../hooks/useBankConnections";
-import { BankSelectionModal } from "./BankSelectionModal";
+import { BankSelectionModal } from "../BankSelectionModal";
 import { formatDate } from "@/src/shared/utils/date";
+
+type I18n = typeof Strings.de;
 
 export function ConnectionsScreen() {
   const t = useFMTheme();
@@ -49,120 +57,97 @@ export function ConnectionsScreen() {
     handleSelectBank,
     removeSession,
   } = useBankConnections();
+  const { refreshAccounts, isRefreshing } = useAccounts();
 
+  const confirmRemove = (session: StoredSession) =>
+    showAlert(
+      i18n.conn_remove_title,
+      i18n.conn_remove_msg.replace("{bank}", session.bankName),
+      [
+        { text: i18n.cancel, style: "cancel" },
+        { text: i18n.remove, style: "destructive", onPress: () => removeSession(session.sessionId) },
+      ],
+    );
   return (
-    <DesktopShell activeId="connections">
+    <DesktopShell
+      activeId="connections"
+      title={i18n.connections_title}
+      actions={
+        <Button icon={<IconPlus size={16} />} onPress={openBankSelection}>
+          {i18n.connect_bank}
+        </Button>
+      }
+    >
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView contentContainerStyle={[styles.page, { backgroundColor: t.bg }]} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.pageTitle, { color: t.ink }]}>{i18n.connections_title}</Text>
-            <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 4 }}>
-              {i18n.connections_subtitle} · {sessions.length} bank{sessions.length === 1 ? "" : "s"} linked
-            </Text>
-          </View>
-          <Button variant="primary" icon={<IconPlus size={12} color={t.bg} />} onPress={openBankSelection}>
-            {i18n.connect_bank_btn}
-          </Button>
-        </View>
-
+      <View style={styles.page}>
         <View style={styles.grid}>
-          <View style={[styles.banksWrap, { backgroundColor: t.surface, borderColor: t.line }]}>
-            <View style={[styles.banksHeader, { borderBottomColor: t.line }]}>
-              <Label>{i18n.connected_accounts}</Label>
+          <Card padding={0} style={styles.banks}>
+            <View style={styles.cardHead}>
+              <SectionTitle>{i18n.connected_accounts}</SectionTitle>
               <View style={{ flex: 1 }} />
-              <Chip icon={<IconRefresh size={11} color={t.inkSoft} />}>Refresh all</Chip>
+              {sessions.length > 0 ? (
+                <Button
+                  variant="text"
+                  size="sm"
+                  icon={<IconRefresh size={16} />}
+                  onPress={() => refreshAccounts(true)}
+                  loading={isRefreshing}
+                >
+                  {i18n.conn_refresh_all}
+                </Button>
+              ) : null}
             </View>
+
             {connecting && !showManualInput ? (
-              <View style={[styles.connecting, { borderBottomColor: t.line }]}>
-                <ActivityIndicator size="small" color={t.accent} />
-                <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.ink, marginLeft: 8 }}>
-                  {i18n.connecting}
-                </Text>
-                <View style={{ flex: 1 }} />
-                <Pressable onPress={() => setShowManualInput(true)}>
-                  <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.accent }}>
-                    {i18n.have_code_btn}
-                  </Text>
-                </Pressable>
+              <View style={[styles.connecting, { backgroundColor: t.secondaryContainer }]}>
+                <ActivityIndicator size="small" color={t.onSecondaryContainer} />
+                <Text style={[styles.connectingText, { color: t.onSecondaryContainer }]}>{i18n.connecting}</Text>
+                <Button variant="text" size="sm" onPress={() => setShowManualInput(true)}>
+                  {i18n.conn_enter_code_btn}
+                </Button>
               </View>
             ) : null}
 
             {sessions.length === 0 && !connecting ? (
-              <View style={styles.empty}>
-                <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 14, color: t.ink }}>
-                  {i18n.no_connections}
-                </Text>
-                <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 4 }}>
-                  Use Open Banking to link a bank read-only.
-                </Text>
+              <EmptyState icon={<IconLink />} title={i18n.no_connections} body={i18n.conn_empty_hint} />
+            ) : (
+              <View style={{ paddingBottom: 8 }}>
+                {sessions.map((s) => (
+                  <SessionRow key={s.sessionId} session={s} onRemove={() => confirmRemove(s)} i18n={i18n} />
+                ))}
+              </View>
+            )}
+          </Card>
+
+          <Card style={styles.side}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 8 }}>
+              <IconWarn size={20} color={t.warn} />
+              <SectionTitle style={{ flex: 1 }}>{i18n.conn_redirect_title}</SectionTitle>
+            </View>
+            <Text style={[styles.body, { color: t.inkSoft }]}>{i18n.conn_redirect_body}</Text>
+            {showManualInput ? (
+              <View style={{ marginTop: 16 }}>
+                <Field
+                  label={i18n.conn_enter_code_btn}
+                  value={manualCode}
+                  onChangeText={setManualCode}
+                  placeholder={i18n.conn_paste_code_ph}
+                  mono
+                  autoFocus
+                  onSubmitEditing={() => manualCode && handleAuthCode(manualCode)}
+                />
+                <Button onPress={() => handleAuthCode(manualCode)} disabled={!manualCode} style={{ alignSelf: "flex-start" }}>
+                  {i18n.submit_code}
+                </Button>
               </View>
             ) : (
-              sessions.map((s, i) => (
-                <SessionRow
-                  key={s.sessionId}
-                  session={s}
-                  isFirst={i === 0}
-                  onRemove={() => removeSession(s.sessionId)}
-                  i18n={i18n}
-                />
-              ))
+              <Button variant="tonal" onPress={() => setShowManualInput(true)} style={{ alignSelf: "flex-start", marginTop: 16 }}>
+                {i18n.conn_enter_code_btn}
+              </Button>
             )}
-          </View>
-
-          <View style={{ flex: 1, gap: 12 }}>
-            <View style={[styles.infoCard, { backgroundColor: t.surface, borderColor: t.line }]}>
-              <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink }}>
-                How connections work
-              </Text>
-              <Text style={{ fontFamily: FMFonts.sans, fontSize: 11.5, color: t.inkSoft, marginTop: 6, lineHeight: 17 }}>
-                We use Open Banking — your bank authorizes us read-only access. We never see or store your password. You can revoke any time.
-              </Text>
-            </View>
-            <View style={[styles.fallback, { backgroundColor: t.surfaceAlt, borderColor: t.lineStrong }]}>
-              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
-                <IconWarn size={14} color={t.warn} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink }}>
-                    Redirect didn&apos;t work?
-                  </Text>
-                  <Text style={{ fontFamily: FMFonts.sans, fontSize: 11.5, color: t.inkSoft, marginTop: 4, lineHeight: 17 }}>
-                    Some browsers block the bank&apos;s redirect (Safari, in-app browsers). Paste your auth code manually.
-                  </Text>
-                  {showManualInput ? (
-                    <View style={{ marginTop: 10 }}>
-                      <TextInput
-                        value={manualCode}
-                        onChangeText={setManualCode}
-                        placeholder="Paste code here…"
-                        placeholderTextColor={t.inkMuted}
-                        style={[
-                          styles.input,
-                          { color: t.ink, borderColor: t.lineStrong, backgroundColor: t.surface },
-                        ]}
-                      />
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onPress={() => handleAuthCode(manualCode)}
-                        disabled={!manualCode}
-                      >
-                        {i18n.submit_code}
-                      </Button>
-                    </View>
-                  ) : (
-                    <View style={{ marginTop: 10, alignSelf: "flex-start" }}>
-                      <Button variant="secondary" size="sm" onPress={() => setShowManualInput(true)}>
-                        Enter auth code
-                      </Button>
-                    </View>
-                  )}
-                </View>
-              </View>
-            </View>
-          </View>
+          </Card>
         </View>
-      </ScrollView>
+      </View>
 
       <BankSelectionModal
         visible={isBankModalVisible}
@@ -172,10 +157,6 @@ export function ConnectionsScreen() {
         searchQuery={searchQuery}
         onSearch={handleSearch}
         onSelectBank={handleSelectBank}
-        textColor={t.ink}
-        backgroundColor={t.bg}
-        tintColor={t.accent}
-        i18n={i18n}
       />
     </DesktopShell>
   );
@@ -183,134 +164,81 @@ export function ConnectionsScreen() {
 
 interface SessionRowProps {
   session: StoredSession;
-  isFirst: boolean;
   onRemove: () => void;
-  i18n: any;
+  i18n: I18n;
 }
 
-function SessionRow({ session, isFirst, onRemove, i18n }: SessionRowProps) {
+function SessionRow({ session, onRemove, i18n }: SessionRowProps) {
   const t = useFMTheme();
+  const subtitle = i18n.conn_accounts_date
+    .replace("{accounts}", i18n.connected_account_count.replace("{count}", String(session.accounts.length)))
+    .replace("{date}", i18n.connected_date.replace("{date}", formatDate(session.connectedAt)));
   return (
-    <View style={[styles.row, !isFirst && { borderTopWidth: 1, borderTopColor: t.line }]}>
-      <View style={[styles.avatar, { backgroundColor: t.surfaceAlt, borderColor: t.line }]}>
-        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.inkSoft }}>
-          {session.bankName.charAt(0).toUpperCase()}
-        </Text>
-      </View>
-      <View style={{ flex: 1, marginLeft: 14 }}>
-        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13.5, color: t.ink }}>{session.bankName}</Text>
-        <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkMuted, marginTop: 2 }}>
-          {i18n.connected_account_count.replace("{count}", session.accounts.length.toString())} · connected{" "}
-          {i18n.connected_date.replace("{date}", formatDate(session.connectedAt))}
-        </Text>
-      </View>
-      <View style={{ flexDirection: "row", gap: 5, marginRight: 14 }}>
-        {session.accounts.slice(0, 3).map((a, i) => (
-          <View key={i} style={[styles.tag, { backgroundColor: t.surfaceAlt }]}>
-            <Text style={{ fontFamily: FMFonts.sans, fontSize: 10.5, color: t.inkSoft }}>
-              {(a.account_id?.iban?.slice(-4) ?? a.name?.slice(0, 8) ?? "Account").toString()}
-            </Text>
+    <ListItem
+      leading={<Avatar label={session.bankName} />}
+      title={session.bankName}
+      subtitle={subtitle}
+      style={{ paddingHorizontal: 24 }}
+      trailing={
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {session.accounts.slice(0, 3).map((a, i) => (
+            <View key={i} style={[styles.tag, { backgroundColor: t.surfaceContainerHigh }]}>
+              <Text style={[styles.tagText, { color: t.inkSoft }]}>
+                {(a.account_id?.iban?.slice(-4) ?? a.name?.slice(0, 8) ?? i18n.acct_fallback_name).toString()}
+              </Text>
+            </View>
+          ))}
+          <View style={[styles.tag, { backgroundColor: t.posSoft, flexDirection: "row", alignItems: "center" }]}>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: t.pos, marginRight: 6 }} />
+            <Text style={[styles.tagText, { color: t.pos, fontFamily: FMFonts.sansMedium }]}>{i18n.acct_src_live}</Text>
           </View>
-        ))}
-      </View>
-      <View style={styles.liveTag}>
-        <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: t.pos }} />
-        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 10, color: t.pos, marginLeft: 5, letterSpacing: 0.5 }}>
-          LIVE
-        </Text>
-      </View>
-      <Pressable onPress={onRemove} hitSlop={8} style={({ pressed }) => ({ marginLeft: 12, opacity: pressed ? 0.5 : 1 })}>
-        <IconMore size={14} color={t.inkMuted} />
-      </Pressable>
-    </View>
+          <IconButton icon={<IconTrash size={18} />} label={`${i18n.remove}: ${session.bankName}`} onPress={onRemove} />
+        </View>
+      }
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  page: { padding: 24 },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    marginBottom: 18,
-  },
-  pageTitle: {
-    fontFamily: FMFonts.display,
-    fontSize: 30,
-    lineHeight: 32,
-    letterSpacing: -0.5,
-  },
+  page: { paddingHorizontal: 24, paddingBottom: 32 },
   grid: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 16,
+    alignItems: "flex-start",
   },
-  banksWrap: {
-    flex: 1.4,
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: "hidden",
-  },
-  banksHeader: {
+  banks: { flex: 1.6, minWidth: 480, overflow: "hidden" },
+  side: { flex: 1, minWidth: 300 },
+  cardHead: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 8,
+    minHeight: 56,
   },
   connecting: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingLeft: 16,
+    paddingRight: 4,
+    paddingVertical: 4,
+    borderRadius: FMRadius.md,
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+  connectingText: {
+    flex: 1,
+    marginLeft: 12,
+    fontFamily: FMFonts.sansMedium,
+    fontSize: FMType.body,
   },
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
+  body: { fontFamily: FMFonts.sans, fontSize: FMType.body, lineHeight: 20 },
   tag: {
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 4,
+    height: 24,
+    paddingHorizontal: 8,
+    borderRadius: FMRadius.sm,
+    justifyContent: "center",
   },
-  liveTag: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  empty: {
-    paddingHorizontal: 18,
-    paddingVertical: 40,
-    alignItems: "center",
-  },
-  infoCard: {
-    padding: 18,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  fallback: {
-    padding: 18,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderRadius: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    marginBottom: 10,
-    fontFamily: FMFonts.mono,
-    fontSize: 12.5,
-    fontVariant: ["tabular-nums"],
-  },
+  tagText: { fontFamily: FMFonts.sans, fontSize: FMType.caption, fontVariant: ["tabular-nums"] },
 });

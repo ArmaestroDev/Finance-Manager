@@ -129,12 +129,21 @@ export function autoDetectRoles(headers: string[]): CsvFieldRole[] {
   for (let i = 0; i < headers.length; i++) {
     const h = headers[i].toLowerCase();
 
-    if (!dateAssigned && /\b(buchung|booking|datum|date)\b/.test(h)) {
+    // Booking-date column. German exports use compounds like "Buchungstag"
+    // (Sparkasse) or "Buchungsdatum" (DKB) that a plain \bbuchung\b missed;
+    // value-date columns ("Valutadatum", "Wertstellung") are excluded here.
+    if (
+      !dateAssigned &&
+      !/(valuta|wert|value)/.test(h) &&
+      (/\b(buchung|booking|datum|date)\b/.test(h) ||
+        /^buchungs?(tag|datum)\b/.test(h) ||
+        /(datum|date)$/.test(h))
+    ) {
       roles[i] = "date";
       dateAssigned = true;
       continue;
     }
-    if (!descAssigned && /(verwendung|purpose|description|beschreib|zweck|buchungstext|remittance|auftraggeber|beg[üu]nstigter|empf[äa]nger|name)/.test(h)) {
+    if (!descAssigned && /(verwendung|purpose|description|beschreib|zweck|buchungstext|remittance|auftraggeber|beg[üu]nstigter|empf[äa]nger|zahlungspflichtig|payee|counterparty|gegenpartei|name)/.test(h)) {
       roles[i] = "description";
       descAssigned = true;
       continue;
@@ -167,9 +176,9 @@ export function detectDateFormat(rows: string[][], dateCol: number): CsvDateForm
   if (dateCol < 0) return "DD.MM.YYYY";
   const samples = rows.slice(0, 10).map((r) => r[dateCol] || "");
   for (const s of samples) {
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return "YYYY-MM-DD";
-    if (/^\d{2}\.\d{2}\.\d{4}/.test(s)) return "DD.MM.YYYY";
-    if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) return "DD/MM/YYYY";
+    if (/^\d{4}-\d{1,2}-\d{1,2}/.test(s)) return "YYYY-MM-DD";
+    if (/^\d{1,2}\.\d{1,2}\.\d{2,4}/.test(s)) return "DD.MM.YYYY";
+    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(s)) return "DD/MM/YYYY";
   }
   return "DD.MM.YYYY";
 }
@@ -192,36 +201,69 @@ export function detectAmountFormat(
   return "de";
 }
 
-function parseAmountValue(raw: string, fmt: CsvAmountFormat): number {
+export function parseAmountValue(raw: string, fmt: CsvAmountFormat): number {
   if (!raw) return NaN;
-  let s = raw.replace(/\s/g, "").replace(/[^\d.,\-+]/g, "");
-  if (!s) return NaN;
+  let s = raw.replace(/\s/g, "");
+  // Sign conventions: leading "-", trailing "-" ("12,34-"), or a Soll/Haben
+  // marker ("12,34S" / "12,34H"). A trailing minus used to be dropped,
+  // turning debits into credits.
+  let negative = false;
+  const marker = s.match(/([+-]|S|H)$/i);
+  if (marker && /\d[+-]?(S|H)?$/i.test(s)) {
+    const m = marker[1].toUpperCase();
+    if (m === "-" || m === "S") negative = true;
+    s = s.slice(0, -1);
+  }
+  s = s.replace(/[^\d.,\-+]/g, "");
+  if (s.startsWith("-")) {
+    negative = !negative;
+    s = s.slice(1);
+  } else if (s.startsWith("+")) {
+    s = s.slice(1);
+  }
+  if (!s || /[+-]/.test(s)) return NaN;
   if (fmt === "de") {
     s = s.replace(/\./g, "").replace(",", ".");
   } else {
     s = s.replace(/,/g, "");
   }
-  return Number.parseFloat(s);
+  const n = Number.parseFloat(s);
+  if (!Number.isFinite(n)) return NaN;
+  return negative ? -n : n;
 }
 
-function parseDateValue(raw: string, fmt: CsvDateFormat): string | null {
+const pad2 = (v: string) => v.padStart(2, "0");
+// Two-digit years ("01.02.24", common in Sparkasse CSVs) → 20YY.
+const fullYear = (y: string) => (y.length === 2 ? `20${y}` : y);
+
+function validIso(y: string, m: string, d: string): string | null {
+  const yy = fullYear(y);
+  const mm = pad2(m);
+  const dd = pad2(d);
+  const mi = Number(mm);
+  const di = Number(dd);
+  if (yy.length !== 4 || mi < 1 || mi > 12 || di < 1 || di > 31) return null;
+  return `${yy}-${mm}-${dd}`;
+}
+
+export function parseDateValue(raw: string, fmt: CsvDateFormat): string | null {
   if (!raw) return null;
   const s = raw.trim();
   if (fmt === "YYYY-MM-DD") {
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+    const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    return m ? validIso(m[1], m[2], m[3]) : null;
   }
   if (fmt === "DD.MM.YYYY") {
-    const m = s.match(/^(\d{2})\.(\d{2})\.(\d{4})/);
-    return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+    const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?!\d)/);
+    return m ? validIso(m[3], m[2], m[1]) : null;
   }
   if (fmt === "DD/MM/YYYY") {
-    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-    return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})(?!\d)/);
+    return m ? validIso(m[3], m[2], m[1]) : null;
   }
   if (fmt === "MM/DD/YYYY") {
-    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-    return m ? `${m[3]}-${m[1]}-${m[2]}` : null;
+    const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}|\d{2})(?!\d)/);
+    return m ? validIso(m[3], m[1], m[2]) : null;
   }
   return null;
 }
@@ -252,6 +294,9 @@ export function rowsToTransactions(
 
   const transactions: Transaction[] = [];
   let skipped = 0;
+  // One batch id per import so ids stay unique even if two imports land in
+  // the same millisecond.
+  const batchId = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
   rows.forEach((row, i) => {
     const date = parseDateValue(row[dateCol] || "", mapping.dateFormat);
@@ -286,16 +331,19 @@ export function rowsToTransactions(
 
     const rawDesc = descCol >= 0 ? cleanImportDescription(row[descCol] || "") : "";
     const desc = `[Imported] ${rawDesc || fileName}`;
+    // Counterparty name without the "[Imported]" marker (same as PDF
+    // imports), so list titles read "REWE …" rather than "[Imported] REWE …".
+    const name = (rawDesc || fileName).split("\n")[0].trim() || fileName;
     transactions.push({
-      transaction_id: `import_csv_${Date.now()}_${i}`,
+      transaction_id: `import_csv_${batchId}_${i}`,
       booking_date: date,
       transaction_amount: {
         currency,
         amount: amount.toString(),
       },
       remittance_information: [desc],
-      creditor: { name: amount < 0 ? desc : "Self" },
-      debtor: { name: amount >= 0 ? desc : "Self" },
+      creditor: { name: amount < 0 ? name : "Self" },
+      debtor: { name: amount >= 0 ? name : "Self" },
     } as Transaction);
   });
 

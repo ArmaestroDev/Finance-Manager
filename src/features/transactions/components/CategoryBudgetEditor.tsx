@@ -1,9 +1,20 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
-import { Field, IconPlus, IconTrash, formatEUR, useFMTheme } from "@/src/shared/design";
-import { BudgetLineItem } from "@/src/features/transactions/context/CategoriesContext";
+import { FMFonts, FMType } from "@/src/constants/theme";
+import {
+  Button,
+  Field,
+  IconAI,
+  IconButton,
+  IconPlus,
+  IconTrash,
+  Label,
+  formatEUR,
+  useFMTheme,
+} from "@/src/shared/design";
+import type { BudgetLineItem } from "@/src/features/transactions/context/CategoriesContext";
+import { parseLocaleNumber, roundCents } from "@/src/shared/utils/number";
 
 // Editor rows keep the amount as a string so partial input ("12,") stays
 // valid while typing; it's parsed (German comma tolerated) only on save.
@@ -15,16 +26,16 @@ export interface EditorRow {
   source?: "ai";
 }
 
-export const newRowId = () =>
+const newRowId = () =>
   `bli_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-export const parseAmount = (s: string): number => {
-  const n = parseFloat(s.replace(",", ".").trim());
-  return Number.isFinite(n) ? n : 0;
+const parseAmount = (s: string): number => {
+  const n = parseLocaleNumber(s);
+  return Number.isFinite(n) ? roundCents(n) : 0;
 };
 
 // 60 -> "60", 60.5 -> "60,5" — German decimal separator, no trailing zeros.
-export const amountToInput = (n: number): string =>
+const amountToInput = (n: number): string =>
   n === 0 ? "" : String(n).replace(".", ",");
 
 // Build editor rows from stored line items (always at least one blank row).
@@ -59,6 +70,7 @@ interface CategoryBudgetEditorProps {
     add_line_item: string;
     monthly_estimate: string;
     budget_hint: string;
+    delete: string;
   };
   /** Hide the explanatory footnote (e.g. when shown inside another editor). */
   hideHint?: boolean;
@@ -77,10 +89,17 @@ export function CategoryBudgetEditor({
 
   return (
     <View>
-      {rows.map((row, i) => (
+      {/* Column headers once; the per-row fields carry accessible names. */}
+      <View style={styles.headRow}>
+        <Label style={{ flex: 1 }}>{i18n.line_item_label}</Label>
+        <Label style={{ width: 116 }}>{i18n.budget_amount}</Label>
+        <View style={{ width: 40 }} />
+      </View>
+      {rows.map((row) => (
         <View key={row.id} style={styles.editorRow}>
           <Field
-            label={i === 0 ? i18n.line_item_label : ""}
+            label=""
+            accessibilityLabel={i18n.line_item_label}
             placeholder={i18n.line_item_label_ph}
             value={row.label}
             onChangeText={(s) =>
@@ -91,7 +110,8 @@ export function CategoryBudgetEditor({
             containerStyle={{ flex: 1, marginBottom: 0 }}
           />
           <Field
-            label={i === 0 ? i18n.budget_amount : ""}
+            label=""
+            accessibilityLabel={i18n.budget_amount}
             placeholder="0"
             value={row.amount}
             keyboardType="decimal-pad"
@@ -109,29 +129,14 @@ export function CategoryBudgetEditor({
             containerStyle={{ width: 116, marginBottom: 0 }}
           />
           {row.source === "ai" ? (
-            <View
-              style={[
-                styles.aiPill,
-                {
-                  backgroundColor: t.accentSoft,
-                  borderColor: t.accent,
-                  marginTop: i === 0 ? 22 : 4,
-                },
-              ]}
-            >
-              <Text
-                style={{
-                  fontFamily: FMFonts.sansSemibold,
-                  fontSize: 8.5,
-                  color: t.accent,
-                  letterSpacing: 0.4,
-                }}
-              >
-                AI
-              </Text>
+            <View style={[styles.aiBadge, { backgroundColor: t.secondaryContainer }]}>
+              <IconAI size={14} color={t.onSecondaryContainer} />
             </View>
           ) : null}
-          <Pressable
+          <IconButton
+            icon={<IconTrash size={18} />}
+            label={i18n.delete}
+            style={styles.rowTrash}
             onPress={() =>
               setRows((rs) =>
                 rs.length === 1
@@ -139,59 +144,29 @@ export function CategoryBudgetEditor({
                   : rs.filter((r) => r.id !== row.id),
               )
             }
-            hitSlop={8}
-            style={({ pressed }) => [
-              styles.rowTrash,
-              { marginTop: i === 0 ? 18 : 0, opacity: pressed ? 0.5 : 1 },
-            ]}
-          >
-            <IconTrash size={13} color={t.neg} />
-          </Pressable>
+          />
         </View>
       ))}
 
-      <Pressable
-        onPress={() =>
-          setRows((rs) => [...rs, { id: newRowId(), label: "", amount: "" }])
-        }
-        style={({ pressed }) => [
-          styles.addRow,
-          { borderColor: t.lineStrong, opacity: pressed ? 0.7 : 1 },
-        ]}
+      <Button
+        variant="text"
+        icon={<IconPlus size={16} />}
+        onPress={() => setRows((rs) => [...rs, { id: newRowId(), label: "", amount: "" }])}
+        style={{ alignSelf: "flex-start", marginLeft: -12 }}
       >
-        <IconPlus size={12} color={t.inkSoft} />
-        <Text
-          style={{
-            fontFamily: FMFonts.sansMedium,
-            fontSize: 12,
-            color: t.inkSoft,
-            marginLeft: 6,
-          }}
-        >
-          {i18n.add_line_item}
-        </Text>
-      </Pressable>
+        {i18n.add_line_item}
+      </Button>
 
-      <View
-        style={[
-          styles.totalRow,
-          { borderTopColor: t.line, backgroundColor: t.surfaceAlt },
-        ]}
-      >
-        <Text
-          style={{
-            fontFamily: FMFonts.sansSemibold,
-            fontSize: 12,
-            color: t.inkSoft,
-          }}
-        >
+      <View style={[styles.totalRow, { backgroundColor: t.surfaceContainerHigh }]}>
+        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: FMType.body, color: t.inkSoft }}>
           {i18n.monthly_estimate}
         </Text>
         <Text
           style={{
-            fontFamily: FMFonts.monoSemibold,
-            fontSize: 15,
+            fontFamily: FMFonts.monoMedium,
+            fontSize: FMType.subhead,
             color: t.ink,
+            fontVariant: ["tabular-nums"],
           }}
         >
           {formatEUR(liveTotal)}
@@ -202,9 +177,9 @@ export function CategoryBudgetEditor({
         <Text
           style={{
             fontFamily: FMFonts.sans,
-            fontSize: 11,
-            color: t.inkMuted,
-            marginTop: 12,
+            fontSize: FMType.caption,
+            color: t.inkSoft,
+            marginTop: 8,
             lineHeight: 16,
           }}
         >
@@ -216,41 +191,35 @@ export function CategoryBudgetEditor({
 }
 
 const styles = StyleSheet.create({
+  headRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 2,
+  },
   editorRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "flex-end",
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   rowTrash: {
-    padding: 6,
+    marginBottom: 4,
   },
-  aiPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 999,
-    borderWidth: 1,
-    alignSelf: "flex-start",
-  },
-  addRow: {
-    flexDirection: "row",
+  aiBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderRadius: 8,
-    marginTop: 2,
+    marginBottom: 10,
   },
   totalRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    paddingHorizontal: 12,
-    borderTopWidth: 1,
-    borderRadius: 8,
+    marginTop: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
   },
 });

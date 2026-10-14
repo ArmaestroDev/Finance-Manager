@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Platform, View } from "react-native";
+import { GestureResponderEvent, Platform, View } from "react-native";
 import Svg, {
   Circle,
   Line,
@@ -8,7 +8,7 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMType } from "@/src/constants/theme";
 import { formatDate, formatDateShort } from "@/src/shared/utils/date";
 import { formatEUR } from "./format";
 import { useFMTheme } from "./theme";
@@ -73,7 +73,7 @@ export function Spark({
           points={points}
           fill="none"
           stroke={stroke}
-          strokeWidth={1.25}
+          strokeWidth={1.75}
           strokeLinecap="round"
           strokeLinejoin="round"
           opacity={0.85}
@@ -84,7 +84,7 @@ export function Spark({
 
   // ── Interactive ──
   const n = data.length;
-  const TT = 20; // reserved tooltip band at the top
+  const TT = 22; // reserved tooltip band at the top
   const GAP = 4;
   const plotTop = TT + GAP;
   const totalH = plotTop + height;
@@ -164,7 +164,7 @@ export function Spark({
             points={s.pts.join(" ")}
             fill="none"
             stroke={s.pos ? t.pos : t.neg}
-            strokeWidth={1.25}
+            strokeWidth={1.75}
             strokeLinecap="round"
             strokeLinejoin="round"
             opacity={0.9}
@@ -179,7 +179,7 @@ export function Spark({
         points={points}
         fill="none"
         stroke={stroke}
-        strokeWidth={1.25}
+        strokeWidth={1.75}
         strokeLinecap="round"
         strokeLinejoin="round"
         opacity={0.85}
@@ -195,11 +195,13 @@ export function Spark({
     setHi(idx);
   };
 
-  // Web hover handlers (react-native-web forwards these to the DOM node).
-  const webHandlers: any =
+  // Web hover handlers (react-native-web forwards these to the DOM node; RN's
+  // View types don't declare mouse events, hence the untyped spread object).
+  type WebMouseEvent = { nativeEvent?: { offsetX?: number; locationX?: number } };
+  const webHandlers: object =
     Platform.OS === "web"
       ? {
-          onMouseMove: (e: any) =>
+          onMouseMove: (e: WebMouseEvent) =>
             onMove(e.nativeEvent?.offsetX ?? e.nativeEvent?.locationX ?? 0),
           onMouseLeave: () => setHi(null),
         }
@@ -212,8 +214,8 @@ export function Spark({
       : {
           onStartShouldSetResponder: () => true,
           onMoveShouldSetResponder: () => true,
-          onResponderGrant: (e: any) => onMove(e.nativeEvent.locationX),
-          onResponderMove: (e: any) => onMove(e.nativeEvent.locationX),
+          onResponderGrant: (e: GestureResponderEvent) => onMove(e.nativeEvent.locationX),
+          onResponderMove: (e: GestureResponderEvent) => onMove(e.nativeEvent.locationX),
           onResponderRelease: () => setHi(null),
           onResponderTerminate: () => setHi(null),
         };
@@ -230,7 +232,7 @@ export function Spark({
         : formatDate(labels[hi])
       : "";
     const label = dateStr ? `${dateStr} · ${fmt(v)}` : fmt(v);
-    const fontSize = 9;
+    const fontSize = FMType.micro;
     const boxW = Math.min(
       width,
       Math.max(40, label.length * fontSize * 0.58 + 12),
@@ -258,7 +260,7 @@ export function Spark({
         />
         <SvgText
           x={boxX + boxW / 2}
-          y={TT / 2 + 2}
+          y={TT / 2 + 4}
           fill={t.ink}
           fontSize={fontSize}
           fontFamily={FMFonts.sansMedium}

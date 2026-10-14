@@ -1,65 +1,111 @@
-import React from "react";
-import { StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from "react-native";
+import React, { useState } from "react";
+import {
+  StyleProp,
+  StyleSheet,
+  Text,
+  TextInput,
+  TextInputProps,
+  TextStyle,
+  View,
+  ViewStyle,
+} from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMRadius, FMType } from "@/src/constants/theme";
+import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
 import { useFMTheme } from "./theme";
+
+// Kill the browser's default focus ring; the field draws its own M3 focus
+// indicator (2dp primary outline).
+const NO_WEB_OUTLINE = { outlineStyle: "none" } as unknown as TextStyle;
 
 interface FieldProps extends Omit<TextInputProps, "style"> {
   label: string;
+  /** Supporting text under the field. */
   hint?: string;
+  /** Error message: replaces the hint and turns the outline red. */
+  error?: string;
   prefix?: string;
   suffix?: string;
-  /** Render the value monospaced (with tabular-nums) — useful for amounts/IBAN. */
+  /** Tabular digits — amounts, IBANs. */
   mono?: boolean;
-  containerStyle?: ViewStyle;
+  containerStyle?: StyleProp<ViewStyle>;
 }
 
-// Labelled text field. Designed for compact stack layouts in modals.
+// M3 outlined text field with the label above the container (web-friendly
+// variant of the floating label). 4dp corners, 1dp outline, 2dp primary on focus.
 export function Field({
   label,
   hint,
+  error,
   prefix,
   suffix,
   mono,
   containerStyle,
+  onFocus,
+  onBlur,
   ...rest
 }: FieldProps) {
   const t = useFMTheme();
+  const isMobile = useIsMobileLayout();
+  const [focused, setFocused] = useState(false);
+  // >=16 on touch layouts so iOS Safari doesn't zoom the page on focus.
+  const inputSize = isMobile ? FMType.subhead : FMType.bodyLg;
+  const borderColor = error ? t.error : focused ? t.primary : t.outline;
+  const bw = focused || error ? 2 : 1;
   return (
     <View style={[styles.wrap, containerStyle]}>
-      <Text style={[styles.label, { color: t.inkSoft }]}>{label}</Text>
-      <View style={[styles.row, { borderColor: t.lineStrong, backgroundColor: t.surface }]}>
+      {label ? (
+        <Text style={[styles.label, { color: error ? t.error : focused ? t.primary : t.inkSoft }]}>{label}</Text>
+      ) : null}
+      <View
+        style={[
+          styles.row,
+          // Keep the content from shifting when the outline thickens.
+          { borderColor, borderWidth: bw, paddingHorizontal: 16 - bw },
+        ]}
+      >
         {prefix ? (
-          <Text style={{ fontFamily: FMFonts.sans, fontSize: 13, color: t.inkMuted, marginRight: 6 }}>
+          <Text style={{ fontFamily: FMFonts.sans, fontSize: inputSize, color: t.inkSoft, marginRight: 6 }}>
             {prefix}
           </Text>
         ) : null}
         <TextInput
           {...rest}
+          accessibilityLabel={rest.accessibilityLabel ?? label}
+          onFocus={(e) => {
+            setFocused(true);
+            onFocus?.(e);
+          }}
+          onBlur={(e) => {
+            setFocused(false);
+            onBlur?.(e);
+          }}
           placeholderTextColor={t.inkMuted}
-          style={{
-            flex: 1,
-            // Without this, the input keeps its intrinsic (~20ch) width and
-            // refuses to shrink, spilling past the field border on web.
-            minWidth: 0,
-            // Kill the browser's default focus ring, which is drawn outside
-            // the element and pokes past our rounded border on web.
-            outlineStyle: "none",
-            fontFamily: mono ? FMFonts.sansMedium : FMFonts.sansMedium,
-            fontSize: 13,
-            color: t.ink,
-            paddingVertical: 0,
-            ...(mono ? { fontVariant: ["tabular-nums"] as any } : {}),
-          } as any}
+          cursorColor={t.primary}
+          selectionColor={t.primary}
+          style={[
+            NO_WEB_OUTLINE,
+            {
+              flex: 1,
+              // Without this, the input keeps its intrinsic (~20ch) width and
+              // refuses to shrink, spilling past the field border on web.
+              minWidth: 0,
+              fontFamily: FMFonts.sans,
+              fontSize: inputSize,
+              color: t.ink,
+              paddingVertical: 0,
+              fontVariant: mono ? ["tabular-nums"] : undefined,
+            },
+          ]}
         />
         {suffix ? (
-          <Text style={{ fontFamily: FMFonts.sans, fontSize: 13, color: t.inkMuted, marginLeft: 6 }}>
+          <Text style={{ fontFamily: FMFonts.sans, fontSize: inputSize, color: t.inkSoft, marginLeft: 6 }}>
             {suffix}
           </Text>
         ) : null}
       </View>
-      {hint ? (
-        <Text style={[styles.hint, { color: t.inkMuted }]}>{hint}</Text>
+      {error || hint ? (
+        <Text style={[styles.hint, { color: error ? t.error : t.inkSoft }]}>{error ?? hint}</Text>
       ) : null}
     </View>
   );
@@ -67,26 +113,29 @@ export function Field({
 
 const styles = StyleSheet.create({
   wrap: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
   label: {
     fontFamily: FMFonts.sansMedium,
-    fontSize: 11,
-    marginBottom: 5,
-    letterSpacing: 0.2,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0.3,
+    marginBottom: 6,
   },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
+    minHeight: 48,
     paddingVertical: 10,
-    borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: FMRadius.xs,
     overflow: "hidden",
   },
   hint: {
     fontFamily: FMFonts.sans,
-    fontSize: 11,
+    fontSize: 12,
+    lineHeight: 16,
+    letterSpacing: 0.4,
     marginTop: 4,
+    paddingHorizontal: 16,
   },
 });

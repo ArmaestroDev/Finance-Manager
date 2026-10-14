@@ -1,62 +1,43 @@
 import React from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  ViewStyle,
-} from "react-native";
+import { Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMRadius } from "@/src/constants/theme";
+import { PressState, stateColor } from "./state";
 import { useFMTheme } from "./theme";
 
 interface PillProps {
   children: React.ReactNode;
+  /** Leading colour dot (categories). */
   color?: string;
   active?: boolean;
   size?: "sm" | "md";
   onPress?: () => void;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
-// Pill — for category chips, statuses, filters.
+// Compact tonal chip for categories, statuses and inline filters.
+// Unselected: surfaceContainerHigh fill (no outline); selected: secondaryContainer.
 export function Pill({ children, color, active = false, size = "sm", onPress, style }: PillProps) {
   const t = useFMTheme();
-  const px = size === "sm" ? 8 : 12;
-  const py = size === "sm" ? 3 : 5;
-  const fs = size === "sm" ? 11 : 12;
+  const h = size === "sm" ? 28 : 32;
+  const fs = size === "sm" ? 12 : 14;
+  const bg = active ? t.secondaryContainer : t.surfaceContainerHigh;
+  const fg = active ? t.onSecondaryContainer : t.onSurfaceVariant;
 
-  const content = (
+  const content = (s: PressState) => (
     <View
       style={[
         styles.pill,
-        {
-          paddingHorizontal: px,
-          paddingVertical: py,
-          backgroundColor: active ? t.ink : t.surface,
-          borderColor: active ? t.ink : t.lineStrong,
-        },
+        { height: h, paddingHorizontal: size === "sm" ? 10 : 12, backgroundColor: stateColor(bg, fg, s) },
         style,
       ]}
     >
       {color ? (
-        <View
-          style={{
-            width: 7,
-            height: 7,
-            borderRadius: 4,
-            backgroundColor: color,
-            marginRight: 6,
-          }}
-        />
+        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color, marginRight: 6 }} />
       ) : null}
       <Text
-        style={{
-          fontSize: fs,
-          fontFamily: FMFonts.sansMedium,
-          color: active ? t.bg : t.inkSoft,
-          lineHeight: fs * 1.1,
-        }}
+        style={{ fontSize: fs, fontFamily: FMFonts.sansMedium, color: fg, letterSpacing: 0.2 }}
+        numberOfLines={1}
       >
         {children}
       </Text>
@@ -65,20 +46,24 @@ export function Pill({ children, color, active = false, size = "sm", onPress, st
 
   if (onPress) {
     return (
-      <Pressable onPress={onPress} style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
-        {content}
+      <Pressable
+        onPress={onPress}
+        hitSlop={{ top: 8, bottom: 8 }}
+        accessibilityRole="button"
+        accessibilityState={{ selected: active }}
+      >
+        {(s) => content(s as PressState)}
       </Pressable>
     );
   }
-  return content;
+  return content({ pressed: false });
 }
 
 const styles = StyleSheet.create({
   pill: {
     flexDirection: "row",
     alignItems: "center",
-    borderRadius: 999,
-    borderWidth: 1,
+    borderRadius: FMRadius.sm,
     alignSelf: "flex-start",
   },
 });

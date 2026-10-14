@@ -5,7 +5,8 @@ import {
   txDayKey,
   uiRangeToIso,
 } from "@/src/shared/utils/series";
-import { getStableTxId, getTransactionAmount } from "@/src/features/transactions/utils/transactions";
+import { getStableTxId } from "@/src/features/transactions/utils/transactions";
+import { EMPTY_LINK_INDEX, statAmountFor, type LinkIndex } from "@/src/features/transactions/utils/links";
 
 interface CategoryLike {
   id: string;
@@ -33,13 +34,16 @@ export function buildFlowSeries(
   categories: CategoryLike[],
   fromUi?: string,
   toUi?: string,
+  linkIndex: LinkIndex = EMPTY_LINK_INDEX,
 ): FlowSeries {
-  // Pre-filter to the transactions that count toward the cards' totals.
+  // Pre-filter to the transactions that count toward the cards' totals
+  // (linked children excluded, reimbursed expenses at their net share).
   const included: { day: string; amount: number }[] = [];
   for (const tx of allTransactions) {
-    const amount = getTransactionAmount(tx);
-    if (isNaN(amount)) continue;
-    const catId = transactionCategoryMap[getStableTxId(tx)];
+    const txId = getStableTxId(tx);
+    const amount = statAmountFor(tx, linkIndex, txId);
+    if (amount === null || isNaN(amount) || amount === 0) continue;
+    const catId = transactionCategoryMap[txId];
     const cat = catId ? categories.find((c) => c.id === catId) : null;
     if (!catId || !cat || cat.system === "ignore") continue;
     const day = txDayKey(tx);

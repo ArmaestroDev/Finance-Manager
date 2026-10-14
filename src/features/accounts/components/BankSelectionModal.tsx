@@ -1,10 +1,21 @@
 import React from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  TextInput,
+  TextStyle,
+  View,
+} from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMRadius, FMType } from "@/src/constants/theme";
 import { Sheet } from "@/src/shared/components/Sheet";
-import { Button, IconChevR, IconSearch, useFMTheme } from "@/src/shared/design";
+import { useSettings } from "@/src/shared/context/SettingsContext";
+import { Avatar, EmptyState, IconBank, IconSearch, ListItem, useFMTheme } from "@/src/shared/design";
 import type { ASPSP } from "../hooks/useBankConnections";
+
+// The search bar draws its own container; drop the browser focus ring.
+const NO_WEB_OUTLINE = { outlineStyle: "none" } as unknown as TextStyle;
 
 interface BankSelectionModalProps {
   visible: boolean;
@@ -14,12 +25,10 @@ interface BankSelectionModalProps {
   searchQuery: string;
   onSearch: (text: string) => void;
   onSelectBank: (bank: ASPSP) => void;
-  textColor?: string;
-  backgroundColor?: string;
-  tintColor?: string;
-  i18n: any;
 }
 
+// Bank picker (dialog on desktop, bottom sheet on mobile): M3 search bar,
+// scrollable bank list, loading spinner and an empty state.
 export function BankSelectionModal({
   visible,
   onClose,
@@ -28,75 +37,51 @@ export function BankSelectionModal({
   searchQuery,
   onSearch,
   onSelectBank,
-  i18n,
 }: BankSelectionModalProps) {
   const t = useFMTheme();
+  const { i18n } = useSettings();
   return (
-    <Sheet
-      visible={visible}
-      onClose={onClose}
-      title={i18n.select_bank_title ?? "Select your bank"}
-      subtitle="300+ German & EU institutions"
-      width={520}
-      actions={<Button variant="ghost" onPress={onClose}>{i18n.cancel ?? "Close"}</Button>}
-    >
-      <View style={[styles.search, { backgroundColor: t.surface, borderColor: t.lineStrong }]}>
-        <IconSearch size={13} color={t.inkSoft} />
+    <Sheet visible={visible} onClose={onClose} title={i18n.select_bank_title}>
+      <View style={[styles.search, { backgroundColor: t.surfaceContainerHigh }]}>
+        <IconSearch size={18} color={t.onSurfaceVariant} />
         <TextInput
           value={searchQuery}
           onChangeText={onSearch}
-          placeholder={i18n.search_bank_placeholder ?? "Search a bank…"}
-          placeholderTextColor={t.inkMuted}
-          style={{
-            flex: 1,
-            marginLeft: 8,
-            fontFamily: FMFonts.sansMedium,
-            fontSize: 13,
-            color: t.ink,
-          }}
+          placeholder={i18n.search_bank_placeholder}
+          placeholderTextColor={t.onSurfaceVariant}
+          accessibilityLabel={i18n.search_bank_placeholder}
+          selectionColor={t.primary}
+          autoFocus
+          style={[NO_WEB_OUTLINE, styles.searchInput, { color: t.ink }]}
         />
       </View>
 
       {loadingBanks ? (
-        <View style={{ paddingVertical: 28, alignItems: "center" }}>
-          <ActivityIndicator size="small" color={t.accent} />
-          <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 8 }}>
-            Loading banks…
-          </Text>
+        <View style={styles.loading}>
+          <ActivityIndicator size="large" color={t.primary} />
         </View>
       ) : (
         <FlatList
           data={filteredBanks}
           keyExtractor={(item, i) => `${item.name}-${i}`}
-          style={{ maxHeight: 420 }}
-          ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: t.line }} />}
+          style={[styles.list, { marginHorizontal: -24 }]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
-            <Pressable
+            <ListItem
               onPress={() => onSelectBank(item)}
-              style={({ pressed }) => [styles.row, { opacity: pressed ? 0.85 : 1 }]}
-            >
-              <View style={[styles.avatar, { backgroundColor: t.surfaceAlt, borderColor: t.line }]}>
-                <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: t.inkSoft }}>
-                  {item.name.charAt(0).toUpperCase()}
-                </Text>
-              </View>
-              <View style={{ flex: 1, marginLeft: 12, minWidth: 0 }}>
-                <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink }} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                {(item as any).country ? (
-                  <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkMuted, marginTop: 2 }}>
-                    {(item as any).country}
-                  </Text>
-                ) : null}
-              </View>
-              <IconChevR size={11} color={t.inkMuted} />
-            </Pressable>
+              accessibilityLabel={item.name}
+              leading={<Avatar icon={<IconBank size={18} />} />}
+              title={item.name}
+              subtitle={item.country || undefined}
+              style={{ paddingHorizontal: 24 }}
+            />
           )}
           ListEmptyComponent={
-            <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkMuted, textAlign: "center", padding: 24 }}>
-              No banks match your search.
-            </Text>
+            <EmptyState
+              icon={<IconSearch />}
+              title={searchQuery.trim() ? i18n.bank_none_match : i18n.bank_none_found}
+            />
           }
         />
       )}
@@ -108,23 +93,19 @@ const styles = StyleSheet.create({
   search: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderWidth: 1,
-    borderRadius: 8,
-    marginBottom: 12,
+    height: 48,
+    paddingHorizontal: 16,
+    borderRadius: FMRadius.full,
+    marginBottom: 8,
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    marginLeft: 12,
+    fontFamily: FMFonts.sans,
+    fontSize: FMType.subhead,
+    paddingVertical: 0,
   },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 7,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-  },
+  loading: { paddingVertical: 40, alignItems: "center" },
+  list: { maxHeight: 440 },
 });

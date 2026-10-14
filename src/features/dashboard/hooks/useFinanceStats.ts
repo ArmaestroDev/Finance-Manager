@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import type { UnifiedAccount } from "../../accounts/context/AccountsContext";
 import type { TransactionCategory } from "../../transactions/context/CategoriesContext";
 import type { Transaction } from "../../../services/enableBanking";
-import { getStableTxId, getTransactionAmount } from "../../transactions/utils/transactions";
+import { getStableTxId } from "../../transactions/utils/transactions";
+import { EMPTY_LINK_INDEX, statAmountFor, type LinkIndex } from "../../transactions/utils/links";
 import { toApiDate } from "../../../shared/utils/date";
 
 export interface CategoryBreakdownItem {
@@ -30,32 +31,27 @@ export interface MonthlyBucket {
 interface UseFinanceStatsArgs {
   allTransactions: Transaction[];
   accounts: UnifiedAccount[];
-  cashBalance: number;
   categories: TransactionCategory[];
   transactionCategoryMap: Record<string, string>;
   filterDateFrom?: string;
   filterDateTo?: string;
+  /** Resolved transaction links (TransactionLinksContext.linkIndex). */
+  linkIndex?: LinkIndex;
 }
 
 export function useFinanceStats({
   allTransactions,
   accounts,
-  cashBalance,
   categories,
   transactionCategoryMap,
   filterDateFrom,
   filterDateTo,
+  linkIndex = EMPTY_LINK_INDEX,
 }: UseFinanceStatsArgs) {
   // ── Compute totals ──
   const { totalAssets, totalLiabilities } = useMemo(() => {
     let assets = 0;
     let liabilities = 0;
-
-    if (cashBalance >= 0) {
-      assets += cashBalance;
-    } else {
-      liabilities += Math.abs(cashBalance);
-    }
 
     accounts.forEach((acc) => {
       const balance = acc.balance || 0;
@@ -67,7 +63,7 @@ export function useFinanceStats({
     });
 
     return { totalAssets: assets, totalLiabilities: liabilities };
-  }, [accounts, cashBalance]);
+  }, [accounts]);
 
   // ── Compute category breakdown + per-month buckets ──
   const { totalIncome, totalExpenses, categoryBreakdown, pieData, monthlyBuckets } =
@@ -104,13 +100,17 @@ export function useFinanceStats({
         monthData[k] = { income: 0, expenses: 0, cats: {} };
       });
 
-      allTransactions.forEach((tx) => {
-        const amount = getTransactionAmount(tx);
-        if (isNaN(amount)) return;
+      const catById = new Map(categories.map((c) => [c.id, c]));
 
+      allTransactions.forEach((tx) => {
         const txId = getStableTxId(tx);
+        // Linked children don't count; reimbursed expenses count with the
+        // user's net share (utils/links.ts, DECISIONS.md §1.8).
+        const amount = statAmountFor(tx, linkIndex, txId);
+        if (amount === null || isNaN(amount)) return;
+
         const catId = transactionCategoryMap[txId];
-        const cat = categories.find((c) => c.id === catId);
+        const cat = catId ? catById.get(catId) : undefined;
 
         // Explicitly exclude uncategorized transactions from stats
         if (!catId || !cat) return;
@@ -187,7 +187,7 @@ export function useFinanceStats({
         pieData: pie,
         monthlyBuckets: buckets,
       };
-    }, [allTransactions, transactionCategoryMap, categories, filterDateFrom, filterDateTo]);
+    }, [allTransactions, transactionCategoryMap, categories, filterDateFrom, filterDateTo, linkIndex]);
 
   return {
     totalAssets,

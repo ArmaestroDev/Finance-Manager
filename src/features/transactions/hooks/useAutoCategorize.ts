@@ -1,85 +1,88 @@
-import { useState } from "react";
-import { Alert, Platform } from "react-native";
+import { useRouter } from "expo-router";
+import { useMemo, useState } from "react";
 import type { Transaction } from "../../../services/enableBanking";
-import { getStableTxId, getTransactionAmount } from "../utils/transactions";
-import { cleanRemittanceInfo } from "../../../shared/utils/financeHelpers";
-import { SYSTEM_IGNORE_ID } from "../context/CategoriesContext";
-import { callAiProvider, type AiProvider } from "../utils/aiProviders";
+import { useSettings } from "../../../shared/context/SettingsContext";
+import { showAlert } from "../../../shared/utils/alert";
+import { getStableTxId } from "../utils/transactions";
+import { SYSTEM_IGNORE_ID, useCategories, type TransactionCategory } from "../context/CategoriesContext";
+import { useAccounts } from "../../accounts/context/AccountsContext";
+import { useTransactionLinks } from "../context/TransactionLinksContext";
+import {
+  aiApiKeyFor,
+  aiBatchSize,
+  callAiProvider,
+  OllamaModelMissingError,
+  OllamaUnreachableError,
+} from "../utils/aiProviders";
+import { BrowserAiNotReadyError } from "../utils/browserAi";
+import {
+  buildCategorizePrompt,
+  buildCategorizeSchema,
+  extractJson,
+  resolveAiAssignments,
+  toPromptTx,
+} from "../utils/aiCategorize";
+import { buildOwnIdentity, selfTransferReason } from "../utils/selfTransfer";
 
-interface TransactionCategory {
-  id: string;
-  name: string;
-  color: string;
-  system?: "ignore";
+export interface CategorizeProgress {
+  /** Transactions sent to the AI so far (finished batches). */
+  done: number;
+  total: number;
 }
 
 interface UseAutoCategorizeParams {
   transactions: Transaction[];
-  categories: TransactionCategory[];
-  aiProvider: AiProvider;
-  geminiApiKey: string | null;
-  claudeApiKey: string | null;
-  language: string;
-  getCategoryForTransaction: (txId: string) => TransactionCategory | null;
-  assignCategory: (txId: string, categoryId: string | null) => void;
-  bulkAssignCategories: (assignments: Record<string, string>) => Promise<void>;
-  bulkAddCategories: (cats: { name: string; color: string }[]) => Promise<TransactionCategory[]>;
+  /** Palette new AI-created categories are coloured from. */
   categoryColors: string[];
   setLoading: (loading: boolean) => void;
-  router: any;
-  i18n: Record<string, string>;
   onFinish?: () => void;
 }
 
 export function useAutoCategorize({
   transactions,
-  categories,
-  aiProvider,
-  geminiApiKey,
-  claudeApiKey,
-  language,
-  getCategoryForTransaction,
-  assignCategory,
-  bulkAssignCategories,
-  bulkAddCategories,
   categoryColors,
   setLoading,
-  router,
-  i18n,
   onFinish,
 }: UseAutoCategorizeParams) {
+  const router = useRouter();
+  const { aiConfig, language, i18n } = useSettings();
+  const { categories, getCategoryForTransaction, bulkAssignCategories, bulkAddCategories } =
+    useCategories();
+  const { accounts } = useAccounts();
+  const { linkIndex } = useTransactionLinks();
   const [isCategorizing, setIsCategorizing] = useState(false);
+  const [progress, setProgress] = useState<CategorizeProgress | null>(null);
+  // The user's own IBANs / holder names / account names, for the self-transfer
+  // pre-pass and the prompt.
+  const own = useMemo(() => buildOwnIdentity(accounts), [accounts]);
 
   const autoCategorizeTransactions = async (reCategorizeAll: boolean = false) => {
-    const activeApiKey = aiProvider === "claude" ? claudeApiKey : geminiApiKey;
-    const providerLabel = aiProvider === "claude" ? "Claude" : "Gemini";
-    if (!activeApiKey) {
-      const title = i18n.ai_api_key_missing_title || "API Key Missing";
-      const template =
-        i18n.ai_api_key_missing_msg ||
-        "Please set your {provider} API Key in Settings first.";
-      const msg = template.replace("{provider}", providerLabel);
-      if (Platform.OS === "web") {
-        alert(msg);
-      } else {
-        Alert.alert(title, msg, [
+    const providerLabel = aiConfig.provider === "claude" ? "Claude" : "Gemini";
+    if (aiApiKeyFor(aiConfig) === null) {
+      showAlert(
+        i18n.ai_api_key_missing_title,
+        i18n.ai_api_key_missing_msg.replace("{provider}", providerLabel),
+        [
           { text: i18n.cancel, style: "cancel" },
-          { text: "Settings", onPress: () => router.push("/settings") },
-        ]);
-      }
+          { text: i18n.settings_title, onPress: () => router.push("/settings") },
+        ],
+      );
       onFinish?.();
       return;
     }
 
-    // Identify uncategorized transactions
+    // Identify uncategorized transactions. Linked children (reimbursements,
+    // "pay from account" payments) keep their Ignore category even on a full
+    // re-categorization — see DECISIONS.md §1.8.
     const uncategorized = transactions.filter((tx) => {
       const txId = getStableTxId(tx);
+      if (linkIndex.childToParent.has(txId)) return false;
       if (!reCategorizeAll && getCategoryForTransaction(txId)) return false;
       return true;
     });
 
     if (uncategorized.length === 0) {
-      Alert.alert("All Done", "All transactions are already categorized!");
+      showAlert(i18n.ai_all_done_title, i18n.ai_all_categorized);
       onFinish?.();
       return;
     }
@@ -87,14 +90,13 @@ export function useAutoCategorize({
     setLoading(true);
     setIsCategorizing(true);
 
-    // Deterministic same-name short-circuit: classify obvious self-transfers
-    // (creditor name === debtor name) as system Ignore before invoking the AI.
+    // Deterministic pre-pass: obvious self-transfers (own IBAN, same name on
+    // both sides, the account holder as counterparty, "Umbuchung"/"Übertrag")
+    // go to system Ignore before invoking the AI.
     const selfTransferAssignments: Record<string, string> = {};
     const remaining: Transaction[] = [];
     for (const tx of uncategorized) {
-      const cN = tx.creditor?.name?.trim().toLowerCase() ?? "";
-      const dN = tx.debtor?.name?.trim().toLowerCase() ?? "";
-      if (cN && dN && cN === dN) {
+      if (selfTransferReason(tx, own)) {
         selfTransferAssignments[getStableTxId(tx)] = SYSTEM_IGNORE_ID;
       } else {
         remaining.push(tx);
@@ -107,9 +109,10 @@ export function useAutoCategorize({
     }
 
     if (remaining.length === 0) {
-      const msg = `Categorized ${selfTransferCount} transactions (all self-transfers).`;
-      if (Platform.OS === "web") alert(msg);
-      else Alert.alert("Success", msg);
+      showAlert(
+        i18n.success_title,
+        i18n.ai_done_all_self.replace("{count}", String(selfTransferCount)),
+      );
       setLoading(false);
       setIsCategorizing(false);
       onFinish?.();
@@ -117,214 +120,129 @@ export function useAutoCategorize({
     }
 
     try {
-      const txList = remaining.map((tx) => {
-        const remittanceFull = tx.remittance_information?.join(" ") || "";
-        const cleanRef = cleanRemittanceInfo(tx.remittance_information) || "";
+      const txList = remaining.map(toPromptTx);
 
-        return {
-          id: getStableTxId(tx),
-          creditor: tx.creditor?.name || "Unknown",
-          debtor: tx.debtor?.name || "Unknown",
-          amount: getTransactionAmount(tx),
-          reference: cleanRef,
-          raw_reference:
-            remittanceFull !== cleanRef ? remittanceFull : undefined,
-          date: tx.booking_date,
-        };
-      });
-
-      // Limit batch size to avoid token limits (e.g. 50 txs)
-      const batchSize = 50;
-      const batches = [];
+      // Smaller batches for local models (context window, visible progress).
+      const batchSize = aiBatchSize(aiConfig.provider);
+      const batches: (typeof txList)[] = [];
       for (let i = 0; i < txList.length; i += batchSize) {
         batches.push(txList.slice(i, i + batchSize));
       }
+      let sent = 0;
+      setProgress({ done: 0, total: txList.length });
 
       let categorizedCount = selfTransferCount;
+      let parseFailures = 0;
+      // Grows as categories are created so every batch sees them.
+      let knownCategories: TransactionCategory[] = [...categories];
 
       for (const batch of batches) {
-        const categoryList = categories.map((c) => ({ id: c.id, name: c.name }));
-        const prompt = `
-You are an intelligent financial assistant.
-Your goal is to categorize bank transactions into one of the provided categories.
-
-Here are the available transaction categories:
-${JSON.stringify(categoryList)}
-
-Here is a list of uncategorized transactions:
-${JSON.stringify(batch)}
-
-INSTRUCTIONS:
-1. Analyze each transaction (creditor, debtor, amount, reference).
-2. Assign the MOST APPROPRIATE category ID from the available list.
-3. If a transaction clearly fits a category (e.g., "Rewe" -> Groceries, "Shell" -> Gas), ASSIGN IT.
-4. CRITICAL RULE FOR INCOME VS EXPENSE:
-   - Note the "amount" field we provided. If the amount has a MINUS sign (-) before it (e.g. -45.00), it is an EXPENSE. You MUST assign it to an expense category. You MUST NOT assign it to the Income category.
-   - If the amount is POSITIVE (no minus sign, e.g. 100.00), it is INCOME. You MUST assign it to the category representing Income (e.g., "Einkommen", "Income"). Do NOT assign it to anything else.
-4a. SELF-TRANSFERS AND INVESTMENT BUYS MUST BE IGNORED.
-   - If a transaction is BETWEEN ACCOUNTS OWNED BY THE USER (creditor name and debtor name match the user, or are both empty with a clear "self-transfer" reference), assign the category id "${SYSTEM_IGNORE_ID}".
-   - If a transaction is a PURCHASE OF INVESTMENTS / ETFs / STOCKS (creditor is a broker like "Trade Republic", "Scalable", "Comdirect Depot", "DEGIRO", "IBKR", or the remittance includes an ISIN reference like "DE000..." or "US..."), assign "${SYSTEM_IGNORE_ID}".
-   - These transactions net out and double-count net worth — do NOT split them between Income and Expense.
-5. If NO existing category fits, BUT you are confident it belongs to a common category, you may suggest a NEW category name.
-IMPORTANT: Aim for a COMPACT list of categories. Do not create granular categories like "Coffee" or "Gym"; instead consolidate into "Lifestyle" or "Leisure". Ideally, keep the TOTAL number of categories around 6-7 if possible. Prefer broader categories like "Shopping", "Mobility", "Living", "Lifestyle".
-6. If a transaction is ambiguous or absolutely does not fit any category (existing or new), assign null.
-7. Return a STRICT valid JSON object where keys are transaction IDs and values are either:
-   - An existing category ID (string starting with "cat_")
-   - A NEW category name (string, human readable, e.g. "Gym"). IMPORTANT: The new category name MUST be in the language "${language === "de" ? "German (Deutsch)" : "English"}".
-   - null
-
-Example output format:
-{
-  "tx_123": "cat_456",
-  "tx_789": "New Category Name",
-  "tx_000": null
-}
-`;
+        const categoryList = knownCategories.map((c) => ({ id: c.id, name: c.name }));
+        const prompt = buildCategorizePrompt({
+          categories: categoryList,
+          transactions: batch,
+          language,
+          own: { holderNames: own.holderNamesRaw, accountNames: own.accountNames },
+        });
 
         const resultText = await callAiProvider({
-          provider: aiProvider,
-          apiKey: activeApiKey,
+          config: aiConfig,
           prompt,
+          schema: buildCategorizeSchema(batch.map((b) => b.id)),
         });
+        sent += batch.length;
+        setProgress({ done: sent, total: txList.length });
         if (!resultText) continue;
 
         try {
-          const cleaned = resultText
-            .replace(/```json/g, "")
-            .replace(/```/g, "")
-            .trim();
-
-          const assignments = JSON.parse(cleaned) as Record<string, unknown>;
-
-          const validAssignments: Record<string, string> = {};
-          const newCategoriesSet = new Set<string>();
-
-          const isIncomeName = (name: string) =>
-            name.toLowerCase() === "einkommen" || name.toLowerCase() === "income";
-
-          for (const [txId, value] of Object.entries(assignments)) {
-            if (typeof value !== "string") continue;
-            const tx = transactions.find((t) => getStableTxId(t) === txId);
-            if (!tx) continue;
-
-            const amount = getTransactionAmount(tx);
-            const isNeg = amount < 0;
-            const existingCat = categories.find((c) => c.id === value);
-
-            if (existingCat) {
-              if (existingCat.system === "ignore") {
-                validAssignments[txId] = existingCat.id;
-                continue;
-              }
-              const isCatIncome = isIncomeName(existingCat.name);
-              if (!isNeg && !isCatIncome) {
-                const incCat = categories.find((c) => isIncomeName(c.name));
-                if (incCat) validAssignments[txId] = incCat.id;
-              } else if (isNeg && isCatIncome) {
-                // skip
-              } else {
-                validAssignments[txId] = existingCat.id;
-              }
-            } else {
-              const normalizedName = value.trim();
-              const isCatIncome = isIncomeName(normalizedName);
-
-              if (!isNeg && !isCatIncome) {
-                const incCat = categories.find((c) => isIncomeName(c.name));
-                if (incCat) {
-                  validAssignments[txId] = incCat.id;
-                } else {
-                  newCategoriesSet.add("Einkommen");
-                }
-              } else if (isNeg && isCatIncome) {
-                // skip
-              } else {
-                const existingByName = categories.find(
-                  (c) => c.name.toLowerCase() === normalizedName.toLowerCase(),
-                );
-                if (existingByName) {
-                  validAssignments[txId] = existingByName.id;
-                } else {
-                  newCategoriesSet.add(normalizedName);
-                }
-              }
-            }
+          const parsed = extractJson(resultText);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            throw new SyntaxError("Expected a JSON object");
           }
 
-          const newCategoriesToCreate = Array.from(newCategoriesSet);
+          const amountsById = new Map(
+            batch.map((b) => [b.id, b.amount] as [string, number]),
+          );
+          const { assignments, pendingByName, newCategoryNames } =
+            resolveAiAssignments(
+              parsed as Record<string, unknown>,
+              amountsById,
+              knownCategories,
+              language,
+            );
 
-          if (newCategoriesToCreate.length > 0) {
-            const existingColors = new Set(categories.map((c) => c.color));
+          if (newCategoryNames.length > 0) {
+            const existingColors = new Set(knownCategories.map((c) => c.color));
             let availableColors = categoryColors.filter((c) => !existingColors.has(c));
             if (availableColors.length === 0) availableColors = [...categoryColors];
 
-            const newCatsInput = newCategoriesToCreate.map((name, index) => ({
-              name,
-              color: availableColors[index % availableColors.length],
-            }));
+            const createdCats = await bulkAddCategories(
+              newCategoryNames.map((name, index) => ({
+                name,
+                color: availableColors[index % availableColors.length],
+              })),
+            );
+            // Later batches must see these, otherwise the AI (and the name
+            // matching) creates the same category again per batch.
+            knownCategories = [...knownCategories, ...createdCats];
 
-            const createdCats = await bulkAddCategories(newCatsInput);
-
-            for (const [txId, value] of Object.entries(assignments)) {
-              if (typeof value !== "string") continue;
-              const normalizedName = value.trim();
+            for (const [txId, name] of Object.entries(pendingByName)) {
               const createdCat = createdCats.find(
-                (c) => c.name.toLowerCase() === normalizedName.toLowerCase(),
+                (c) => c.name.toLowerCase() === name.toLowerCase(),
               );
-              if (createdCat && !validAssignments[txId]) {
-                validAssignments[txId] = createdCat.id;
+              if (createdCat && !assignments[txId]) {
+                assignments[txId] = createdCat.id;
               }
             }
           }
 
-          categorizedCount += Object.keys(validAssignments).length;
+          categorizedCount += Object.keys(assignments).length;
 
-          if (Object.keys(validAssignments).length > 0) {
-            await bulkAssignCategories(validAssignments);
+          if (Object.keys(assignments).length > 0) {
+            await bulkAssignCategories(assignments);
           }
         } catch (parseError) {
-          console.error("Failed to parse AI response:", resultText);
+          console.error("Failed to parse AI response:", parseError, resultText);
+          parseFailures++;
         }
       }
 
-      const successMsg =
-        selfTransferCount > 0
-          ? `Categorized ${categorizedCount} transactions (${selfTransferCount} self-transfers).`
-          : `Categorized ${categorizedCount} transactions.`;
-      if (Platform.OS === "web") {
-        alert(successMsg);
-      } else {
-        Alert.alert("Success", successMsg);
+      let successMsg = (selfTransferCount > 0 ? i18n.ai_done_with_self : i18n.ai_done)
+        .replace("{count}", String(categorizedCount))
+        .replace("{self}", String(selfTransferCount));
+      if (parseFailures > 0) {
+        successMsg +=
+          " " +
+          i18n.ai_batches_skipped
+            .replace("{failed}", String(parseFailures))
+            .replace("{total}", String(batches.length));
       }
-    } catch (err: any) {
+      showAlert(i18n.success_title, successMsg);
+    } catch (err) {
       console.error("Auto-categorization failed", err);
-      let msg = err.message || "Unknown error";
-      let title = "Auto-categorization Issue";
-
-      const isOverloaded =
-        (typeof msg === "string" && (
-          msg.includes("503") ||
-          msg.includes("overloaded") ||
-          msg.includes("high demand") ||
-          msg.includes("temporary")
-        ));
-
+      const raw =
+        err instanceof OllamaUnreachableError
+          ? i18n.ai_ollama_unreachable
+          : err instanceof OllamaModelMissingError
+            ? i18n.ai_ollama_model_missing.replace(/\{model\}/g, err.model)
+            : err instanceof BrowserAiNotReadyError
+              ? i18n.ai_browser_not_ready
+              : err instanceof Error && err.message
+              ? err.message
+              : i18n.error_unknown;
+      const isOverloaded = /503|overloaded|high demand|temporary/.test(raw);
       if (isOverloaded) {
-        title = i18n.ai_overload_title || "Service Busy";
-        msg = i18n.ai_overload_msg || "The categorization service is currently experiencing high demand. Please try again in a moment.";
-      }
-
-      if (Platform.OS === "web") {
-        alert(`${title}: ${msg}`);
+        showAlert(i18n.ai_overload_title, i18n.ai_overload_msg);
       } else {
-        Alert.alert(title, msg);
+        showAlert(i18n.ai_categorize_error_title, raw);
       }
     } finally {
       setLoading(false);
       setIsCategorizing(false);
+      setProgress(null);
       onFinish?.();
     }
   };
 
-  return { autoCategorizeTransactions, isCategorizing };
+  return { autoCategorizeTransactions, isCategorizing, progress };
 }

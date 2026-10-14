@@ -1,5 +1,5 @@
-import { useRouter } from "expo-router";
-import React, { useMemo } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,30 +8,43 @@ import {
   View,
 } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMRadius, FMType } from "@/src/constants/theme";
 import { DesktopShell } from "@/src/shared/components/DesktopShell";
 import {
+  Avatar,
   Balance,
   Button,
-  IconChevD,
+  Card,
+  EmptyState,
+  IconBank,
   IconEdit,
   IconPlus,
   Label,
+  PressState,
+  SectionTitle,
   Spark,
   formatEUR,
   splitForHero,
+  stateColor,
   useFMTheme,
 } from "@/src/shared/design";
+import type { Strings } from "@/src/constants/Strings";
 import type { UnifiedAccount } from "../../context/AccountsContext";
 import { useAccountsScreen } from "../../hooks/useAccountsScreen";
 import { useTransactionsContext } from "@/src/features/transactions/context/TransactionsContext";
 import { useDateFilter } from "@/src/shared/context/DateFilterContext";
 import { buildAccountBalanceSeries, type BalanceSeries } from "../../utils/balanceSeries";
-import { CashModal } from "./CashModal";
-import { AddAccountModal } from "./AddAccountModal";
+import { CashModal } from "../CashModal";
+import { AddAccountModal } from "../AddAccountModal";
+import {
+  ACCOUNT_CATEGORIES,
+  accountBankLabel,
+  accountCategoryLabel,
+  accountCountLabel,
+  accountDisplayName,
+} from "../../utils/accountDisplay";
 
-type Cat = "Giro" | "Savings" | "Stock";
-const CATS: readonly Cat[] = ["Giro", "Savings", "Stock"];
+type I18n = typeof Strings.de;
 
 export function AccountsScreen() {
   const t = useFMTheme();
@@ -41,7 +54,6 @@ export function AccountsScreen() {
     accounts,
     cashBalance,
     initialLoading,
-    isRefreshing,
     refreshAccounts,
     isBalanceHidden,
     i18n,
@@ -63,6 +75,17 @@ export function AccountsScreen() {
     totalBankBalance,
     totalNetWorth,
   } = useAccountsScreen();
+
+  // Quick-add deep links: /accounts?qa=manual|cash opens the matching modal
+  // once, then clears the param so a back-navigation doesn't reopen it.
+  const { qa } = useLocalSearchParams<{ qa?: string }>();
+  useEffect(() => {
+    if (!qa) return;
+    if (qa === "manual") setAddAccountModalVisible(true);
+    else if (qa === "cash") openCashModal();
+    router.setParams({ qa: undefined } as never);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qa]);
 
   const { transactionsByAccount } = useTransactionsContext();
   const { filterDateFrom, filterDateTo } = useDateFilter();
@@ -88,107 +111,84 @@ export function AccountsScreen() {
 
   const sectioned = useMemo(
     () =>
-      CATS.map((cat) => ({
+      ACCOUNT_CATEGORIES.map((cat) => ({
         cat,
         accounts: accounts.filter((a) => a.category === cat),
       })).filter((s) => s.accounts.length > 0),
     [accounts],
   );
 
-  const banksCount = useMemo(() => {
-    const set = new Set<string>();
-    accounts.forEach((a) => {
-      if (a.bankName) set.add(a.bankName);
-    });
-    return set.size;
-  }, [accounts]);
-
   if (initialLoading && accounts.length === 0) {
     return (
-      <DesktopShell>
-        <View style={[styles.center, { backgroundColor: t.bg }]}>
-          <ActivityIndicator size="large" color={t.accent} />
+      <DesktopShell title={i18n.accounts_title}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={t.primary} />
         </View>
       </DesktopShell>
     );
   }
 
-  return (
-    <DesktopShell onRefresh={() => refreshAccounts(true)}>
-      <View style={[styles.page, { backgroundColor: t.bg }]}>
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={[styles.pageTitle, { color: t.ink }]}>{i18n.accounts_title}</Text>
-            <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 4 }}>
-              {accounts.length} accounts across {banksCount || 0} banks
-            </Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            <Button
-              variant="secondary"
-              icon={<IconEdit size={12} color={t.ink} />}
-              onPress={openCashModal}
-            >
-              Edit cash
-            </Button>
-            <Button
-              variant="primary"
-              icon={<IconPlus size={12} color={t.bg} />}
-              onPress={() => setAddAccountModalVisible(true)}
-            >
-              {i18n.add_manual_account}
-            </Button>
-          </View>
-        </View>
+  const addAccount = () => setAddAccountModalVisible(true);
 
-        {/* Stats grid */}
+  return (
+    <DesktopShell
+      title={i18n.accounts_title}
+      onRefresh={() => refreshAccounts(true)}
+      actions={
+        <>
+          <Button variant="outlined" icon={<IconEdit size={16} />} onPress={openCashModal}>
+            {i18n.acct_edit_cash}
+          </Button>
+          <Button icon={<IconPlus size={16} />} onPress={addAccount}>
+            {i18n.add_manual_account}
+          </Button>
+        </>
+      }
+    >
+      <View style={styles.page}>
         <View style={styles.statsGrid}>
+          <StatCard label={i18n.net_worth} value={totalNetWorth} masked={masked} highlight />
+          <StatCard label={i18n.acct_bank_stat} value={totalBankBalance} masked={masked} />
           <StatCard
-            label={i18n.net_worth}
-            value={totalNetWorth}
+            label={i18n.cash_at_hand}
+            value={cashBalance}
             masked={masked}
-            inverted
+            onEdit={openCashModal}
+            editLabel={i18n.acct_edit_cash}
           />
-          <StatCard label="Bank" value={totalBankBalance} masked={masked} />
-          <StatCard label={i18n.cash_at_hand} value={cashBalance} masked={masked} editable onEdit={openCashModal} />
           <StatCard label={i18n.total_liabilities} value={totalLiabilities} masked={masked} />
         </View>
 
-        {/* Sectioned tables */}
         {sectioned.length === 0 ? (
-          <View style={[styles.empty, { borderColor: t.lineStrong }]}>
-            <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 14, color: t.ink }}>
-              {i18n.no_accounts}
-            </Text>
-            <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 4 }}>
-              {i18n.no_accounts_hint}
-            </Text>
-            <View style={{ marginTop: 14 }}>
-              <Button variant="primary" icon={<IconPlus size={12} color={t.bg} />} onPress={() => setAddAccountModalVisible(true)}>
-                {i18n.add_manual_account}
-              </Button>
-            </View>
-          </View>
+          <Card>
+            <EmptyState
+              icon={<IconBank />}
+              title={i18n.no_accounts}
+              body={i18n.no_accounts_hint}
+              action={
+                <Button icon={<IconPlus size={16} />} onPress={addAccount}>
+                  {i18n.add_manual_account}
+                </Button>
+              }
+            />
+          </Card>
         ) : (
-          <View style={{ gap: 14 }}>
-            {sectioned.map((sec) => (
-              <SectionTable
-                key={sec.cat}
-                cat={sec.cat}
-                label={labelFor(sec.cat, i18n)}
-                accounts={sec.accounts}
-                masked={masked}
-                seriesByAccount={seriesByAccount}
-                onPressAccount={(a) =>
-                  router.push({
-                    pathname: "/account/[id]",
-                    params: { id: a.id, name: a.name, type: a.type },
-                  })
-                }
-              />
-            ))}
-          </View>
+          sectioned.map((sec) => (
+            <SectionTable
+              key={sec.cat}
+              label={accountCategoryLabel(sec.cat, i18n)}
+              i18n={i18n}
+              accounts={sec.accounts}
+              masked={masked}
+              seriesByAccount={seriesByAccount}
+              onPressAccount={(a) =>
+                router.push({
+                  pathname: "/account/[id]",
+                  params: { id: a.id, name: a.name, type: a.type },
+                })
+              }
+            />
+          ))
         )}
       </View>
 
@@ -198,10 +198,6 @@ export function AccountsScreen() {
         onChangeText={setTempCashValue}
         onSave={handleSaveCash}
         onClose={() => setCashModalVisible(false)}
-        textColor={t.ink}
-        backgroundColor={t.bg}
-        tintColor={t.accent}
-        i18n={i18n}
       />
       <AddAccountModal
         visible={isAddAccountModalVisible}
@@ -213,10 +209,6 @@ export function AccountsScreen() {
         setBalance={setNewAccountBalance}
         category={newAccountCategory}
         setCategory={setNewAccountCategory}
-        textColor={t.ink}
-        backgroundColor={t.bg}
-        tintColor={t.accent}
-        i18n={i18n}
       />
     </DesktopShell>
   );
@@ -226,63 +218,45 @@ interface StatCardProps {
   label: string;
   value: number;
   masked: boolean;
-  inverted?: boolean;
-  editable?: boolean;
+  /** Emphasised (primaryContainer) card — the headline figure. */
+  highlight?: boolean;
   onEdit?: () => void;
+  editLabel?: string;
 }
 
-function StatCard({ label, value, masked, inverted, editable, onEdit }: StatCardProps) {
+function StatCard({ label, value, masked, highlight, onEdit, editLabel }: StatCardProps) {
   const t = useFMTheme();
-  const bg = inverted ? t.ink : t.surface;
-  const fg = inverted ? t.bg : t.ink;
-  const labelColor = inverted ? t.bg : t.inkMuted;
-  const labelOpacity = inverted ? 0.55 : 1;
-  const heroParts = splitForHero(value, masked);
+  const bg = highlight ? t.primaryContainer : t.surface;
+  const fg = highlight ? t.onPrimaryContainer : t.ink;
+  const soft = highlight ? t.onPrimaryContainer : t.inkSoft;
+  const hero = splitForHero(value, masked);
   return (
     <Pressable
-      onPress={editable ? onEdit : undefined}
-      style={({ pressed }) => [
-        styles.statCard,
-        { backgroundColor: bg, borderColor: inverted ? t.ink : t.line, opacity: pressed && editable ? 0.85 : 1 },
-      ]}
+      onPress={onEdit}
+      disabled={!onEdit}
+      accessibilityRole={onEdit ? "button" : undefined}
+      accessibilityLabel={onEdit ? editLabel : undefined}
+      style={(s) => [styles.statCard, { backgroundColor: onEdit ? stateColor(bg, fg, s as PressState) : bg }]}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, opacity: labelOpacity }}>
-        <Text style={[styles.statLabel, { color: labelColor }]}>{label}</Text>
-        {editable ? <IconEdit size={10} color={labelColor} /> : null}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Label color={soft}>{label}</Label>
+        {onEdit ? <IconEdit size={13} color={soft} /> : null}
       </View>
       <View style={styles.statHero}>
-        <Text
-          style={{
-            fontFamily: FMFonts.display,
-            fontSize: 26,
-            color: fg,
-            lineHeight: 28,
-            letterSpacing: -0.4,
-          }}
-        >
-          {heroParts.sign}
-          {heroParts.integer}
-          <Text style={{ color: labelColor, opacity: labelOpacity }}>{heroParts.fraction}</Text>
+        <Text style={[styles.heroText, { color: fg }]} numberOfLines={1}>
+          {hero.sign}
+          {hero.integer}
+          <Text style={{ color: soft }}>{hero.fraction}</Text>
         </Text>
-        <Text
-          style={{
-            fontFamily: FMFonts.display,
-            fontSize: 16,
-            color: labelColor,
-            opacity: labelOpacity,
-            marginLeft: 4,
-          }}
-        >
-          €
-        </Text>
+        <Text style={[styles.heroCurrency, { color: soft }]}>€</Text>
       </View>
     </Pressable>
   );
 }
 
 interface SectionTableProps {
-  cat: Cat;
   label: string;
+  i18n: I18n;
   accounts: UnifiedAccount[];
   masked: boolean;
   seriesByAccount: Record<string, BalanceSeries>;
@@ -291,6 +265,7 @@ interface SectionTableProps {
 
 function SectionTable({
   label,
+  i18n,
   accounts,
   masked,
   seriesByAccount,
@@ -299,239 +274,159 @@ function SectionTable({
   const t = useFMTheme();
   const subtotal = accounts.reduce((s, a) => s + (a.balance ?? 0), 0);
   return (
-    <View style={[styles.tableWrap, { backgroundColor: t.surface, borderColor: t.line }]}>
-      <View style={[styles.tableHead, { backgroundColor: t.surfaceAlt, borderBottomColor: t.line }]}>
-        <View style={{ width: 18, alignItems: "center" }}>
-          <IconChevD size={11} color={t.inkMuted} />
-        </View>
-        <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink, marginLeft: 6 }}>
-          {label}
-        </Text>
-        <Text
-          style={{
-            fontFamily: FMFonts.sansMedium,
-            fontSize: 11,
-            color: t.inkMuted,
-            marginLeft: 10,
-            fontVariant: ["tabular-nums"],
-          }}
-        >
-          {accounts.length} accounts
-        </Text>
+    <Card padding={0} style={{ overflow: "hidden" }}>
+      <View style={styles.tableHead}>
+        <SectionTitle>{label}</SectionTitle>
+        <Text style={[styles.count, { color: t.inkSoft }]}>{accountCountLabel(accounts.length, i18n)}</Text>
         <View style={{ flex: 1 }} />
-        <Balance value={subtotal} masked={masked} size={13} />
+        <Balance value={subtotal} masked={masked} size={FMType.subhead} />
       </View>
 
-      <View style={[styles.tableSubHead, { borderBottomColor: t.line }]}>
-        <ColLabel style={{ width: 280 }}>Account</ColLabel>
-        <ColLabel style={{ flex: 1 }}>Bank</ColLabel>
-        <ColLabel style={{ flex: 1 }}>IBAN</ColLabel>
-        <ColLabel style={{ width: 90 }}>Source</ColLabel>
-        <ColLabel style={{ width: 90, textAlign: "right" }}>30 days</ColLabel>
-        <ColLabel style={{ width: 130, textAlign: "right" }}>Balance</ColLabel>
+      <View style={styles.tableSubHead}>
+        <Label style={{ flex: 2.2, minWidth: 220, paddingLeft: 52 }}>{i18n.acct_col_account}</Label>
+        <Label style={{ flex: 1.3 }}>{i18n.acct_col_bank}</Label>
+        <Label style={{ flex: 1 }}>{i18n.acct_col_iban}</Label>
+        <Label style={{ width: 96 }}>{i18n.acct_col_source}</Label>
+        <Label style={{ width: 96, textAlign: "right" }}>{i18n.acct_col_30days}</Label>
+        <Label style={{ width: 136, textAlign: "right" }}>{i18n.acct_balance_label}</Label>
       </View>
 
-      {accounts.map((a) => (
-        <Pressable
-          key={a.id}
-          onPress={() => onPressAccount(a)}
-          style={({ pressed }) => [
-            styles.tableRow,
-            { borderTopColor: t.line, opacity: pressed ? 0.85 : 1 },
-          ]}
-        >
-          <View style={[styles.cell, { width: 280, flexDirection: "row", alignItems: "center" }]}>
-            <View
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                backgroundColor: t.surfaceAlt,
-                borderWidth: 1,
-                borderColor: t.line,
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: 10,
-              }}
-            >
-              <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 11, color: t.inkSoft }}>
-                {(a.bankName || a.name).charAt(0).toUpperCase()}
+      {accounts.map((a) => {
+        const live = a.type === "connected";
+        const name = accountDisplayName(a, i18n);
+        return (
+          <Pressable
+            key={a.id}
+            onPress={() => onPressAccount(a)}
+            accessibilityRole="button"
+            accessibilityLabel={name}
+            style={(s) => [styles.tableRow, { backgroundColor: stateColor(t.surface, t.ink, s as PressState) }]}
+          >
+            <View style={[styles.cell, { flex: 2.2, minWidth: 220, flexDirection: "row", alignItems: "center" }]}>
+              <Avatar label={a.bankName || a.name} size={36} />
+              <Text style={[styles.name, { color: t.ink }]} numberOfLines={1}>
+                {name}
               </Text>
             </View>
-            <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 12.5, color: t.ink }} numberOfLines={1}>
-              {a.name}
+            <Text style={[styles.cellText, { flex: 1.3, color: t.inkSoft }]} numberOfLines={1}>
+              {accountBankLabel(a, i18n) ?? "—"}
             </Text>
-          </View>
-          <Text style={[styles.cellText, { flex: 1, color: t.inkSoft }]} numberOfLines={1}>
-            {a.bankName || "—"}
-          </Text>
-          <Text
-            style={[
-              styles.cellText,
-              {
-                flex: 1,
-                fontSize: 11,
-                color: t.inkMuted,
-                fontVariant: ["tabular-nums"],
-              },
-            ]}
-            numberOfLines={1}
-          >
-            {a.iban ? "·· " + a.iban.slice(-9) : "—"}
-          </Text>
-          <View style={[styles.cell, { width: 90, flexDirection: "row", alignItems: "center" }]}>
-            <View
-              style={{
-                width: 5,
-                height: 5,
-                borderRadius: 3,
-                backgroundColor: a.type === "connected" ? t.pos : "transparent",
-                borderWidth: a.type === "connected" ? 0 : 1,
-                borderColor: t.inkMuted,
-              }}
-            />
-            <Text
-              style={{
-                fontFamily: FMFonts.sansMedium,
-                fontSize: 10.5,
-                color: a.type === "connected" ? t.pos : t.inkMuted,
-                marginLeft: 5,
-                letterSpacing: 0.5,
-                textTransform: "uppercase",
-              }}
-            >
-              {a.type === "connected" ? "Live" : "Manual"}
+            <Text style={[styles.cellText, { flex: 1, color: t.inkSoft, fontVariant: ["tabular-nums"] }]} numberOfLines={1}>
+              {a.iban ? "·· " + a.iban.slice(-9) : "—"}
             </Text>
-          </View>
-          <View style={[styles.cell, { width: 90, alignItems: "flex-end" }]}>
-            <Spark
-              data={seriesByAccount[a.id]?.balance ?? []}
-              labels={seriesByAccount[a.id]?.days}
-              width={78}
-              height={18}
-              interactive
-              neg={(a.balance ?? 0) < 0}
-              formatValue={(v) => formatEUR(v, { masked })}
-            />
-          </View>
-          <View style={[styles.cell, { width: 130, alignItems: "flex-end" }]}>
-            {a.loading ? (
-              <ActivityIndicator size="small" color={t.accent} />
-            ) : a.error ? (
-              <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.neg }}>Error</Text>
-            ) : (
-              <Balance value={a.balance ?? 0} masked={masked} size={13} />
-            )}
-          </View>
-        </Pressable>
-      ))}
-    </View>
+            <View style={[styles.cell, { width: 96 }]}>
+              <View style={[styles.srcChip, { backgroundColor: live ? t.posSoft : t.surfaceContainerHigh }]}>
+                <View style={[styles.srcDot, { backgroundColor: live ? t.pos : t.inkMuted }]} />
+                <Text style={[styles.srcText, { color: live ? t.pos : t.inkSoft }]}>
+                  {live ? i18n.acct_src_live : i18n.acct_src_manual}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.cell, { width: 96, alignItems: "flex-end" }]}>
+              <Spark
+                data={seriesByAccount[a.id]?.balance ?? []}
+                labels={seriesByAccount[a.id]?.days}
+                width={80}
+                height={20}
+                interactive
+                neg={(a.balance ?? 0) < 0}
+                formatValue={(v) => formatEUR(v, { masked })}
+              />
+            </View>
+            <View style={[styles.cell, { width: 136, alignItems: "flex-end", paddingRight: 0 }]}>
+              {a.loading ? (
+                <ActivityIndicator size="small" color={t.primary} />
+              ) : a.error ? (
+                <Text style={[styles.cellText, { color: t.error }]}>{i18n.error_title}</Text>
+              ) : (
+                <Balance value={a.balance ?? 0} masked={masked} size={FMType.bodyLg} />
+              )}
+            </View>
+          </Pressable>
+        );
+      })}
+    </Card>
   );
-}
-
-function ColLabel({ children, style }: { children: React.ReactNode; style?: any }) {
-  const t = useFMTheme();
-  return (
-    <Text
-      style={[
-        {
-          fontFamily: FMFonts.sansSemibold,
-          fontSize: 10,
-          color: t.inkMuted,
-          letterSpacing: 0.7,
-          textTransform: "uppercase",
-        },
-        style,
-      ]}
-    >
-      {children}
-    </Text>
-  );
-}
-
-function labelFor(cat: Cat, i18n: any): string {
-  if (cat === "Giro") return i18n.cat_giro ?? "Giro";
-  if (cat === "Savings") return i18n.cat_savings ?? "Savings";
-  if (cat === "Stock") return i18n.cat_stock ?? "Stock";
-  return cat;
 }
 
 const styles = StyleSheet.create({
-  page: { padding: 24, flexGrow: 1 },
+  page: { paddingHorizontal: 24, paddingBottom: 32, gap: 16, flexGrow: 1 },
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 24 },
-  headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    marginBottom: 18,
-  },
-  pageTitle: {
-    fontFamily: FMFonts.display,
-    fontSize: 30,
-    lineHeight: 32,
-    letterSpacing: -0.5,
-  },
   statsGrid: {
     flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
+    flexWrap: "wrap",
+    gap: 16,
   },
   statCard: {
     flex: 1,
-    padding: 16,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  statLabel: {
-    fontFamily: FMFonts.sansSemibold,
-    fontSize: 10,
-    letterSpacing: 1,
-    textTransform: "uppercase",
+    minWidth: 200,
+    padding: 20,
+    borderRadius: FMRadius.lg,
   },
   statHero: {
     flexDirection: "row",
     alignItems: "baseline",
-    marginTop: 10,
+    marginTop: 8,
   },
-  empty: {
-    padding: 32,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    borderRadius: 12,
-    alignItems: "center",
+  heroText: {
+    fontFamily: FMFonts.display,
+    fontSize: 32,
+    lineHeight: 40,
+    fontVariant: ["tabular-nums"],
   },
-  tableWrap: {
-    borderWidth: 1,
-    borderRadius: 12,
-    overflow: "hidden",
+  heroCurrency: {
+    fontFamily: FMFonts.display,
+    fontSize: FMType.h1,
+    marginLeft: 4,
   },
   tableHead: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderBottomWidth: 1,
+    paddingTop: 16,
+    paddingBottom: 8,
+    paddingHorizontal: 24,
+  },
+  count: {
+    fontFamily: FMFonts.sans,
+    fontSize: FMType.body,
+    marginLeft: 12,
+    fontVariant: ["tabular-nums"],
   },
   tableSubHead: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 18,
+    paddingHorizontal: 24,
     paddingVertical: 8,
-    borderBottomWidth: 1,
   },
   tableRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-    borderTopWidth: 1,
+    paddingHorizontal: 24,
+    minHeight: 60,
+    paddingVertical: 8,
   },
   cell: {
-    paddingRight: 8,
+    paddingRight: 12,
   },
   cellText: {
     fontFamily: FMFonts.sans,
-    fontSize: 12,
-    paddingRight: 8,
+    fontSize: FMType.body,
+    paddingRight: 12,
   },
+  name: {
+    flex: 1,
+    fontFamily: FMFonts.sansMedium,
+    fontSize: FMType.subhead,
+    marginLeft: 16,
+  },
+  srcChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    height: 24,
+    paddingHorizontal: 8,
+    borderRadius: FMRadius.sm,
+  },
+  srcDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
+  srcText: { fontFamily: FMFonts.sansMedium, fontSize: FMType.caption },
 });

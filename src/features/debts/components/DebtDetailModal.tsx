@@ -1,11 +1,13 @@
 import React from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import type { Strings } from "@/src/constants/Strings";
+import { FMFonts, FMType } from "@/src/constants/theme";
 import { Sheet } from "@/src/shared/components/Sheet";
-import { Button, Label, Money, formatEUR, splitForHero, useFMTheme } from "@/src/shared/design";
-import { formatDate } from "@/src/shared/utils/date";
+import { EmptyState, IconDoc, Label, Money, SectionTitle, formatEUR, useFMTheme } from "@/src/shared/design";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import type { DebtEntity, DebtItem } from "../context/DebtsContext";
+import { DebtEntryRow } from "./DebtEntryRow";
 
 interface DebtDetailModalProps {
   visible: boolean;
@@ -13,127 +15,70 @@ interface DebtDetailModalProps {
   debts: DebtItem[];
   netBalance: number;
   onClose: () => void;
-  backgroundColor?: string;
-  textColor?: string;
-  tintColor?: string;
-  i18n: Record<string, string>;
+  i18n: typeof Strings.de;
 }
 
-export function DebtDetailModal({
-  visible,
-  entity,
-  debts,
-  netBalance,
-  onClose,
-  i18n,
-}: DebtDetailModalProps) {
+// Person / institution detail: net position, the two directions, and the
+// editable history. Same sheet on desktop (dialog) and mobile (bottom sheet).
+export function DebtDetailModal({ visible, entity, debts, netBalance, onClose, i18n }: DebtDetailModalProps) {
   const t = useFMTheme();
-  const entityDebts = entity
-    ? debts
-        .filter((d) => d.entityId === entity.id)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    : [];
-
+  const { isBalanceHidden: masked } = useSettings();
   if (!entity) return null;
 
-  const heroParts = splitForHero(netBalance);
-  const heroColor = netBalance > 0 ? t.pos : netBalance < 0 ? t.neg : t.ink;
+  const entityDebts = debts
+    .filter((d) => d.entityId === entity.id)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const totalOwed = entityDebts.filter((d) => d.type === "OWES_ME").reduce((s, d) => s + d.amount, 0);
+  const totalOwe = entityDebts.filter((d) => d.type === "I_OWE").reduce((s, d) => s + d.amount, 0);
 
   return (
-    <Sheet
-      visible={visible}
-      onClose={onClose}
-      title={entity.name}
-      subtitle={entity.type === "institution" ? "Institution" : "Person"}
-      width={500}
-      actions={<Button variant="ghost" onPress={onClose}>{i18n.close ?? "Close"}</Button>}
-    >
-      <View style={[styles.netCard, { backgroundColor: t.surfaceAlt, borderColor: t.line }]}>
-        <Label>{i18n.net_balance}</Label>
-        <View style={styles.heroRow}>
-          <Text
-            style={{
-              fontFamily: FMFonts.display,
-              fontSize: 28,
-              color: heroColor,
-              letterSpacing: -0.4,
-              lineHeight: 30,
-            }}
-          >
-            {netBalance > 0 ? "+" : ""}
-            {heroParts.sign}
-            {heroParts.integer}
-            <Text style={{ color: t.inkMuted }}>{heroParts.fraction}</Text>
-          </Text>
-          <Text style={{ fontFamily: FMFonts.display, fontSize: 16, color: t.inkSoft, marginLeft: 4 }}>€</Text>
-        </View>
-        <Text style={{ fontFamily: FMFonts.sans, fontSize: 11, color: t.inkSoft, marginTop: 4 }}>
-          {netBalance >= 0 ? "They owe you" : "You owe them"}
-        </Text>
-      </View>
-
-      <Label style={{ marginBottom: 6, marginTop: 14 }}>{i18n.history}</Label>
-      <FlatList
-        data={entityDebts}
-        keyExtractor={(item) => item.id}
-        scrollEnabled={false}
-        ListEmptyComponent={
-          <Text
-            style={{
-              fontFamily: FMFonts.sans,
-              fontSize: 12,
-              color: t.inkMuted,
-              textAlign: "center",
-              paddingVertical: 18,
-            }}
-          >
-            {i18n.no_history}
-          </Text>
-        }
-        renderItem={({ item, index }) => (
-          <View
-            style={[
-              styles.row,
-              {
-                borderTopColor: t.line,
-                borderTopWidth: index === 0 ? 0 : 1,
-              },
-            ]}
-          >
+    <Sheet visible={visible} onClose={onClose} title={entity.name} width={520}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        style={{ marginHorizontal: -24 }}
+        contentContainerStyle={{ paddingBottom: 16 }}
+      >
+        <View style={[styles.hero, { backgroundColor: t.surfaceContainerHigh }]}>
+          <Label>{i18n.net_balance}</Label>
+          <Money value={netBalance} masked={masked} size={32} weight={400} style={{ marginTop: 4 }} />
+          <View style={styles.stats}>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12.5, color: t.ink }}>
-                {item.description}
-              </Text>
-              <Text style={{ fontFamily: FMFonts.sans, fontSize: 10.5, color: t.inkMuted, marginTop: 2 }}>
-                {formatDate(item.date)}
-              </Text>
+              <Label>{i18n.they_owe_you}</Label>
+              <Text style={[styles.stat, { color: t.pos }]}>{formatEUR(totalOwed, { masked })}</Text>
             </View>
-            <Money
-              value={item.type === "OWES_ME" ? item.amount : -item.amount}
-              size={12}
-            />
+            <View style={{ flex: 1 }}>
+              <Label>{i18n.you_owe}</Label>
+              <Text style={[styles.stat, { color: t.neg }]}>{formatEUR(totalOwe, { masked })}</Text>
+            </View>
           </View>
+        </View>
+
+        <SectionTitle style={{ marginTop: 16, marginBottom: 4, paddingHorizontal: 24 }}>{i18n.history}</SectionTitle>
+        {entityDebts.length === 0 ? (
+          <EmptyState icon={<IconDoc />} title={i18n.no_history} style={{ paddingVertical: 16 }} />
+        ) : (
+          entityDebts.map((item) => <DebtEntryRow key={item.id} item={item} i18n={i18n} />)
         )}
-      />
+      </ScrollView>
     </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  netCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderRadius: 12,
+  hero: {
+    marginHorizontal: 24,
+    padding: 16,
+    borderRadius: 16,
   },
-  heroRow: {
+  stats: {
     flexDirection: "row",
-    alignItems: "baseline",
-    marginTop: 4,
+    gap: 16,
+    marginTop: 16,
   },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
+  stat: {
+    fontFamily: FMFonts.monoMedium,
+    fontSize: FMType.subhead,
+    marginTop: 2,
+    fontVariant: ["tabular-nums"],
   },
 });

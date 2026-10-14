@@ -1,7 +1,8 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMType } from "@/src/constants/theme";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import { IconEyeOff } from "./Icon";
 import { useFMTheme } from "./theme";
 
@@ -10,29 +11,29 @@ interface PrivacyHintProps {
 }
 
 // Banner that appears when balance masking is on.
-export function PrivacyHint({ text = "Balances hidden — change in Settings · Privacy" }: PrivacyHintProps) {
+export function PrivacyHint({ text }: PrivacyHintProps) {
   const t = useFMTheme();
+  const { i18n } = useSettings();
   return (
     <View
       style={[
         styles.row,
         {
-          backgroundColor: t.surfaceAlt,
-          borderColor: t.line,
+          backgroundColor: t.secondaryContainer,
         },
       ]}
     >
-      <IconEyeOff size={11} color={t.inkSoft} />
+      <IconEyeOff size={14} color={t.onSecondaryContainer} />
       <Text
         style={{
           fontFamily: FMFonts.sans,
-          fontSize: 11,
-          color: t.inkSoft,
+          fontSize: FMType.small,
+          color: t.onSecondaryContainer,
           marginLeft: 8,
           flex: 1,
         }}
       >
-        {text}
+        {text ?? i18n.privacy_hint_banner}
       </Text>
     </View>
   );
@@ -42,9 +43,8 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: 1,
-    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
 });

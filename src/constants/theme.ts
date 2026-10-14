@@ -1,18 +1,23 @@
 /**
- * Finance Manager — design tokens.
- * Confident, dense, data-forward. One accent. Tabular numerals everywhere.
+ * Finance Manager — design tokens (Material Design 3).
  *
- * The shape mirrors FM_TOKENS from the design system: bg/surface/surfaceAlt/
- * line/lineStrong/ink/inkSoft/inkMuted/accent/accentInk/accentSoft/pos/neg/
- * posSoft/negSoft/warn/warnSoft + a 12-color category palette.
+ * Every palette is a full set of M3 color roles generated from the palette's
+ * seed colour with Google's HCT tonal system (material-color-utilities):
+ * primary/secondary/tertiary from the seed, neutrals from the palette's
+ * original background hue, error from the M3 error hue. Values are baked in
+ * (no runtime dependency) and every text/background pair is checked for WCAG
+ * AA (>= 4.5:1). See DECISIONS.md §5.
  *
- * Backwards-compat: legacy keys (text/textSecondary/background/surface/tint/
- * icon/tabIconDefault/tabIconSelected/primary/primaryLight/income/expense/
- * border) are preserved so unrebuilt components don't crash before they're
- * redesigned. New work should reach for the FM tokens directly.
+ * Two naming layers share one object:
+ *  - App aliases (bg, surface, ink, accent, pos, neg, ...) — what most screens
+ *    use. They point at M3 tones: `bg` is the page (M3 surface/background),
+ *    `surface` is a card/pane (container), `surfaceAlt` a nested fill.
+ *  - M3 roles (primary, primaryContainer, surfaceContainerHigh, outline, ...)
+ *    for components that follow the M3 spec 1:1 (buttons, chips, nav).
+ *
+ * Note: the M3 role "surface" is exposed as `bg`; `surface` here is the card
+ * colour (kept for compatibility with every existing screen).
  */
-
-import { Platform } from "react-native";
 
 export type ThemeMode = "light" | "dark";
 export type ThemePalette =
@@ -23,21 +28,32 @@ export type ThemePalette =
   | "turquoise";
 
 export interface FMTheme {
-  // Surface
+  // ── App aliases ──
+  /** Page background (M3 surface / background). */
   bg: string;
+  /** Cards, panes, list containers. */
   surface: string;
+  /** Nested fills inside cards: inputs, hover rows, tracks. */
   surfaceAlt: string;
+  /** Hairline divider. */
   line: string;
+  /** Stronger divider / decorative border (= outlineVariant). */
   lineStrong: string;
-  // Ink
+  /** Primary text (onSurface). */
   ink: string;
+  /** Secondary text (onSurfaceVariant). */
   inkSoft: string;
+  /** Tertiary text: meta, captions (AA on every surface). */
   inkMuted: string;
-  // Accent
+  /** Brand colour (= primary). */
   accent: string;
+  /** Strong brand text (on light/neutral backgrounds). */
   accentInk: string;
+  /** Tonal brand fill (= secondaryContainer): selected chips, nav indicator. */
   accentSoft: string;
-  // Semantic
+  /** Foreground on an `accent` fill (= onPrimary). */
+  onAccent: string;
+  // Money semantics (harmonized toward the palette)
   pos: string;
   neg: string;
   posSoft: string;
@@ -45,450 +61,668 @@ export interface FMTheme {
   warn: string;
   warnSoft: string;
 
-  // ── Legacy keys (kept until every component has been redesigned) ──
-  text: string;
-  textSecondary: string;
-  background: string;
-  tint: string;
-  icon: string;
-  tabIconDefault: string;
-  tabIconSelected: string;
+  // ── M3 color roles ──
   primary: string;
-  primaryLight: string;
-  income: string;
-  expense: string;
-  border: string;
+  onPrimary: string;
+  primaryContainer: string;
+  onPrimaryContainer: string;
+  secondary: string;
+  onSecondary: string;
+  secondaryContainer: string;
+  onSecondaryContainer: string;
+  tertiary: string;
+  onTertiary: string;
+  tertiaryContainer: string;
+  onTertiaryContainer: string;
+  error: string;
+  onError: string;
+  errorContainer: string;
+  onErrorContainer: string;
+  surfaceDim: string;
+  surfaceBright: string;
+  surfaceContainerLowest: string;
+  surfaceContainerLow: string;
+  surfaceContainer: string;
+  surfaceContainerHigh: string;
+  surfaceContainerHighest: string;
+  onSurface: string;
+  onSurfaceVariant: string;
+  outline: string;
+  outlineVariant: string;
+  inverseSurface: string;
+  inverseOnSurface: string;
+  inversePrimary: string;
+  scrim: string;
 }
 
-const ACCENT_LIGHT = "#a4527a";
-const ACCENT_DARK = "#c97aa0";
-const ACCENT_INK_LIGHT = "#7d3a5b";
-const ACCENT_INK_DARK = "#e4abc4";
-const ACCENT_SOFT_LIGHT = "rgba(164, 82, 122, 0.10)";
-const ACCENT_SOFT_DARK = "rgba(201, 122, 160, 0.16)";
-
-const MULBERRY_LIGHT: FMTheme = {
-  bg: "#f7f6f3",
-  surface: "#ffffff",
-  surfaceAlt: "#fbfaf7",
-  line: "rgba(28, 24, 20, 0.08)",
-  lineStrong: "rgba(28, 24, 20, 0.14)",
-  ink: "#1a1714",
-  inkSoft: "#5b554d",
-  inkMuted: "#8a847a",
-  accent: ACCENT_LIGHT,
-  accentInk: ACCENT_INK_LIGHT,
-  accentSoft: ACCENT_SOFT_LIGHT,
-  pos: "#2f5d50",
-  neg: "#b04a3a",
-  posSoft: "rgba(47, 93, 80, 0.10)",
-  negSoft: "rgba(176, 74, 58, 0.10)",
-  warn: "#a87a2c",
-  warnSoft: "rgba(168, 122, 44, 0.12)",
-
-  text: "#1a1714",
-  textSecondary: "#5b554d",
-  background: "#f7f6f3",
-  tint: ACCENT_LIGHT,
-  icon: "#5b554d",
-  tabIconDefault: "#8a847a",
-  tabIconSelected: "#1a1714",
-  primary: ACCENT_LIGHT,
-  primaryLight: ACCENT_SOFT_LIGHT,
-  income: "#2f5d50",
-  expense: "#b04a3a",
-  border: "rgba(28, 24, 20, 0.08)",
-};
-
-const MULBERRY_DARK: FMTheme = {
-  bg: "#0f0e0c",
-  surface: "#181614",
-  surfaceAlt: "#1f1c19",
-  line: "rgba(245, 240, 232, 0.09)",
-  lineStrong: "rgba(245, 240, 232, 0.16)",
-  ink: "#f3efe7",
-  inkSoft: "#b6afa3",
-  inkMuted: "#7e7868",
-  accent: ACCENT_DARK,
-  accentInk: ACCENT_INK_DARK,
-  accentSoft: ACCENT_SOFT_DARK,
-  pos: "#7eb39e",
-  neg: "#d68876",
-  posSoft: "rgba(126, 179, 158, 0.14)",
-  negSoft: "rgba(214, 136, 118, 0.16)",
-  warn: "#dca65f",
-  warnSoft: "rgba(220, 166, 95, 0.14)",
-
-  text: "#f3efe7",
-  textSecondary: "#b6afa3",
-  background: "#0f0e0c",
-  tint: ACCENT_DARK,
-  icon: "#b6afa3",
-  tabIconDefault: "#7e7868",
-  tabIconSelected: "#f3efe7",
-  primary: ACCENT_DARK,
-  primaryLight: ACCENT_SOFT_DARK,
-  income: "#7eb39e",
-  expense: "#d68876",
-  border: "rgba(245, 240, 232, 0.09)",
-};
-
-const RED_LIGHT: FMTheme = {
-  bg: "#FAF6F4",
-  surface: "#FFFFFF",
-  surfaceAlt: "#FBEFEC",
-  line: "rgba(40, 9, 5, 0.10)",
-  lineStrong: "rgba(40, 9, 5, 0.18)",
-  ink: "#280905",
-  inkSoft: "#5b2620",
-  inkMuted: "#8a4d44",
-  accent: "#C3110C",
-  accentInk: "#740A03",
-  accentSoft: "rgba(195, 17, 12, 0.10)",
-  pos: "#2f5d50",
-  neg: "#b04a3a",
-  posSoft: "rgba(47, 93, 80, 0.10)",
-  negSoft: "rgba(176, 74, 58, 0.10)",
-  warn: "#a87a2c",
-  warnSoft: "rgba(168, 122, 44, 0.12)",
-
-  text: "#280905",
-  textSecondary: "#5b2620",
-  background: "#FAF6F4",
-  tint: "#C3110C",
-  icon: "#5b2620",
-  tabIconDefault: "#8a4d44",
-  tabIconSelected: "#280905",
-  primary: "#C3110C",
-  primaryLight: "rgba(195, 17, 12, 0.10)",
-  income: "#2f5d50",
-  expense: "#b04a3a",
-  border: "rgba(40, 9, 5, 0.10)",
-};
-
-const RED_DARK: FMTheme = {
-  bg: "#280905",
-  surface: "#3a1410",
-  surfaceAlt: "#4a1c17",
-  line: "rgba(250, 246, 244, 0.10)",
-  lineStrong: "rgba(250, 246, 244, 0.20)",
-  ink: "#FAF6F4",
-  inkSoft: "#e8c9c0",
-  inkMuted: "#b88d80",
-  accent: "#E6501B",
-  accentInk: "#FFD0BB",
-  accentSoft: "rgba(230, 80, 27, 0.18)",
-  pos: "#7eb39e",
-  neg: "#d68876",
-  posSoft: "rgba(126, 179, 158, 0.14)",
-  negSoft: "rgba(214, 136, 118, 0.16)",
-  warn: "#dca65f",
-  warnSoft: "rgba(220, 166, 95, 0.14)",
-
-  text: "#FAF6F4",
-  textSecondary: "#e8c9c0",
-  background: "#280905",
-  tint: "#E6501B",
-  icon: "#e8c9c0",
-  tabIconDefault: "#b88d80",
-  tabIconSelected: "#FAF6F4",
-  primary: "#E6501B",
-  primaryLight: "rgba(230, 80, 27, 0.18)",
-  income: "#7eb39e",
-  expense: "#d68876",
-  border: "rgba(250, 246, 244, 0.10)",
-};
-
-const PURPLE_LIGHT: FMTheme = {
-  bg: "#fefdfd",
-  surface: "#ffffff",
-  surfaceAlt: "#f4f0f8",
-  line: "rgba(58, 49, 83, 0.10)",
-  lineStrong: "rgba(58, 49, 83, 0.18)",
-  ink: "#010101",
-  inkSoft: "#3a3153",
-  inkMuted: "#b1aebb",
-  accent: "#5f43b2",
-  accentInk: "#3a3153",
-  accentSoft: "rgba(95, 67, 178, 0.12)",
-  pos: "#2f5d50",
-  neg: "#b04a3a",
-  posSoft: "rgba(47, 93, 80, 0.10)",
-  negSoft: "rgba(176, 74, 58, 0.10)",
-  warn: "#a87a2c",
-  warnSoft: "rgba(168, 122, 44, 0.12)",
-
-  text: "#010101",
-  textSecondary: "#3a3153",
-  background: "#fefdfd",
-  tint: "#5f43b2",
-  icon: "#3a3153",
-  tabIconDefault: "#b1aebb",
-  tabIconSelected: "#010101",
-  primary: "#5f43b2",
-  primaryLight: "rgba(95, 67, 178, 0.12)",
-  income: "#2f5d50",
-  expense: "#b04a3a",
-  border: "rgba(58, 49, 83, 0.10)",
-};
-
-const PURPLE_DARK: FMTheme = {
-  bg: "#010101",
-  surface: "#1a1426",
-  surfaceAlt: "#3a3153",
-  line: "rgba(254, 253, 253, 0.10)",
-  lineStrong: "rgba(254, 253, 253, 0.20)",
-  ink: "#fefdfd",
-  inkSoft: "#b1aebb",
-  inkMuted: "#6e687c",
-  accent: "#5f43b2",
-  accentInk: "#b1aebb",
-  accentSoft: "rgba(95, 67, 178, 0.22)",
-  pos: "#7eb39e",
-  neg: "#d68876",
-  posSoft: "rgba(126, 179, 158, 0.14)",
-  negSoft: "rgba(214, 136, 118, 0.16)",
-  warn: "#dca65f",
-  warnSoft: "rgba(220, 166, 95, 0.14)",
-
-  text: "#fefdfd",
-  textSecondary: "#b1aebb",
-  background: "#010101",
-  tint: "#5f43b2",
-  icon: "#b1aebb",
-  tabIconDefault: "#6e687c",
-  tabIconSelected: "#fefdfd",
-  primary: "#5f43b2",
-  primaryLight: "rgba(95, 67, 178, 0.22)",
-  income: "#7eb39e",
-  expense: "#d68876",
-  border: "rgba(254, 253, 253, 0.10)",
-};
-
-const GREEN_LIGHT: FMTheme = {
-  bg: "#FFFADC",
-  surface: "#FFFFFF",
-  surfaceAlt: "#FBF6D2",
-  line: "rgba(26, 31, 10, 0.10)",
-  lineStrong: "rgba(26, 31, 10, 0.18)",
-  ink: "#1a1f0a",
-  inkSoft: "#3d4717",
-  inkMuted: "#6b7530",
-  accent: "#a6dd0076",
-  accentInk: "#3d4717",
-  accentSoft: "rgba(164, 221, 0, 0.16)",
-  pos: "#658600ff",
-  neg: "#b04a3a",
-  posSoft: "rgba(164, 221, 0, 0.16)",
-  negSoft: "rgba(176, 74, 58, 0.10)",
-  warn: "#a87a2c",
-  warnSoft: "rgba(168, 122, 44, 0.12)",
-
-  text: "#1a1f0a",
-  textSecondary: "#3d4717",
-  background: "#FFFADC",
-  tint: "#658408ff",
-  icon: "#3d4717",
-  tabIconDefault: "#6b7530",
-  tabIconSelected: "#1a1f0a",
-  primary: "#9bcf007d",
-  primaryLight: "rgba(164, 221, 0, 0.16)",
-  income: "#A4DD00",
-  expense: "#b04a3a",
-  border: "rgba(26, 31, 10, 0.10)",
-};
-
-const GREEN_DARK: FMTheme = {
-  bg: "#1a1f0a",
-  surface: "#252b10",
-  surfaceAlt: "#2f361a",
-  line: "rgba(255, 250, 220, 0.10)",
-  lineStrong: "rgba(255, 250, 220, 0.20)",
-  ink: "#FFFADC",
-  inkSoft: "#dad5a3",
-  inkMuted: "#8a946a",
-  accent: "#B6F500",
-  accentInk: "#1a1f0a",
-  accentSoft: "rgba(182, 245, 0, 0.16)",
-  pos: "#B6F500",
-  neg: "#d68876",
-  posSoft: "rgba(182, 245, 0, 0.16)",
-  negSoft: "rgba(214, 136, 118, 0.16)",
-  warn: "#dca65f",
-  warnSoft: "rgba(220, 166, 95, 0.14)",
-
-  text: "#FFFADC",
-  textSecondary: "#dad5a3",
-  background: "#1a1f0a",
-  tint: "#B6F500",
-  icon: "#dad5a3",
-  tabIconDefault: "#8a946a",
-  tabIconSelected: "#FFFADC",
-  primary: "#B6F500",
-  primaryLight: "rgba(182, 245, 0, 0.16)",
-  income: "#B6F500",
-  expense: "#d68876",
-  border: "rgba(255, 250, 220, 0.10)",
-};
-
-const TURQUOISE_LIGHT: FMTheme = {
-  bg: "#F5ECE0",
-  surface: "#FFFFFF",
-  surfaceAlt: "#EFE3D2",
-  line: "rgba(14, 26, 31, 0.10)",
-  lineStrong: "rgba(14, 26, 31, 0.18)",
-  ink: "#0e1a1f",
-  inkSoft: "#336D82",
-  inkMuted: "#5F99AE",
-  accent: "#336D82",
-  accentInk: "#693382",
-  accentSoft: "rgba(51, 109, 130, 0.12)",
-  pos: "#2f5d50",
-  neg: "#b04a3a",
-  posSoft: "rgba(47, 93, 80, 0.10)",
-  negSoft: "rgba(176, 74, 58, 0.10)",
-  warn: "#a87a2c",
-  warnSoft: "rgba(168, 122, 44, 0.12)",
-
-  text: "#0e1a1f",
-  textSecondary: "#336D82",
-  background: "#F5ECE0",
-  tint: "#336D82",
-  icon: "#336D82",
-  tabIconDefault: "#5F99AE",
-  tabIconSelected: "#0e1a1f",
-  primary: "#336D82",
-  primaryLight: "rgba(51, 109, 130, 0.12)",
-  income: "#2f5d50",
-  expense: "#b04a3a",
-  border: "rgba(14, 26, 31, 0.10)",
-};
-
-const TURQUOISE_DARK: FMTheme = {
-  bg: "#0e1a1f",
-  surface: "#16252b",
-  surfaceAlt: "#1f2f37",
-  line: "rgba(245, 236, 224, 0.10)",
-  lineStrong: "rgba(245, 236, 224, 0.20)",
-  ink: "#F5ECE0",
-  inkSoft: "#9fc4d3",
-  inkMuted: "#5F99AE",
-  accent: "#5F99AE",
-  accentInk: "#9b6cb5",
-  accentSoft: "rgba(95, 153, 174, 0.18)",
-  pos: "#7eb39e",
-  neg: "#d68876",
-  posSoft: "rgba(126, 179, 158, 0.14)",
-  negSoft: "rgba(214, 136, 118, 0.16)",
-  warn: "#dca65f",
-  warnSoft: "rgba(220, 166, 95, 0.14)",
-
-  text: "#F5ECE0",
-  textSecondary: "#9fc4d3",
-  background: "#0e1a1f",
-  tint: "#5F99AE",
-  icon: "#9fc4d3",
-  tabIconDefault: "#5F99AE",
-  tabIconSelected: "#F5ECE0",
-  primary: "#5F99AE",
-  primaryLight: "rgba(95, 153, 174, 0.18)",
-  income: "#7eb39e",
-  expense: "#d68876",
-  border: "rgba(245, 236, 224, 0.10)",
-};
-
 export const FMColors: Record<ThemePalette, Record<ThemeMode, FMTheme>> = {
-  mulberry: { light: MULBERRY_LIGHT, dark: MULBERRY_DARK },
-  red: { light: RED_LIGHT, dark: RED_DARK },
-  purple: { light: PURPLE_LIGHT, dark: PURPLE_DARK },
-  green: { light: GREEN_LIGHT, dark: GREEN_DARK },
-  turquoise: { light: TURQUOISE_LIGHT, dark: TURQUOISE_DARK },
+  mulberry: {
+    light: {
+      bg: "#f9eef0",
+      surface: "#ffffff",
+      surfaceAlt: "#f1e5e8",
+      line: "#f1dee3",
+      lineStrong: "#d4c2c7",
+      ink: "#1f1a1c",
+      inkSoft: "#504348",
+      inkMuted: "#6e5f64",
+      accent: "#95416c",
+      accentInk: "#782953",
+      accentSoft: "#fed9e6",
+      onAccent: "#ffffff",
+      pos: "#306b25",
+      neg: "#a7354a",
+      posSoft: "#b6faa2",
+      negSoft: "#ffe1e3",
+      warn: "#885200",
+      warnSoft: "#ffe3ca",
+      primary: "#95416c",
+      onPrimary: "#ffffff",
+      primaryContainer: "#ffd8e6",
+      onPrimaryContainer: "#3d0025",
+      secondary: "#725762",
+      onSecondary: "#ffffff",
+      secondaryContainer: "#fed9e6",
+      onSecondaryContainer: "#2a151f",
+      tertiary: "#7e5539",
+      onTertiary: "#ffffff",
+      tertiaryContainer: "#ffdcc6",
+      onTertiaryContainer: "#301401",
+      error: "#ba1a1a",
+      onError: "#ffffff",
+      errorContainer: "#ffdad6",
+      onErrorContainer: "#410002",
+      surfaceDim: "#e2d7da",
+      surfaceBright: "#fff8f8",
+      surfaceContainerLowest: "#ffffff",
+      surfaceContainerLow: "#fcf1f3",
+      surfaceContainer: "#f7ebed",
+      surfaceContainerHigh: "#f1e5e8",
+      surfaceContainerHighest: "#ebe0e2",
+      onSurface: "#1f1a1c",
+      onSurfaceVariant: "#504348",
+      outline: "#827378",
+      outlineVariant: "#d4c2c7",
+      inverseSurface: "#352f31",
+      inverseOnSurface: "#f9eef0",
+      inversePrimary: "#ffafd2",
+      scrim: "rgba(0, 0, 0, 0.4)",
+    },
+    dark: {
+      bg: "#171214",
+      surface: "#241e20",
+      surfaceAlt: "#2e282a",
+      line: "#392d32",
+      lineStrong: "#504348",
+      ink: "#ebe0e2",
+      inkSoft: "#d4c2c7",
+      inkMuted: "#b8a7ac",
+      accent: "#ffafd2",
+      accentInk: "#ffd8e6",
+      accentSoft: "#59404a",
+      onAccent: "#5c113c",
+      pos: "#96d784",
+      neg: "#ffb2b9",
+      posSoft: "#064603",
+      negSoft: "#770e29",
+      warn: "#ffb868",
+      warnSoft: "#573300",
+      primary: "#ffafd2",
+      onPrimary: "#5c113c",
+      primaryContainer: "#782953",
+      onPrimaryContainer: "#ffd8e6",
+      secondary: "#e0bdca",
+      onSecondary: "#412a34",
+      secondaryContainer: "#59404a",
+      onSecondaryContainer: "#fed9e6",
+      tertiary: "#f2bb98",
+      onTertiary: "#49280f",
+      tertiaryContainer: "#633e23",
+      onTertiaryContainer: "#ffdcc6",
+      error: "#ffb4ab",
+      onError: "#690005",
+      errorContainer: "#93000a",
+      onErrorContainer: "#ffdad6",
+      surfaceDim: "#171214",
+      surfaceBright: "#3e3739",
+      surfaceContainerLowest: "#120d0f",
+      surfaceContainerLow: "#1f1a1c",
+      surfaceContainer: "#241e20",
+      surfaceContainerHigh: "#2e282a",
+      surfaceContainerHighest: "#393335",
+      onSurface: "#ebe0e2",
+      onSurfaceVariant: "#d4c2c7",
+      outline: "#9d8c92",
+      outlineVariant: "#504348",
+      inverseSurface: "#ebe0e2",
+      inverseOnSurface: "#352f31",
+      inversePrimary: "#95416c",
+      scrim: "rgba(0, 0, 0, 0.6)",
+    },
+  },
+  red: {
+    light: {
+      bg: "#fbeeec",
+      surface: "#ffffff",
+      surfaceAlt: "#f3e5e3",
+      line: "#f5ddda",
+      lineStrong: "#d8c2be",
+      ink: "#201a19",
+      inkSoft: "#534341",
+      inkMuted: "#715f5d",
+      accent: "#be0b08",
+      accentInk: "#930002",
+      accentSoft: "#ffdad5",
+      onAccent: "#ffffff",
+      pos: "#306b25",
+      neg: "#a7382c",
+      posSoft: "#b6faa2",
+      negSoft: "#ffe2dd",
+      warn: "#885200",
+      warnSoft: "#ffe3ca",
+      primary: "#be0b08",
+      onPrimary: "#ffffff",
+      primaryContainer: "#ffdad5",
+      onPrimaryContainer: "#410000",
+      secondary: "#8b4d44",
+      onSecondary: "#ffffff",
+      secondaryContainer: "#ffdad5",
+      onSecondaryContainer: "#380c07",
+      tertiary: "#9a452a",
+      onTertiary: "#ffffff",
+      tertiaryContainer: "#ffdbd0",
+      onTertiaryContainer: "#3a0b00",
+      error: "#ba1a1a",
+      onError: "#ffffff",
+      errorContainer: "#ffdad6",
+      onErrorContainer: "#410002",
+      surfaceDim: "#e4d7d5",
+      surfaceBright: "#fff8f6",
+      surfaceContainerLowest: "#ffffff",
+      surfaceContainerLow: "#fef1ee",
+      surfaceContainer: "#f8ebe9",
+      surfaceContainerHigh: "#f3e5e3",
+      surfaceContainerHighest: "#ede0de",
+      onSurface: "#201a19",
+      onSurfaceVariant: "#534341",
+      outline: "#857370",
+      outlineVariant: "#d8c2be",
+      inverseSurface: "#362f2e",
+      inverseOnSurface: "#fbeeec",
+      inversePrimary: "#ffb4a9",
+      scrim: "rgba(0, 0, 0, 0.4)",
+    },
+    dark: {
+      bg: "#181211",
+      surface: "#251e1d",
+      surfaceAlt: "#2f2827",
+      line: "#3b2d2b",
+      lineStrong: "#534341",
+      ink: "#ede0de",
+      inkSoft: "#d8c2be",
+      inkMuted: "#bba7a3",
+      accent: "#ffb4a9",
+      accentInk: "#ffdad5",
+      accentSoft: "#6f362e",
+      onAccent: "#690001",
+      pos: "#96d784",
+      neg: "#ffb4a9",
+      posSoft: "#064603",
+      negSoft: "#76140d",
+      warn: "#ffb868",
+      warnSoft: "#573300",
+      primary: "#ffb4a9",
+      onPrimary: "#690001",
+      primaryContainer: "#930002",
+      onPrimaryContainer: "#ffdad5",
+      secondary: "#ffb4a9",
+      onSecondary: "#53211a",
+      secondaryContainer: "#6f362e",
+      onSecondaryContainer: "#ffdad5",
+      tertiary: "#ffb59e",
+      onTertiary: "#5d1802",
+      tertiaryContainer: "#7b2e15",
+      onTertiaryContainer: "#ffdbd0",
+      error: "#ffb4ab",
+      onError: "#690005",
+      errorContainer: "#93000a",
+      onErrorContainer: "#ffdad6",
+      surfaceDim: "#181211",
+      surfaceBright: "#3f3736",
+      surfaceContainerLowest: "#120d0c",
+      surfaceContainerLow: "#201a19",
+      surfaceContainer: "#251e1d",
+      surfaceContainerHigh: "#2f2827",
+      surfaceContainerHighest: "#3b3332",
+      onSurface: "#ede0de",
+      onSurfaceVariant: "#d8c2be",
+      outline: "#a08c89",
+      outlineVariant: "#534341",
+      inverseSurface: "#ede0de",
+      inverseOnSurface: "#362f2e",
+      inversePrimary: "#be0b08",
+      scrim: "rgba(0, 0, 0, 0.6)",
+    },
+  },
+  purple: {
+    light: {
+      bg: "#f4eff4",
+      surface: "#ffffff",
+      surfaceAlt: "#ece7eb",
+      line: "#e6e0ec",
+      lineStrong: "#cac4cf",
+      ink: "#1c1b1e",
+      inkSoft: "#48454e",
+      inkMuted: "#65626b",
+      accent: "#664ab9",
+      accentInk: "#4e30a0",
+      accentSoft: "#e8deff",
+      onAccent: "#ffffff",
+      pos: "#006c53",
+      neg: "#a7354a",
+      posSoft: "#87fed6",
+      negSoft: "#ffe1e3",
+      warn: "#885200",
+      warnSoft: "#ffe3ca",
+      primary: "#664ab9",
+      onPrimary: "#ffffff",
+      primaryContainer: "#e8deff",
+      onPrimaryContainer: "#20005f",
+      secondary: "#615a77",
+      onSecondary: "#ffffff",
+      secondaryContainer: "#e8deff",
+      onSecondaryContainer: "#1e1830",
+      tertiary: "#7d5261",
+      onTertiary: "#ffffff",
+      tertiaryContainer: "#ffd9e4",
+      onTertiaryContainer: "#31111e",
+      error: "#ba1a1a",
+      onError: "#ffffff",
+      errorContainer: "#ffdad6",
+      onErrorContainer: "#410002",
+      surfaceDim: "#ddd8dd",
+      surfaceBright: "#fdf8fd",
+      surfaceContainerLowest: "#ffffff",
+      surfaceContainerLow: "#f7f2f7",
+      surfaceContainer: "#f1ecf1",
+      surfaceContainerHigh: "#ece7eb",
+      surfaceContainerHighest: "#e6e1e6",
+      onSurface: "#1c1b1e",
+      onSurfaceVariant: "#48454e",
+      outline: "#79757f",
+      outlineVariant: "#cac4cf",
+      inverseSurface: "#313033",
+      inverseOnSurface: "#f4eff4",
+      inversePrimary: "#cdbdff",
+      scrim: "rgba(0, 0, 0, 0.4)",
+    },
+    dark: {
+      bg: "#141316",
+      surface: "#201f23",
+      surfaceAlt: "#2b292d",
+      line: "#322f38",
+      lineStrong: "#48454e",
+      ink: "#e6e1e6",
+      inkSoft: "#cac4cf",
+      inkMuted: "#aea9b4",
+      accent: "#cdbdff",
+      accentInk: "#e8deff",
+      accentSoft: "#49435e",
+      onAccent: "#371189",
+      pos: "#63dbb5",
+      neg: "#ffb2b9",
+      posSoft: "#004434",
+      negSoft: "#770e29",
+      warn: "#ffb868",
+      warnSoft: "#573300",
+      primary: "#cdbdff",
+      onPrimary: "#371189",
+      primaryContainer: "#4e30a0",
+      onPrimaryContainer: "#e8deff",
+      secondary: "#cbc2e3",
+      onSecondary: "#332d47",
+      secondaryContainer: "#49435e",
+      onSecondaryContainer: "#e8deff",
+      tertiary: "#eeb8c9",
+      onTertiary: "#492533",
+      tertiaryContainer: "#633b49",
+      onTertiaryContainer: "#ffd9e4",
+      error: "#ffb4ab",
+      onError: "#690005",
+      errorContainer: "#93000a",
+      onErrorContainer: "#ffdad6",
+      surfaceDim: "#141316",
+      surfaceBright: "#3a383c",
+      surfaceContainerLowest: "#0f0e11",
+      surfaceContainerLow: "#1c1b1e",
+      surfaceContainer: "#201f23",
+      surfaceContainerHigh: "#2b292d",
+      surfaceContainerHighest: "#363438",
+      onSurface: "#e6e1e6",
+      onSurfaceVariant: "#cac4cf",
+      outline: "#938f99",
+      outlineVariant: "#48454e",
+      inverseSurface: "#e6e1e6",
+      inverseOnSurface: "#313033",
+      inversePrimary: "#664ab9",
+      scrim: "rgba(0, 0, 0, 0.6)",
+    },
+  },
+  green: {
+    light: {
+      bg: "#f6f1da",
+      surface: "#ffffff",
+      surfaceAlt: "#ede9d2",
+      line: "#e8e3c3",
+      lineStrong: "#ccc7a8",
+      ink: "#1d1c0e",
+      inkSoft: "#4a4830",
+      inkMuted: "#67644a",
+      accent: "#4b6700",
+      accentInk: "#384e00",
+      accentSoft: "#d8eaae",
+      onAccent: "#ffffff",
+      pos: "#306b25",
+      neg: "#a33e01",
+      posSoft: "#b6faa2",
+      negSoft: "#ffe2d7",
+      warn: "#6f5d00",
+      warnSoft: "#ffe88e",
+      primary: "#4b6700",
+      onPrimary: "#ffffff",
+      primaryContainer: "#bbf62d",
+      onPrimaryContainer: "#141f00",
+      secondary: "#556435",
+      onSecondary: "#ffffff",
+      secondaryContainer: "#d8eaae",
+      onSecondaryContainer: "#141f00",
+      tertiary: "#396660",
+      onTertiary: "#ffffff",
+      tertiaryContainer: "#bcece4",
+      onTertiaryContainer: "#00201d",
+      error: "#ba1a1a",
+      onError: "#ffffff",
+      errorContainer: "#ffdad6",
+      onErrorContainer: "#410002",
+      surfaceDim: "#dfdac4",
+      surfaceBright: "#fffae2",
+      surfaceContainerLowest: "#ffffff",
+      surfaceContainerLow: "#f9f4dd",
+      surfaceContainer: "#f3eed7",
+      surfaceContainerHigh: "#ede9d2",
+      surfaceContainerHighest: "#e7e3cc",
+      onSurface: "#1d1c0e",
+      onSurfaceVariant: "#4a4830",
+      outline: "#7b785d",
+      outlineVariant: "#ccc7a8",
+      inverseSurface: "#323121",
+      inverseOnSurface: "#f6f1da",
+      inversePrimary: "#a0d800",
+      scrim: "rgba(0, 0, 0, 0.4)",
+    },
+    dark: {
+      bg: "#151407",
+      surface: "#212012",
+      surfaceAlt: "#2c2a1b",
+      line: "#33311b",
+      lineStrong: "#4a4830",
+      ink: "#e7e3cc",
+      inkSoft: "#ccc7a8",
+      inkMuted: "#b0ac8e",
+      accent: "#a0d800",
+      accentInk: "#bbf62d",
+      accentSoft: "#3e4c20",
+      onAccent: "#253500",
+      pos: "#96d784",
+      neg: "#ffb596",
+      posSoft: "#064603",
+      negSoft: "#6a2600",
+      warn: "#e2c54b",
+      warnSoft: "#473b00",
+      primary: "#a0d800",
+      onPrimary: "#253500",
+      primaryContainer: "#384e00",
+      onPrimaryContainer: "#bbf62d",
+      secondary: "#bccd94",
+      onSecondary: "#28350b",
+      secondaryContainer: "#3e4c20",
+      onSecondaryContainer: "#d8eaae",
+      tertiary: "#a0d0c8",
+      onTertiary: "#013732",
+      tertiaryContainer: "#204e48",
+      onTertiaryContainer: "#bcece4",
+      error: "#ffb4ab",
+      onError: "#690005",
+      errorContainer: "#93000a",
+      onErrorContainer: "#ffdad6",
+      surfaceDim: "#151407",
+      surfaceBright: "#3b3a2a",
+      surfaceContainerLowest: "#0f0f04",
+      surfaceContainerLow: "#1d1c0e",
+      surfaceContainer: "#212012",
+      surfaceContainerHigh: "#2c2a1b",
+      surfaceContainerHighest: "#373526",
+      onSurface: "#e7e3cc",
+      onSurfaceVariant: "#ccc7a8",
+      outline: "#959275",
+      outlineVariant: "#4a4830",
+      inverseSurface: "#e7e3cc",
+      inverseOnSurface: "#323121",
+      inversePrimary: "#4b6700",
+      scrim: "rgba(0, 0, 0, 0.6)",
+    },
+  },
+  turquoise: {
+    light: {
+      bg: "#f9efe3",
+      surface: "#ffffff",
+      surfaceAlt: "#f0e7db",
+      line: "#eee1cc",
+      lineStrong: "#d1c5b1",
+      ink: "#1f1b14",
+      inkSoft: "#4e4636",
+      inkMuted: "#6b6251",
+      accent: "#006781",
+      accentInk: "#004d62",
+      accentSoft: "#cfe6f1",
+      onAccent: "#ffffff",
+      pos: "#006c53",
+      neg: "#a7354a",
+      posSoft: "#87fed6",
+      negSoft: "#ffe1e3",
+      warn: "#6f5d00",
+      warnSoft: "#ffe88e",
+      primary: "#006781",
+      onPrimary: "#ffffff",
+      primaryContainer: "#b9eaff",
+      onPrimaryContainer: "#001f29",
+      secondary: "#4c626b",
+      onSecondary: "#ffffff",
+      secondaryContainer: "#cfe6f1",
+      onSecondaryContainer: "#071e26",
+      tertiary: "#71537d",
+      onTertiary: "#ffffff",
+      tertiaryContainer: "#f7d8ff",
+      onTertiaryContainer: "#2a1036",
+      error: "#ba1a1a",
+      onError: "#ffffff",
+      errorContainer: "#ffdad6",
+      onErrorContainer: "#410002",
+      surfaceDim: "#e1d9cd",
+      surfaceBright: "#fff8f2",
+      surfaceContainerLowest: "#ffffff",
+      surfaceContainerLow: "#fbf2e6",
+      surfaceContainer: "#f6ede1",
+      surfaceContainerHigh: "#f0e7db",
+      surfaceContainerHighest: "#eae1d5",
+      onSurface: "#1f1b14",
+      onSurfaceVariant: "#4e4636",
+      outline: "#807664",
+      outlineVariant: "#d1c5b1",
+      inverseSurface: "#343028",
+      inverseOnSurface: "#f9efe3",
+      inversePrimary: "#5fd4fd",
+      scrim: "rgba(0, 0, 0, 0.4)",
+    },
+    dark: {
+      bg: "#16130c",
+      surface: "#231f18",
+      surfaceAlt: "#2e2922",
+      line: "#373021",
+      lineStrong: "#4e4636",
+      ink: "#eae1d5",
+      inkSoft: "#d1c5b1",
+      inkMuted: "#b5aa96",
+      accent: "#5fd4fd",
+      accentInk: "#b9eaff",
+      accentSoft: "#354a53",
+      onAccent: "#003544",
+      pos: "#63dbb5",
+      neg: "#ffb2b9",
+      posSoft: "#004434",
+      negSoft: "#770e29",
+      warn: "#e2c54b",
+      warnSoft: "#473b00",
+      primary: "#5fd4fd",
+      onPrimary: "#003544",
+      primaryContainer: "#004d62",
+      onPrimaryContainer: "#b9eaff",
+      secondary: "#b3cad5",
+      onSecondary: "#1e333c",
+      secondaryContainer: "#354a53",
+      onSecondaryContainer: "#cfe6f1",
+      tertiary: "#dfbaea",
+      onTertiary: "#40264c",
+      tertiaryContainer: "#583c64",
+      onTertiaryContainer: "#f7d8ff",
+      error: "#ffb4ab",
+      onError: "#690005",
+      errorContainer: "#93000a",
+      onErrorContainer: "#ffdad6",
+      surfaceDim: "#16130c",
+      surfaceBright: "#3d3930",
+      surfaceContainerLowest: "#110e07",
+      surfaceContainerLow: "#1f1b14",
+      surfaceContainer: "#231f18",
+      surfaceContainerHigh: "#2e2922",
+      surfaceContainerHighest: "#39342c",
+      onSurface: "#eae1d5",
+      onSurfaceVariant: "#d1c5b1",
+      outline: "#9a8f7d",
+      outlineVariant: "#4e4636",
+      inverseSurface: "#eae1d5",
+      inverseOnSurface: "#343028",
+      inversePrimary: "#006781",
+      scrim: "rgba(0, 0, 0, 0.6)",
+    },
+  },
 };
 
-// Legacy alias so existing imports keep working.
-export const Colors = FMColors.mulberry;
-
-// 12-color category palette — works on both modes; muted, not toy-bright.
-export const CategoryPalette: readonly string[] = [
-  "#2f5d50", // forest
-  "#3b6790", // slate-blue
-  "#7c5e9b", // plum
-  "#a4527a", // mulberry
-  "#b04a3a", // terra
-  "#c47a2c", // amber
-  "#a87a2c", // ochre
-  "#5e7a3a", // moss
-  "#3a7a6f", // teal
-  "#5d6470", // graphite
-  "#8a6a4a", // walnut
-  "#444e3d", // olive
-];
-
-// Typography. One neutral family — Geist — across the whole product.
-// Hierarchy comes from size + weight + tracking, not from a separate display
-// or mono family. Money columns use `fontVariant: ['tabular-nums']` on
-// individual Text nodes to get monospaced digits without a separate mono font.
-const FONT_REGULAR = "Geist_400Regular";
-const FONT_MEDIUM = "Geist_500Medium";
-const FONT_SEMIBOLD = "Geist_600SemiBold";
-const FONT_BOLD = "Geist_700Bold";
+// ── Typography ──────────────────────────────────────────────────────────
+// Google Sans Flex (static 400/500/600/700 instances, OFL) — the family used
+// across Google's Material 3 products. Its default figures are proportional;
+// money uses `fontVariant: ['tabular-nums']` (the font ships `tnum`) so
+// columns of amounts line up.
+const FONT_REGULAR = "GoogleSansFlex_400Regular";
+const FONT_MEDIUM = "GoogleSansFlex_500Medium";
+const FONT_SEMIBOLD = "GoogleSansFlex_600SemiBold";
+const FONT_BOLD = "GoogleSansFlex_700Bold";
 
 export const FMFonts = {
-  // Aliases below all resolve to Geist. The shape is preserved for parity
-  // with the original design tokens; weight is what differentiates them now.
-  display: FONT_SEMIBOLD, // hero balances
-  displayItalic: FONT_SEMIBOLD,
+  /** Hero balances / display numbers. */
+  display: FONT_REGULAR,
+  displayItalic: FONT_REGULAR,
   sans: FONT_REGULAR,
   sansMedium: FONT_MEDIUM,
   sansSemibold: FONT_SEMIBOLD,
   sansBold: FONT_BOLD,
-  mono: FONT_REGULAR, // pair with fontVariant: ['tabular-nums']
+  /** Numbers: pair with fontVariant: ['tabular-nums']. */
+  mono: FONT_REGULAR,
   monoMedium: FONT_MEDIUM,
   monoSemibold: FONT_SEMIBOLD,
 } as const;
 
-// Legacy `Fonts` shim — older components consume this.
-export const Fonts = Platform.select({
-  ios: {
-    sans: FONT_REGULAR,
-    serif: FONT_REGULAR,
-    rounded: FONT_REGULAR,
-    mono: FONT_REGULAR,
-  },
-  default: {
-    sans: FONT_REGULAR,
-    serif: FONT_REGULAR,
-    rounded: FONT_REGULAR,
-    mono: FONT_REGULAR,
-  },
-  web: {
-    sans: `${FONT_REGULAR}, "Geist", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`,
-    serif: `${FONT_REGULAR}, "Geist", system-ui, sans-serif`,
-    rounded: `${FONT_REGULAR}, "Geist", system-ui, sans-serif`,
-    mono: `${FONT_REGULAR}, "Geist", system-ui, sans-serif`,
-  },
-});
+// Size scale (kept from §2.1 so existing layouts stay stable). The M3 type
+// roles below map onto it; new UI should prefer the roles.
+//   micro 11 = M3 labelSmall · caption 12 = bodySmall/labelMedium
+//   body 14 = bodyMedium/labelLarge/titleSmall · subhead 16 = bodyLarge/titleMedium
+//   h1 22 = titleLarge
+export const FMType = {
+  micro: 11,
+  caption: 12,
+  small: 13,
+  body: 14,
+  bodyLg: 15,
+  subhead: 16,
+  title: 17,
+  heading: 18,
+  h2: 20,
+  h1: 22,
+} as const;
 
-// Spacing scale — most components use 4/6/8/10/12/14/16/18/20/24/28/32 directly,
-// but having named values makes intent legible and search-replaceable.
+type RoleStyle = {
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  letterSpacing: number;
+};
+
+/** M3 type roles (sizes per the M3 spec, body never below 14 except bodySmall). */
+export const FMTypeRole = {
+  displaySmall: { fontFamily: FONT_REGULAR, fontSize: 36, lineHeight: 44, letterSpacing: 0 },
+  headlineLarge: { fontFamily: FONT_REGULAR, fontSize: 32, lineHeight: 40, letterSpacing: 0 },
+  headlineMedium: { fontFamily: FONT_REGULAR, fontSize: 28, lineHeight: 36, letterSpacing: 0 },
+  headlineSmall: { fontFamily: FONT_REGULAR, fontSize: 24, lineHeight: 32, letterSpacing: 0 },
+  titleLarge: { fontFamily: FONT_REGULAR, fontSize: 22, lineHeight: 28, letterSpacing: 0 },
+  titleMedium: { fontFamily: FONT_MEDIUM, fontSize: 16, lineHeight: 24, letterSpacing: 0.15 },
+  titleSmall: { fontFamily: FONT_MEDIUM, fontSize: 14, lineHeight: 20, letterSpacing: 0.1 },
+  bodyLarge: { fontFamily: FONT_REGULAR, fontSize: 16, lineHeight: 24, letterSpacing: 0.15 },
+  bodyMedium: { fontFamily: FONT_REGULAR, fontSize: 14, lineHeight: 20, letterSpacing: 0.25 },
+  bodySmall: { fontFamily: FONT_REGULAR, fontSize: 12, lineHeight: 16, letterSpacing: 0.4 },
+  labelLarge: { fontFamily: FONT_MEDIUM, fontSize: 14, lineHeight: 20, letterSpacing: 0.1 },
+  labelMedium: { fontFamily: FONT_MEDIUM, fontSize: 12, lineHeight: 16, letterSpacing: 0.5 },
+  labelSmall: { fontFamily: FONT_MEDIUM, fontSize: 11, lineHeight: 16, letterSpacing: 0.5 },
+} satisfies Record<string, RoleStyle>;
+
+// ── Shape ───────────────────────────────────────────────────────────────
+// M3 shape scale. Buttons/FAB-extended/badges are fully rounded; chips and
+// text fields small; cards medium/large; sheets and dialogs extra-large.
+export const FMRadius = {
+  xs: 4, // tooltips, snackbars, tiny badges
+  sm: 8, // chips, text fields, menus
+  md: 12, // cards, list containers, small FAB
+  lg: 16, // large cards, FAB, nav drawer items
+  xl: 28, // dialogs, bottom sheets (top corners), search bar
+  full: 999, // buttons, segmented buttons, nav indicator
+} as const;
+
+// ── State layers ────────────────────────────────────────────────────────
+// Opacity of the foreground colour laid over a container on interaction.
+export const FMState = {
+  hover: 0.08,
+  focus: 0.1,
+  pressed: 0.1,
+  dragged: 0.16,
+  disabledContainer: 0.12,
+  disabledContent: 0.38,
+} as const;
+
+// Minimum interactive size. 44pt (Apple HIG) on touch layouts; desktop
+// controls can be denser but should not drop below 32.
+export const FMHit = {
+  touch: 44,
+  desktop: 32,
+} as const;
+
+// 4dp grid. Use these for padding/gaps; odd literals are a smell.
 export const Spacing = {
   xxs: 2,
   xs: 4,
-  sm: 6,
-  md: 8,
-  lg: 12,
-  xl: 16,
-  xxl: 20,
-  xxxl: 24,
-  hero: 32,
-} as const;
-
-export const Radii = {
-  sm: 4,
-  md: 6,
-  lg: 8,
-  xl: 10,
-  xxl: 12,
-  hero: 14,
-  pill: 999,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+  hero: 40,
 } as const;

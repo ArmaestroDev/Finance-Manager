@@ -1,8 +1,8 @@
 import React from "react";
 import {
   Modal,
-  Platform,
   Pressable,
+  StyleProp,
   StyleSheet,
   Text,
   View,
@@ -10,30 +10,32 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { FMFonts } from "@/src/constants/theme";
-import { IconClose, useFMTheme } from "@/src/shared/design";
+import { FMFonts, FMRadius } from "@/src/constants/theme";
+import { useSettings } from "@/src/shared/context/SettingsContext";
+import { IconButton, IconClose, elevation, useFMTheme } from "@/src/shared/design";
 import { useIsMobileLayout } from "@/src/shared/hooks/useIsMobileLayout";
 
 interface SheetProps {
   visible: boolean;
   onClose: () => void;
   title?: string;
+  /** One short line under the title. Prefer none. */
   subtitle?: string;
   children: React.ReactNode;
-  /** Right side of the footer — e.g. <Button>Save</Button>. */
+  /** Right-aligned actions — e.g. <Button variant="text">Cancel</Button><Button>Save</Button>. */
   actions?: React.ReactNode;
-  /** Left side of the footer — defaults to nothing. Use for secondary actions. */
+  /** Left-aligned actions (e.g. a destructive "Delete"). */
   leftActions?: React.ReactNode;
-  /** Desktop width (mobile is always full width). */
+  /** Desktop dialog width (mobile is always full width). */
   width?: number;
   /** Render a close (×) button in the header. Defaults to true. */
   closeButton?: boolean;
-  /** Override container style. */
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
-// Bottom sheet on native, centered dialog on web. Provides title row +
-// scrollable body + optional footer. Honors safe-area inset on mobile.
+// M3 dialog on desktop (28dp corners, centered) and M3 bottom sheet on
+// mobile layouts (28dp top corners + drag handle). Title · body · actions,
+// no divider lines.
 export function Sheet({
   visible,
   onClose,
@@ -47,56 +49,57 @@ export function Sheet({
   style,
 }: SheetProps) {
   const t = useFMTheme();
+  const { i18n } = useSettings();
   const insets = useSafeAreaInsets();
-  // Desktop layout → centered dialog; mobile layout (native or narrow web) →
-  // bottom sheet. Width-driven so a narrow browser gets the sheet treatment.
-  const isWeb = !useIsMobileLayout();
+  const isDialog = !useIsMobileLayout();
 
   return (
     <Modal
       visible={visible}
       transparent
-      animationType={isWeb ? "fade" : "slide"}
+      animationType={isDialog ? "fade" : "slide"}
       onRequestClose={onClose}
     >
       <Pressable
         style={[
           styles.scrim,
-          { justifyContent: isWeb ? "center" : "flex-end" },
+          { backgroundColor: t.scrim, justifyContent: isDialog ? "center" : "flex-end" },
         ]}
         onPress={onClose}
+        accessibilityLabel={i18n.close}
       >
         <Pressable
           onPress={(e) => e.stopPropagation()}
+          accessibilityViewIsModal
           style={[
-            isWeb ? styles.dialog : styles.sheet,
+            isDialog ? styles.dialog : styles.sheet,
             {
               backgroundColor: t.surface,
-              borderColor: t.lineStrong,
-              width: isWeb ? width : undefined,
-              maxWidth: isWeb ? Math.min(width, 920) : undefined,
-              paddingBottom: isWeb ? 0 : insets.bottom,
+              width: isDialog ? width : undefined,
+              maxWidth: isDialog ? Math.min(width, 920) : undefined,
+              paddingBottom: isDialog ? 0 : insets.bottom,
             },
+            elevation(3),
             style,
           ]}
         >
-          {!isWeb ? (
-            <View style={[styles.handle, { backgroundColor: t.lineStrong }]} />
+          {!isDialog ? (
+            <View style={[styles.handle, { backgroundColor: t.outlineVariant }]} />
           ) : null}
 
-          {(title || subtitle || closeButton) ? (
-            <View style={[styles.header, { borderBottomColor: t.line }]}>
+          {title || subtitle || closeButton ? (
+            <View style={[styles.header, !isDialog && { paddingTop: 8 }]}>
               <View style={{ flex: 1, minWidth: 0 }}>
                 {title ? (
                   <Text
                     style={{
-                      fontFamily: FMFonts.display,
-                      fontSize: 20,
+                      fontFamily: FMFonts.sans,
+                      fontSize: 24,
+                      lineHeight: 32,
                       color: t.ink,
-                      letterSpacing: -0.3,
-                      lineHeight: 22,
                     }}
-                    numberOfLines={1}
+                    numberOfLines={2}
+                    accessibilityRole="header"
                   >
                     {title}
                   </Text>
@@ -105,9 +108,10 @@ export function Sheet({
                   <Text
                     style={{
                       fontFamily: FMFonts.sans,
-                      fontSize: 11,
+                      fontSize: 14,
+                      lineHeight: 20,
                       color: t.inkSoft,
-                      marginTop: 2,
+                      marginTop: 4,
                     }}
                     numberOfLines={2}
                   >
@@ -116,13 +120,12 @@ export function Sheet({
                 ) : null}
               </View>
               {closeButton ? (
-                <Pressable
+                <IconButton
+                  icon={<IconClose size={20} />}
+                  label={i18n.close}
                   onPress={onClose}
-                  hitSlop={10}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, padding: 4 })}
-                >
-                  <IconClose size={15} color={t.inkSoft} />
-                </Pressable>
+                  style={{ marginLeft: 12, marginRight: -8, marginTop: -4 }}
+                />
               ) : null}
             </View>
           ) : null}
@@ -130,9 +133,9 @@ export function Sheet({
           <View style={styles.body}>{children}</View>
 
           {actions || leftActions ? (
-            <View style={[styles.footer, { borderTopColor: t.line, backgroundColor: t.surfaceAlt }]}>
-              <View style={{ flex: 1, flexDirection: "row", gap: 6 }}>{leftActions}</View>
-              <View style={{ flexDirection: "row", gap: 6 }}>{actions}</View>
+            <View style={styles.footer}>
+              <View style={{ flex: 1, flexDirection: "row", gap: 8 }}>{leftActions}</View>
+              <View style={styles.actions}>{actions}</View>
             </View>
           ) : null}
         </Pressable>
@@ -144,49 +147,57 @@ export function Sheet({
 const styles = StyleSheet.create({
   scrim: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
     alignItems: "center",
-    justifyContent: Platform.OS === "web" ? "center" : "flex-end",
   },
   dialog: {
-    borderRadius: 14,
-    borderWidth: 1,
+    borderRadius: FMRadius.xl,
     overflow: "hidden",
-    maxHeight: "90%" as unknown as number,
+    maxHeight: "90%",
   },
   sheet: {
-    width: "100%" as unknown as number,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    borderTopWidth: 1,
+    width: "100%",
+    borderTopLeftRadius: FMRadius.xl,
+    borderTopRightRadius: FMRadius.xl,
     overflow: "hidden",
-    maxHeight: "92%" as unknown as number,
+    maxHeight: "92%",
   },
   handle: {
-    width: 40,
+    width: 32,
     height: 4,
     borderRadius: 2,
     alignSelf: "center",
-    marginTop: 10,
-    marginBottom: 4,
+    marginTop: 16,
+    marginBottom: 8,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
     flexDirection: "row",
-    alignItems: "center",
-    borderBottomWidth: 1,
+    alignItems: "flex-start",
   },
+  // flexShrink lets a ScrollView child shrink inside the max-height dialog
+  // instead of overflowing (and being clipped by `overflow: hidden`).
   body: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingHorizontal: 24,
+    paddingBottom: 8,
+    flexShrink: 1,
+    minHeight: 0,
   },
   footer: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 24,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderTopWidth: 1,
+  },
+  // Wrap onto a second line instead of overflowing narrow dialogs.
+  actions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    flexShrink: 1,
+    gap: 8,
   },
 });

@@ -6,6 +6,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -32,8 +33,19 @@ interface BankStatementsContextValue {
   getStatementsForAccount: (accountId: string) => BankStatement[];
   addStatement: (s: BankStatement) => Promise<void>;
   deleteStatement: (id: string) => Promise<void>;
+  /** Remove all statements (and stored PDFs) of an account. */
+  deleteStatementsForAccount: (accountId: string) => Promise<void>;
   savePdfData: (statementId: string, base64: string) => Promise<boolean>;
   getPdfData: (statementId: string) => Promise<string | null>;
+}
+
+async function removePdfs(ids: string[]) {
+  if (ids.length === 0) return;
+  try {
+    await AsyncStorage.multiRemove(ids.map((id) => `${PDF_STORAGE_PREFIX}${id}`));
+  } catch (e) {
+    console.warn("Failed to delete stored PDF:", e);
+  }
 }
 
 const BankStatementsContext = createContext<BankStatementsContextValue | null>(
@@ -43,12 +55,18 @@ const BankStatementsContext = createContext<BankStatementsContextValue | null>(
 export function BankStatementsProvider({ children }: { children: ReactNode }) {
   const [statements, setStatements] = useState<BankStatement[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // Mirrors `statements` so consecutive mutations compose (and persistence
+  // stays out of setState updaters, which must be pure).
+  const statementsRef = useRef<BankStatement[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
-        if (raw) setStatements(JSON.parse(raw));
+        if (raw) {
+          statementsRef.current = JSON.parse(raw);
+          setStatements(statementsRef.current);
+        }
       } catch (e) {
         console.error("Failed to load bank statements:", e);
       } finally {
@@ -58,32 +76,32 @@ export function BankStatementsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const persist = useCallback(async (next: BankStatement[]) => {
+    statementsRef.current = next;
+    setStatements(next);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
   }, []);
 
   const addStatement = useCallback(
     async (s: BankStatement) => {
-      setStatements((prev) => {
-        const next = [s, ...prev];
-        persist(next);
-        return next;
-      });
+      await persist([s, ...statementsRef.current]);
     },
     [persist],
   );
 
   const deleteStatement = useCallback(
     async (id: string) => {
-      setStatements((prev) => {
-        const next = prev.filter((s) => s.id !== id);
-        persist(next);
-        return next;
-      });
-      try {
-        await AsyncStorage.removeItem(`${PDF_STORAGE_PREFIX}${id}`);
-      } catch (e) {
-        console.warn("Failed to delete stored PDF:", e);
-      }
+      await persist(statementsRef.current.filter((s) => s.id !== id));
+      await removePdfs([id]);
+    },
+    [persist],
+  );
+
+  const deleteStatementsForAccount = useCallback(
+    async (accountId: string) => {
+      const removed = statementsRef.current.filter((s) => s.accountId === accountId);
+      if (removed.length === 0) return;
+      await persist(statementsRef.current.filter((s) => s.accountId !== accountId));
+      await removePdfs(removed.map((s) => s.id));
     },
     [persist],
   );
@@ -125,6 +143,7 @@ export function BankStatementsProvider({ children }: { children: ReactNode }) {
       getStatementsForAccount,
       addStatement,
       deleteStatement,
+      deleteStatementsForAccount,
       savePdfData,
       getPdfData,
     }),
@@ -133,6 +152,7 @@ export function BankStatementsProvider({ children }: { children: ReactNode }) {
       getStatementsForAccount,
       addStatement,
       deleteStatement,
+      deleteStatementsForAccount,
       savePdfData,
       getPdfData,
     ],

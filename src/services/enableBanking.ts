@@ -1,13 +1,32 @@
-// In production (Vercel), the backend is at /api relative to the frontend.
-// In local dev, we might be running on a device or simulator where we need the full URL.
-// Since this is a web deployment, we can use relative paths.
-const API_BASE =
-  typeof window !== "undefined" && window.location.hostname !== "localhost"
+// Same-origin "/api" when deployed (Vercel), the local Express server in
+// development. `window.location` is undefined on native, hence the `?.`.
+export const API_BASE =
+  typeof window !== "undefined" &&
+  window.location?.hostname &&
+  window.location.hostname !== "localhost"
     ? "/api"
     : "http://localhost:3001/api";
 
+// Build an Error from a failed backend response. Non-JSON bodies (proxy
+// errors, HTML 502 pages) used to throw a SyntaxError that hid the real
+// cause; the HTTP status is attached so callers can branch on it (e.g. 422).
+async function responseError(response: Response, fallback: string): Promise<Error & { status: number }> {
+  let message = fallback;
+  try {
+    const body = await response.json();
+    message = body?.error || body?.message || body?.detail || fallback;
+    if (typeof message !== "string") message = JSON.stringify(message);
+  } catch {
+    // body not JSON
+  }
+  const err = new Error(`${message} (${response.status})`) as Error & { status: number };
+  err.status = response.status;
+  return err;
+}
+
 export interface AccountId {
   iban?: string;
+  other?: { identification?: string };
 }
 
 export interface Account {
@@ -43,11 +62,24 @@ export interface Transaction {
   debtor?: {
     name?: string;
   };
+  /** Counterparty / own account identifiers as sent by Enable Banking. */
+  creditor_account?: AccountId | null;
+  debtor_account?: AccountId | null;
   remittance_information?: string[];
   credit_debit_indicator?: string;
+  /** ISO 18245 merchant category code (card payments). */
+  merchant_category_code?: string | null;
+  /** Bank's own booking code, e.g. { description: "Lastschrift", code: "PMNT", sub_code: "…" }. */
+  bank_transaction_code?: { description?: string | null; code?: string | null; sub_code?: string | null } | null;
+  /** Note the account holder added in their banking app. */
+  note?: string | null;
+  transaction_date?: string;
   // App-local field: set when a transaction was imported from a bank statement
   // PDF, used to trace/delete by source file. Not part of the Enable Banking API.
   statement_id?: string;
+  /** App-local field: IDs of transactions linked as reimbursements/refunds
+   *  to this expense. The parent expense stores child txIds here. */
+  linkedTransactionIds?: string[];
 }
 
 export interface SessionData {
@@ -70,8 +102,7 @@ export async function startAuth(
     body: JSON.stringify({ aspspName, aspspCountry }),
   });
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || "Failed to start authorization");
+    throw await responseError(response, "Failed to start authorization");
   }
   return response.json();
 }
@@ -84,8 +115,7 @@ export async function createSession(code: string): Promise<SessionData> {
     body: JSON.stringify({ code }),
   });
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || "Failed to create session");
+    throw await responseError(response, "Failed to create session");
   }
   return response.json();
 }
@@ -94,10 +124,9 @@ export async function createSession(code: string): Promise<SessionData> {
 export async function getBalances(
   accountId: string,
 ): Promise<{ balances: Balance[] }> {
-  const response = await fetch(`${API_BASE}/accounts/${accountId}/balances`);
+  const response = await fetch(`${API_BASE}/accounts/${encodeURIComponent(accountId)}/balances`);
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || "Failed to fetch balances");
+    throw await responseError(response, "Failed to fetch balances");
   }
   return response.json();
 }
@@ -134,11 +163,10 @@ export async function getTransactions(
   if (continuationKey) params.set("continuation_key", continuationKey);
   const query = params.toString() ? `?${params.toString()}` : "";
   const response = await fetch(
-    `${API_BASE}/accounts/${accountId}/transactions${query}`,
+    `${API_BASE}/accounts/${encodeURIComponent(accountId)}/transactions${query}`,
   );
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || "Failed to fetch transactions");
+    throw await responseError(response, "Failed to fetch transactions");
   }
   return response.json();
 }
@@ -146,11 +174,10 @@ export async function getTransactions(
 // List available banks
 export async function getASPSPs(
   country: string,
-): Promise<{ aspsps: Array<{ name: string; country: string }> }> {
-  const response = await fetch(`${API_BASE}/aspsps?country=${country}`);
+): Promise<{ aspsps: { name: string; country: string }[] }> {
+  const response = await fetch(`${API_BASE}/aspsps?country=${encodeURIComponent(country)}`);
   if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.error || "Failed to fetch banks");
+    throw await responseError(response, "Failed to fetch banks");
   }
   return response.json();
 }

@@ -1,16 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
+  CASH_ACCOUNT_ID,
   useAccounts,
   type AccountCategory,
   type ManualAccount,
-  type UnifiedAccount,
 } from "../context/AccountsContext";
 import { useSettings } from "../../../shared/context/SettingsContext";
-
-export interface SectionData {
-  title: AccountCategory;
-  data: UnifiedAccount[];
-}
+import { parseLocaleNumber, roundCents } from "../../../shared/utils/number";
 
 export function useAccountsScreen() {
   const {
@@ -22,9 +18,7 @@ export function useAccountsScreen() {
     updateCashBalance,
     addManualAccount,
   } = useAccounts();
-  const { isBalanceHidden, i18n } = useSettings();
-
-  const [sections, setSections] = useState<SectionData[]>([]);
+  const { isBalanceHidden, i18n, language } = useSettings();
 
   // Cash Edit Modal State
   const [isCashModalVisible, setCashModalVisible] = useState(false);
@@ -37,35 +31,8 @@ export function useAccountsScreen() {
   const [newAccountCategory, setNewAccountCategory] =
     useState<AccountCategory>("Giro");
 
-  // Group accounts whenever 'accounts' changes
-  useEffect(() => {
-    groupAndSetSections(accounts);
-  }, [accounts]);
-
-  const groupAndSetSections = (accountsList: UnifiedAccount[]) => {
-    const grouped: Record<AccountCategory, UnifiedAccount[]> = {
-      Giro: [],
-      Savings: [],
-      Stock: [],
-    };
-
-    accountsList.forEach((acc) => {
-      const category = acc.category || "Giro";
-      if (!grouped[category]) grouped[category] = [];
-      grouped[category].push(acc);
-    });
-
-    const sectionsData: SectionData[] = [
-      { title: i18n.cat_giro as AccountCategory, data: grouped.Giro },
-      { title: i18n.cat_savings as AccountCategory, data: grouped.Savings },
-      { title: i18n.cat_stock as AccountCategory, data: grouped.Stock },
-    ].filter((section) => section.data.length > 0);
-
-    setSections(sectionsData);
-  };
-
   const handleSaveCash = () => {
-    const amount = parseFloat(tempCashValue.replace(",", "."));
+    const amount = roundCents(parseLocaleNumber(tempCashValue));
     if (!isNaN(amount)) {
       updateCashBalance(amount);
     }
@@ -73,7 +40,9 @@ export function useAccountsScreen() {
   };
 
   const openCashModal = () => {
-    setTempCashValue(cashBalance.toString());
+    // Two decimals, decimal comma in German (parseLocaleNumber reads both).
+    const fixed = cashBalance.toFixed(2);
+    setTempCashValue(language === "de" ? fixed.replace(".", ",") : fixed);
     setCashModalVisible(true);
   };
 
@@ -81,8 +50,11 @@ export function useAccountsScreen() {
     try {
       const newAccount: ManualAccount = {
         id: `manual_${Date.now()}`,
-        name: newAccountName || "New Account",
-        balance: parseFloat(newAccountBalance.replace(",", ".") || "0"),
+        name: newAccountName.trim() || i18n.acct_default_name,
+        // "1.234,56" used to parse as 1.234; garbage input as NaN.
+        balance: newAccountBalance.trim()
+          ? roundCents(parseLocaleNumber(newAccountBalance)) || 0
+          : 0,
         category: newAccountCategory,
         currency: "EUR",
         bankName: "Manual",
@@ -102,19 +74,16 @@ export function useAccountsScreen() {
     await refreshAccounts();
   }, [refreshAccounts]);
 
-  const formatAmount = (amount: number | string, currency: string = "EUR") => {
-    const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return new Intl.NumberFormat("de-DE", {
-      style: "currency",
-      currency: currency,
-    }).format(num);
-  };
-
-  // Calculate Totals
-  const totalBankBalance = sections.reduce(
-    (sum, section) =>
-      sum + section.data.reduce((s, acc) => s + (acc.balance || 0), 0),
-    0,
+  // The cash account is itself a manual account in `accounts`, so exclude it
+  // here — otherwise net worth (bank + cash) counted cash twice and the
+  // "Bank" figure included cash.
+  const totalBankBalance = useMemo(
+    () =>
+      accounts.reduce(
+        (sum, acc) => (acc.id === CASH_ACCOUNT_ID ? sum : sum + (acc.balance || 0)),
+        0,
+      ),
+    [accounts],
   );
 
   const totalNetWorth = totalBankBalance + cashBalance;
@@ -127,7 +96,6 @@ export function useAccountsScreen() {
     refreshAccounts,
     isBalanceHidden,
     i18n,
-    sections,
     isCashModalVisible,
     setCashModalVisible,
     tempCashValue,
@@ -144,7 +112,6 @@ export function useAccountsScreen() {
     openCashModal,
     handleAddManualAccount,
     onRefresh,
-    formatAmount,
     totalBankBalance,
     totalNetWorth,
   };

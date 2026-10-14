@@ -1,27 +1,28 @@
 import { Stack } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMType } from "@/src/constants/theme";
 import { DesktopShell } from "@/src/shared/components/DesktopShell";
 import {
   Button,
+  Card,
+  EmptyState,
   GrowthChart,
+  IconCoins,
   IconPlus,
   IconRefresh,
-  Label,
-  formatEUR,
-  formatEURCompact,
-  splitForHero,
+  SectionTitle,
   useFMTheme,
 } from "@/src/shared/design";
 import { useSettings } from "@/src/shared/context/SettingsContext";
-import {
-  type Profile,
-  useInvestCalculator,
-} from "../../hooks/useInvestCalculator";
-import { InvestProfileModal } from "./InvestProfileModal";
-import { ManageProfilesModal } from "./ManageProfilesModal";
+import { showAlert } from "@/src/shared/utils/alert";
+import { type Profile, useInvestCalculator } from "../../hooks/useInvestCalculator";
+import { InvestProfileModal } from "../InvestProfileModal";
+import { InvestSlider } from "../InvestSlider";
+import { ManageProfilesModal } from "../ManageProfilesModal";
+import { ResultHero } from "../ResultHero";
+import { ScenarioList } from "../ScenarioList";
 
 export function InvestScreen() {
   const t = useFMTheme();
@@ -50,6 +51,7 @@ export function InvestScreen() {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [manageModalVisible, setManageModalVisible] = useState(false);
+  const [chartW, setChartW] = useState(620);
 
   const series = useMemo(
     () =>
@@ -60,8 +62,10 @@ export function InvestScreen() {
     [calculateData],
   );
 
-  const heroParts = splitForHero(currentDisplay.value, masked);
-  const gain = currentDisplay.gain;
+  const openSaveModal = () => {
+    setEditingProfileId(null);
+    setModalVisible(true);
+  };
 
   const openEditModal = (profile: Profile) => {
     setEditingProfileId(profile.id);
@@ -70,242 +74,103 @@ export function InvestScreen() {
   };
 
   const handleProfileAction = (profile: Profile) => {
-    if (Platform.OS === "web") {
-      const choice = window.confirm(
-        `${i18n.edit_profile_title} ${profile.name}?\nOK to Edit, Cancel to Delete.`,
-      );
-      if (choice) openEditModal(profile);
-      else if (
-        window.confirm((i18n.delete_profile_msg ?? "Delete {name}?").replace("{name}", profile.name))
-      ) {
-        deleteProfile(profile.id);
-      }
-    } else {
-      Alert.alert(profile.name, undefined, [
-        { text: i18n.cancel, style: "cancel" },
-        { text: i18n.edit, onPress: () => openEditModal(profile) },
-        { text: i18n.delete, style: "destructive", onPress: () => deleteProfile(profile.id) },
-      ]);
-    }
+    // showAlert degrades to one confirm per action on web ("Edit?", "Delete?").
+    showAlert(profile.name, undefined, [
+      { text: i18n.cancel, style: "cancel" },
+      { text: i18n.edit, onPress: () => openEditModal(profile) },
+      { text: i18n.delete, style: "destructive", onPress: () => deleteProfile(profile.id) },
+    ]);
   };
 
   return (
-    <DesktopShell>
+    <DesktopShell
+      title={i18n.invest_title}
+      actions={
+        <>
+          <Button variant="outlined" icon={<IconRefresh size={16} />} onPress={handleReset}>
+            {/* The string carries its own ↺ glyph; the button already has an icon. */}
+            {i18n.reset.replace(/\s*↺\s*$/, "")}
+          </Button>
+          <Button icon={<IconPlus size={16} />} onPress={openSaveModal}>
+            {i18n.invest_save_scenario}
+          </Button>
+        </>
+      }
+    >
       <Stack.Screen options={{ headerShown: false }} />
-      <ScrollView contentContainerStyle={[styles.page, { backgroundColor: t.bg }]} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.pageTitle, { color: t.ink }]}>{i18n.invest_title}</Text>
-            <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginTop: 4 }}>
-              ETF compound-interest simulator · for planning, not advice
-            </Text>
-          </View>
-          <View style={{ flexDirection: "row", gap: 6 }}>
-            <Button variant="secondary" icon={<IconRefresh size={12} color={t.ink} />} onPress={handleReset}>
-              {i18n.reset}
-            </Button>
-            <Button
-              variant="primary"
-              icon={<IconPlus size={12} color={t.bg} />}
-              onPress={() => {
-                setEditingProfileId(null);
-                setModalVisible(true);
+      <View style={styles.page}>
+        <View style={styles.mainGrid}>
+          <Card padding={24} style={{ flex: 1 }}>
+            <SectionTitle style={{ marginBottom: 8 }}>{i18n.invest_inputs}</SectionTitle>
+            <InvestSlider label={i18n.initial_inv} value={initialInvestment} onChange={setInitialInvestment} suffix="€" max={50000} step={500} />
+            <InvestSlider label={i18n.monthly_inv} value={monthlyInvestment} onChange={setMonthlyInvestment} suffix={i18n.invest_eur_per_month} max={2000} step={25} />
+            <InvestSlider label={i18n.duration} value={years} onChange={setYears} suffix={i18n.years_suffix.trim()} max={40} step={1} />
+            <InvestSlider label={i18n.est_return} value={interestRate} onChange={setInterestRate} suffix="%" max={12} step={0.1} decimals={2} />
+          </Card>
+
+          <Card padding={24} style={{ flex: 1.6 }}>
+            <ResultHero
+              value={currentDisplay.value}
+              invested={currentDisplay.invested}
+              gain={currentDisplay.gain}
+              years={years}
+              masked={masked}
+              heroSize={45}
+              i18n={i18n}
+            />
+            <View
+              style={{ marginTop: 16 }}
+              onLayout={(e) => {
+                const w = Math.floor(e.nativeEvent.layout.width);
+                if (w > 0 && w !== chartW) setChartW(w);
               }}
             >
-              {i18n.save}
+              <GrowthChart data={series} width={chartW} height={240} masked={masked} />
+            </View>
+            <Text style={[styles.disclaimer, { color: t.inkSoft }]}>{i18n.invest_disclaimer}</Text>
+          </Card>
+        </View>
+
+        <Card padding={24}>
+          <View style={styles.cardHeader}>
+            <SectionTitle style={{ flex: 1 }}>{i18n.invest_scenarios}</SectionTitle>
+            <Button variant="text" size="sm" onPress={() => setManageModalVisible(true)} style={{ marginRight: -12 }}>
+              {i18n.manage_profiles}
             </Button>
           </View>
-        </View>
-
-        <View style={styles.mainGrid}>
-          <View style={[styles.inputCard, { backgroundColor: t.surface, borderColor: t.line }]}>
-            <Label style={{ marginBottom: 14 }}>Inputs</Label>
-            <SliderField
-              label={i18n.initial_inv}
-              hint={i18n.initial_inv_sub}
-              value={initialInvestment}
-              onChange={setInitialInvestment}
-              suffix="€"
-              max={50000}
-            />
-            <SliderField
-              label={i18n.monthly_inv}
-              hint={i18n.monthly_inv_sub}
-              value={monthlyInvestment}
-              onChange={setMonthlyInvestment}
-              suffix="€/mo"
-              max={2000}
-            />
-            <SliderField
-              label={i18n.duration}
-              hint={i18n.duration_sub}
-              value={years}
-              onChange={setYears}
-              suffix={i18n.years_suffix ?? "yrs"}
-              max={40}
-            />
-            <SliderField
-              label={i18n.est_return}
-              hint={i18n.est_return_sub}
-              value={interestRate}
-              onChange={setInterestRate}
-              suffix="%"
-              max={12}
-            />
-          </View>
-
-          <View style={[styles.resultCard, { backgroundColor: t.surface, borderColor: t.line }]}>
-            <View style={styles.resultHeader}>
-              <View>
-                <Label>
-                  Final value · {years} years @ {interestRate}%
-                </Label>
-                <View style={styles.heroRow}>
-                  <Text
-                    style={{
-                      fontFamily: FMFonts.display,
-                      fontSize: 56,
-                      color: t.accent,
-                      lineHeight: 58,
-                      letterSpacing: -1,
-                    }}
-                  >
-                    {heroParts.sign}
-                    {heroParts.integer}
-                    <Text style={{ color: t.inkMuted }}>{heroParts.fraction}</Text>
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: FMFonts.display,
-                      fontSize: 24,
-                      color: t.inkSoft,
-                      marginLeft: 8,
-                    }}
-                  >
-                    €
-                  </Text>
-                </View>
-              </View>
-              <View style={{ flexDirection: "row", gap: 24 }}>
-                <View>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                    <View style={{ width: 12, height: 1.5, backgroundColor: t.inkMuted }} />
-                    <Label>{i18n.total_invested}</Label>
-                  </View>
-                  <Text
-                    style={{
-                      fontFamily: FMFonts.sansSemibold,
-                      fontSize: 16,
-                      color: t.ink,
-                      marginTop: 4,
-                      fontVariant: ["tabular-nums"],
-                    }}
-                  >
-                    {masked ? "••••••" : `${Math.round(currentDisplay.invested).toLocaleString("de-DE")} €`}
-                  </Text>
-                </View>
-                <View>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                    <View style={{ width: 12, height: 1.5, backgroundColor: t.accent }} />
-                    <Label>{i18n.total_gain}</Label>
-                  </View>
-                  <Text
-                    style={{
-                      fontFamily: FMFonts.sansSemibold,
-                      fontSize: 16,
-                      color: t.accent,
-                      marginTop: 4,
-                      fontVariant: ["tabular-nums"],
-                    }}
-                  >
-                    {masked ? "••••••" : `+${Math.round(gain).toLocaleString("de-DE")} €`}
-                  </Text>
-                </View>
-              </View>
-            </View>
-            <View style={{ marginTop: 16 }}>
-              <GrowthChart data={series} width={620} height={220} masked={masked} />
-            </View>
-          </View>
-        </View>
-
-        <View style={[styles.scenariosWrap, { backgroundColor: t.surface, borderColor: t.line }]}>
-          <View style={styles.scenariosHeader}>
-            <Label>{`Saved scenarios · ${profiles.length}`}</Label>
-            <Pressable onPress={() => setManageModalVisible(true)}>
-              <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 11, color: t.accent }}>
-                {i18n.manage_profiles} →
-              </Text>
-            </Pressable>
-          </View>
           {profiles.length === 0 ? (
-            <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkMuted, marginTop: 6 }}>
-              No scenarios saved yet. Adjust the inputs and click Save.
-            </Text>
+            <EmptyState
+              icon={<IconCoins />}
+              title={i18n.invest_no_scenarios_short}
+              action={
+                <Button variant="tonal" icon={<IconPlus size={16} />} onPress={openSaveModal}>
+                  {i18n.invest_save_scenario}
+                </Button>
+              }
+              style={{ paddingVertical: 16 }}
+            />
           ) : (
-            <View style={styles.scenariosGrid}>
-              {profiles.map((p) => {
-                const finalValue = simulateProfileValue(p);
-                return (
-                  <Pressable
-                    key={p.id}
-                    onPress={() => applyProfile(p)}
-                    onLongPress={() => handleProfileAction(p)}
-                    style={({ pressed }) => [
-                      styles.scenarioCell,
-                      { backgroundColor: t.surfaceAlt, borderColor: t.line, opacity: pressed ? 0.85 : 1 },
-                    ]}
-                  >
-                    <View style={{ width: 10, height: 36, borderRadius: 2, backgroundColor: p.color }} />
-                    <View style={{ flex: 1, marginLeft: 14 }}>
-                      <Text style={{ fontFamily: FMFonts.sansSemibold, fontSize: 13, color: t.ink }}>
-                        {p.name}
-                      </Text>
-                      <Text
-                        style={{
-                          fontFamily: FMFonts.sans,
-                          fontSize: 10.5,
-                          color: t.inkMuted,
-                          marginTop: 2,
-                          fontVariant: ["tabular-nums"],
-                        }}
-                      >
-                        {formatEUR(parseFloat(p.initial) || 0)} · +{formatEUR(parseFloat(p.monthly) || 0)}/mo · {p.years}y · {p.returnVal}%
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: "flex-end" }}>
-                      <Text
-                        style={{
-                          fontFamily: FMFonts.sansSemibold,
-                          fontSize: 14,
-                          color: t.accent,
-                          fontVariant: ["tabular-nums"],
-                        }}
-                      >
-                        {formatEURCompact(finalValue)}
-                      </Text>
-                      <Text style={{ fontFamily: FMFonts.sans, fontSize: 9.5, color: t.inkMuted, marginTop: 1 }}>
-                        final
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <ScenarioList
+              profiles={profiles}
+              masked={masked}
+              onApply={applyProfile}
+              onLongPress={handleProfileAction}
+              inset={24}
+              i18n={i18n}
+            />
           )}
-        </View>
-      </ScrollView>
+        </Card>
+      </View>
 
       <InvestProfileModal
         visible={modalVisible}
         isEditing={!!editingProfileId}
+        initial={profiles.find((p) => p.id === editingProfileId) ?? null}
         onSave={(name, color) => {
           saveProfile(name, color);
           setModalVisible(false);
         }}
         onClose={() => setModalVisible(false)}
-        textColor={t.ink}
-        cardColor={t.surface}
         i18n={i18n}
       />
       <ManageProfilesModal
@@ -313,147 +178,17 @@ export function InvestScreen() {
         profiles={profiles}
         onEdit={openEditModal}
         onDelete={deleteProfile}
-        onCreateNew={() => {
-          setEditingProfileId(null);
-          setModalVisible(true);
-        }}
+        onCreateNew={openSaveModal}
         onClose={() => setManageModalVisible(false)}
-        textColor={t.ink}
-        cardColor={t.surface}
         i18n={i18n}
       />
     </DesktopShell>
   );
 }
 
-interface SliderFieldProps {
-  label: string;
-  hint?: string;
-  value: string;
-  onChange: (s: string) => void;
-  suffix: string;
-  max: number;
-}
-
-function SliderField({ label, hint, value, onChange, suffix, max }: SliderFieldProps) {
-  const t = useFMTheme();
-  const numeric = parseFloat(value) || 0;
-  const pct = Math.min(1, Math.max(0, numeric / max));
-  return (
-    <View style={{ marginBottom: 18 }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
-        <Text style={{ fontFamily: FMFonts.sansMedium, fontSize: 12, color: t.inkSoft }}>{label}</Text>
-        <View style={{ flexDirection: "row", alignItems: "baseline" }}>
-          <TextInput
-            value={value}
-            onChangeText={onChange}
-            keyboardType="decimal-pad"
-            style={{
-              fontFamily: FMFonts.sansSemibold,
-              fontSize: 14,
-              color: t.ink,
-              textAlign: "right",
-              minWidth: 72,
-              fontVariant: ["tabular-nums"],
-            }}
-          />
-          <Text style={{ fontFamily: FMFonts.sans, fontSize: 12, color: t.inkSoft, marginLeft: 4 }}>{suffix}</Text>
-        </View>
-      </View>
-      <View style={{ height: 4, backgroundColor: t.surfaceAlt, borderRadius: 2 }}>
-        <View
-          style={{
-            width: `${pct * 100}%` as `${number}%`,
-            height: 4,
-            backgroundColor: t.accent,
-            borderRadius: 2,
-          }}
-        />
-      </View>
-      {hint ? (
-        <Text style={{ fontFamily: FMFonts.sans, fontSize: 10.5, color: t.inkMuted, marginTop: 4 }}>{hint}</Text>
-      ) : null}
-    </View>
-  );
-}
-
-function simulateProfileValue(p: Profile): number {
-  const initial = parseFloat(p.initial) || 0;
-  const monthly = parseFloat(p.monthly) || 0;
-  const yrs = parseFloat(p.years) || 1;
-  const rate = parseFloat(p.returnVal) || 0;
-  const r = rate / 100 / 12;
-  const months = yrs * 12;
-  let value = initial;
-  for (let i = 0; i < months; i++) value = (value + monthly) * (1 + r);
-  return value;
-}
-
 const styles = StyleSheet.create({
-  page: { padding: 24 },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    marginBottom: 18,
-  },
-  pageTitle: {
-    fontFamily: FMFonts.display,
-    fontSize: 30,
-    lineHeight: 32,
-    letterSpacing: -0.5,
-  },
-  mainGrid: {
-    flexDirection: "row",
-    gap: 16,
-    marginBottom: 16,
-  },
-  inputCard: {
-    flex: 1,
-    padding: 22,
-    borderWidth: 1,
-    borderRadius: 14,
-  },
-  resultCard: {
-    flex: 1.6,
-    padding: 24,
-    borderWidth: 1,
-    borderRadius: 14,
-  },
-  resultHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-  },
-  heroRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    marginTop: 6,
-  },
-  scenariosWrap: {
-    padding: 18,
-    borderWidth: 1,
-    borderRadius: 12,
-  },
-  scenariosHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  scenariosGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  scenarioCell: {
-    flexBasis: "30%",
-    flexGrow: 1,
-    minWidth: 240,
-    padding: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  page: { paddingHorizontal: 24, paddingBottom: 32, gap: 16 },
+  mainGrid: { flexDirection: "row", gap: 16 },
+  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 4 },
+  disclaimer: { fontFamily: FMFonts.sans, fontSize: FMType.caption, marginTop: 12 },
 });

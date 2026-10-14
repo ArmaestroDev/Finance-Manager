@@ -12,20 +12,21 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFMTheme } from "@/src/shared/design";
 import { MobileHeader } from "./MobileHeader";
 
-// Vertical clearance the floating bottom tab bar needs. The bar itself adds the
-// bottom safe-area inset internally, so screens only reserve the chrome height
-// plus breathing room. Screens that own their own FlatList/SectionList can use
+// Bottom clearance on tab screens so the last row can scroll clear of the
+// quick-add FAB that floats above the navigation bar. Screens that own their own FlatList/SectionList can use
 // this constant directly in their contentContainerStyle.
 export const MOBILE_TAB_SPACE = 96;
 
 interface MobileShellProps {
   children: React.ReactNode;
-  /** Header title (serif). Omit to render no header. */
+  /** Top app bar title. Omit to render no header. */
   title?: string;
   sub?: string;
   /** Header right slot — chips / icon actions. */
   right?: React.ReactNode;
-  /** Header back slot — rendered above the title (e.g. an IconBack row). */
+  /** Header leading back arrow. */
+  onBack?: () => void;
+  /** Legacy custom leading node; prefer `onBack`. */
   back?: React.ReactNode;
   /** Wire pull-to-refresh. */
   onRefresh?: () => void;
@@ -48,7 +49,7 @@ interface MobileShellProps {
 }
 
 // Mobile screen shell — the mobile analog of DesktopShell. Owns the safe-area
-// handling, the serif header, pull-to-refresh, and bottom-tab clearance so
+// handling, the M3 top app bar, pull-to-refresh, and bottom-tab clearance so
 // every mobile screen is structurally consistent. Mobile-only; web keeps
 // DesktopShell untouched.
 export function MobileShell({
@@ -56,6 +57,7 @@ export function MobileShell({
   title,
   sub,
   right,
+  onBack,
   back,
   onRefresh,
   refreshing = false,
@@ -72,7 +74,7 @@ export function MobileShell({
     <View style={[styles.root, { backgroundColor: t.bg }]}>
       {headerOverride ??
         (title ? (
-          <MobileHeader title={title} sub={sub} right={right} back={back} />
+          <MobileHeader title={title} sub={sub} right={right} onBack={onBack} back={back} />
         ) : null)}
 
       {scrollable ? (
@@ -107,6 +109,6 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1, minHeight: 0 },
   scroll: {
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
   },
 });

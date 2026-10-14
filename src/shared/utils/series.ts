@@ -62,6 +62,6 @@ export function uiRangeToIso(
 }
 
 // Day key (`YYYY-MM-DD`) of a transaction, from booking or value date.
-export function txDayKey(tx: any): string {
+export function txDayKey(tx: { booking_date?: string; value_date?: string }): string {
   return String(tx?.booking_date || tx?.value_date || "").slice(0, 10);
 }

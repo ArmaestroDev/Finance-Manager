@@ -5,8 +5,11 @@ import React, {
     useCallback,
     useContext,
     useEffect,
+    useRef,
     useState,
 } from "react";
+import { useReadyGate } from "../../../shared/hooks/useReadyGate";
+import { roundCents } from "../../../shared/utils/number";
 
 // --- Types ---
 
@@ -60,9 +63,26 @@ export function DebtsProvider({ children }: { children: ReactNode }) {
   const [entities, setEntities] = useState<DebtEntity[]>([]);
   const [debts, setDebts] = useState<DebtItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const gate = useReadyGate();
+
+  // Refs mirror state so back-to-back mutations (e.g. add two debts in one
+  // handler, or add right after delete) build on the latest list instead of
+  // a stale render closure that silently drops the earlier change.
+  const entitiesRef = useRef<DebtEntity[]>([]);
+  const debtsRef = useRef<DebtItem[]>([]);
+
+  const commitEntities = (next: DebtEntity[]) => {
+    entitiesRef.current = next;
+    setEntities(next);
+  };
+  const commitDebts = (next: DebtItem[]) => {
+    debtsRef.current = next;
+    setDebts(next);
+  };
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadData = async () => {
@@ -71,12 +91,13 @@ export function DebtsProvider({ children }: { children: ReactNode }) {
         AsyncStorage.getItem(ENTITIES_KEY),
         AsyncStorage.getItem(DEBTS_KEY),
       ]);
-      if (entData) setEntities(JSON.parse(entData));
-      if (debtData) setDebts(JSON.parse(debtData));
+      if (entData) commitEntities(JSON.parse(entData));
+      if (debtData) commitDebts(JSON.parse(debtData));
     } catch (e) {
       console.error("Failed to load debts data:", e);
     } finally {
       setIsLoading(false);
+      gate.open();
     }
   };
 
@@ -98,42 +119,45 @@ export function DebtsProvider({ children }: { children: ReactNode }) {
 
   const addEntity = useCallback(
     async (name: string, type: "person" | "institution") => {
+      await gate.wait();
       const id = `entity_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const newEntity: DebtEntity = { id, name, type };
-      const updated = [...entities, newEntity];
-      setEntities(updated);
+      const updated = [...entitiesRef.current, newEntity];
+      commitEntities(updated);
       await persistEntities(updated);
       return id;
     },
-    [entities],
+    [gate],
   );
 
   const updateEntity = useCallback(
     async (id: string, name: string) => {
-      const updated = entities.map((e) => (e.id === id ? { ...e, name } : e));
-      setEntities(updated);
+      await gate.wait();
+      const updated = entitiesRef.current.map((e) =>
+        e.id === id ? { ...e, name } : e,
+      );
+      commitEntities(updated);
       await persistEntities(updated);
     },
-    [entities],
+    [gate],
   );
 
   const deleteEntity = useCallback(
     async (id: string) => {
-      // Optimistic updatre
-      const updatedEntities = entities.filter((e) => e.id !== id);
-      setEntities(updatedEntities);
+      await gate.wait();
+      const updatedEntities = entitiesRef.current.filter((e) => e.id !== id);
+      commitEntities(updatedEntities);
 
       // Cascade delete debts for this entity
-      const updatedDebts = debts.filter((d) => d.entityId !== id);
-      setDebts(updatedDebts);
+      const updatedDebts = debtsRef.current.filter((d) => d.entityId !== id);
+      commitDebts(updatedDebts);
 
-      // Async persist
       await Promise.all([
         persistEntities(updatedEntities),
         persistDebts(updatedDebts),
       ]);
     },
-    [entities, debts],
+    [gate],
   );
 
   const addDebt = useCallback(
@@ -144,59 +168,63 @@ export function DebtsProvider({ children }: { children: ReactNode }) {
       type: DebtType,
       date: string,
     ) => {
+      await gate.wait();
       const id = `debt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const newDebt: DebtItem = {
         id,
         entityId,
-        amount,
+        amount: roundCents(Math.abs(amount)),
         currency: "EUR", // Default for now, could be dynamic later
         description,
         type,
         date,
       };
       // Add to beginning of list
-      const updated = [newDebt, ...debts];
-      setDebts(updated);
+      const updated = [newDebt, ...debtsRef.current];
+      commitDebts(updated);
       await persistDebts(updated);
       return id;
     },
-    [debts],
+    [gate],
   );
 
   const updateDebt = useCallback(
     async (id: string, updates: Partial<Omit<DebtItem, "id" | "entityId">>) => {
-      const updated = debts.map((d) =>
-        d.id === id ? { ...d, ...updates } : d,
+      await gate.wait();
+      const normalized =
+        updates.amount !== undefined
+          ? { ...updates, amount: roundCents(Math.abs(updates.amount)) }
+          : updates;
+      const updated = debtsRef.current.map((d) =>
+        d.id === id ? { ...d, ...normalized } : d,
       );
-      setDebts(updated);
+      commitDebts(updated);
       await persistDebts(updated);
     },
-    [debts],
+    [gate],
   );
 
   const deleteDebt = useCallback(
     async (id: string) => {
-      const updated = debts.filter((d) => d.id !== id);
-      setDebts(updated);
+      await gate.wait();
+      const updated = debtsRef.current.filter((d) => d.id !== id);
+      commitDebts(updated);
       await persistDebts(updated);
     },
-    [debts],
+    [gate],
   );
 
   const getNetBalance = useCallback(
     (entityId: string) => {
-      // Calculate net balance for an entity
-      // Positive: They owe me
-      // Negative: I owe them
+      // Positive: They owe me. Negative: I owe them.
+      // Rounded to cents — float sums like 10.1 − 5.05 − 5.05 left a tiny
+      // non-zero residue, so a fully repaid person never showed as settled.
       const entityDebts = debts.filter((d) => d.entityId === entityId);
-      return entityDebts.reduce((acc, debt) => {
-        if (debt.type === "OWES_ME") {
-          return acc + debt.amount;
-        } else {
-          // I_OWE
-          return acc - debt.amount;
-        }
+      const net = entityDebts.reduce((acc, debt) => {
+        const amt = Number(debt.amount) || 0;
+        return debt.type === "OWES_ME" ? acc + amt : acc - amt;
       }, 0);
+      return roundCents(net);
     },
     [debts],
   );

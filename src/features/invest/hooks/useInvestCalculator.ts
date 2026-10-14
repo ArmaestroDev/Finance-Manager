@@ -1,6 +1,19 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useMemo, useState } from "react";
-import { Alert } from "react-native";
+import { useSettings } from "../../../shared/context/SettingsContext";
+import { showAlert } from "../../../shared/utils/alert";
+import { parseLocaleNumber } from "../../../shared/utils/number";
+
+// German input ("7,09", "1.000") used to be read by parseFloat as 7 / 1.
+const num = (v: string) => {
+  const n = parseLocaleNumber(v);
+  return Number.isFinite(n) ? n : NaN;
+};
+
+// Invest profiles are a self-contained, invest-only storage domain (no
+// provider needed — nothing else reads them).
+const PROFILES_KEY = "etf_calc_profiles";
+const DEFAULTS = { initial: "1000", monthly: "150", years: "10", rate: "7,09" };
 
 interface Profile {
   id: string;
@@ -22,11 +35,12 @@ export const PROFILE_COLORS = [
 ];
 
 export function useInvestCalculator() {
+  const { i18n } = useSettings();
   // State for inputs
-  const [initialInvestment, setInitialInvestment] = useState("1000");
-  const [monthlyInvestment, setMonthlyInvestment] = useState("150");
-  const [years, setYears] = useState("10");
-  const [interestRate, setInterestRate] = useState("7.09");
+  const [initialInvestment, setInitialInvestment] = useState(DEFAULTS.initial);
+  const [monthlyInvestment, setMonthlyInvestment] = useState(DEFAULTS.monthly);
+  const [years, setYears] = useState(DEFAULTS.years);
+  const [interestRate, setInterestRate] = useState(DEFAULTS.rate);
 
   // State for Profiles
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -34,27 +48,20 @@ export function useInvestCalculator() {
 
   // Load profiles on mount
   useEffect(() => {
-    loadProfiles();
+    AsyncStorage.getItem(PROFILES_KEY)
+      .then((stored) => {
+        if (stored) setProfiles(JSON.parse(stored));
+      })
+      .catch((e) => console.error("Failed to load profiles", e));
   }, []);
-
-  const loadProfiles = async () => {
-    try {
-      const storedProfiles = await AsyncStorage.getItem("etf_calc_profiles");
-      if (storedProfiles) {
-        setProfiles(JSON.parse(storedProfiles));
-      }
-    } catch (e) {
-      console.error("Failed to load profiles", e);
-    }
-  };
 
   const saveProfile = async (profileName: string, color: string) => {
     if (!profileName.trim()) {
-      Alert.alert("Error", "Please enter a profile name");
+      showAlert(i18n.error_title, i18n.invest_profile_name_required);
       return;
     }
 
-    let updatedProfiles;
+    let updatedProfiles: Profile[];
 
     if (editingProfileId) {
       updatedProfiles = profiles.map((p) =>
@@ -86,12 +93,9 @@ export function useInvestCalculator() {
     setProfiles(updatedProfiles);
     setEditingProfileId(null);
     try {
-      await AsyncStorage.setItem(
-        "etf_calc_profiles",
-        JSON.stringify(updatedProfiles),
-      );
-    } catch (e) {
-      Alert.alert("Error", "Failed to save profile");
+      await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(updatedProfiles));
+    } catch {
+      showAlert(i18n.error_title, i18n.invest_profile_save_failed);
     }
   };
 
@@ -105,17 +109,19 @@ export function useInvestCalculator() {
   const deleteProfile = async (id: string) => {
     const updated = profiles.filter((p) => p.id !== id);
     setProfiles(updated);
-    await AsyncStorage.setItem("etf_calc_profiles", JSON.stringify(updated));
+    await AsyncStorage.setItem(PROFILES_KEY, JSON.stringify(updated));
   };
 
   const calculateData = useMemo(() => {
-    const p = parseFloat(initialInvestment) || 0;
-    const pm = parseFloat(monthlyInvestment) || 0;
-    const y = parseFloat(years) || 1;
-    const r = parseFloat(interestRate) || 0;
+    const p = num(initialInvestment) || 0;
+    const pm = num(monthlyInvestment) || 0;
+    const y = num(years) || 1;
+    const r = num(interestRate) || 0;
 
     const monthlyRate = r / 100 / 12;
-    const months = y * 12;
+    // Whole months only (fractional years like 2.5 → 30 months), capped so
+    // a typo like "1000" years can't freeze the UI.
+    const months = Math.min(Math.round(Math.max(y, 0) * 12), 100 * 12);
 
     const dataTotalValue = [];
     const dataTotalInvested = [];
@@ -157,10 +163,10 @@ export function useInvestCalculator() {
   }, [initialInvestment, monthlyInvestment, years, interestRate]);
 
   const handleReset = () => {
-    setInitialInvestment("1000");
-    setMonthlyInvestment("150");
-    setYears("10");
-    setInterestRate("7.09");
+    setInitialInvestment(DEFAULTS.initial);
+    setMonthlyInvestment(DEFAULTS.monthly);
+    setYears(DEFAULTS.years);
+    setInterestRate(DEFAULTS.rate);
   };
 
   const currentDisplay = {

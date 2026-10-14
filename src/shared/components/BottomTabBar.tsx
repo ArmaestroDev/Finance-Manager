@@ -4,39 +4,43 @@ import React, { useMemo } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import type { Strings } from "@/src/constants/Strings";
 import { FMFonts } from "@/src/constants/theme";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import {
+  Fab,
   IconBank,
   IconCoins,
+  IconHome,
   IconPeople,
   IconPlus,
-  IconTrend,
+  PressState,
+  stateColor,
   useFMTheme,
 } from "@/src/shared/design";
 import { useQuickAdd } from "./QuickAddSheet";
 
 interface TabDef {
   name: string;
-  label: string;
-  icon: (color: string) => React.ReactNode;
+  labelKey: keyof typeof Strings.de;
+  icon: (color: string, filled: boolean) => React.ReactNode;
 }
 
 const TABS: readonly TabDef[] = [
-  { name: "index", label: "Overview", icon: (c) => <IconTrend size={20} color={c} /> },
-  { name: "accounts", label: "Accounts", icon: (c) => <IconBank size={20} color={c} /> },
-  { name: "debts", label: "Debts", icon: (c) => <IconPeople size={20} color={c} /> },
-  { name: "invest", label: "Invest", icon: (c) => <IconCoins size={20} color={c} /> },
+  { name: "index", labelKey: "overview_title", icon: (c, f) => <IconHome size={20} color={c} filled={f} /> },
+  { name: "accounts", labelKey: "tab_accounts", icon: (c, f) => <IconBank size={20} color={c} filled={f} /> },
+  { name: "debts", labelKey: "tab_debts", icon: (c, f) => <IconPeople size={20} color={c} filled={f} /> },
+  { name: "invest", labelKey: "tab_invest", icon: (c, f) => <IconCoins size={20} color={c} filled={f} /> },
 ];
 
-// Custom bottom tab bar — 4 tabs with a center primary "+" that opens the
-// QuickAdd sheet (matches the design's prototype navigation).
+// M3 navigation bar (4 destinations, active-indicator pill) plus the
+// quick-add FAB floating above it at the bottom-right.
 export function BottomTabBar(props: BottomTabBarProps) {
   const t = useFMTheme();
   const insets = useSafeAreaInsets();
   const quick = useQuickAdd();
+  const { i18n } = useSettings();
 
-  // The screens registered in the Tabs navigator. We map them to the design's
-  // tab order so an unknown screen registered later still gets a slot.
   const screensByName = useMemo(() => {
     const m: Record<string, { route: BottomTabBarProps["state"]["routes"][number]; index: number }> = {};
     props.state.routes.forEach((route, i) => {
@@ -69,54 +73,28 @@ export function BottomTabBar(props: BottomTabBarProps) {
     quick.open();
   };
 
-  const left = TABS.slice(0, 2);
-  const right = TABS.slice(2);
-
   return (
-    <View
-      style={[
-        styles.bar,
-        {
-          backgroundColor: t.surface,
-          borderTopColor: t.line,
-          paddingBottom: 8 + insets.bottom,
-        },
-      ]}
-    >
-      {left.map((tab) => (
-        <TabItem
-          key={tab.name}
-          tab={tab}
-          active={screensByName[tab.name]?.index === props.state.index}
-          onPress={() => onPress(tab)}
-        />
-      ))}
-
-      <View style={styles.plusWrap}>
-        <Pressable
-          onPress={onPlus}
-          style={({ pressed }) => [
-            styles.plus,
-            {
-              backgroundColor: t.accent,
-              shadowColor: t.accent,
-              opacity: pressed ? 0.85 : 1,
-              transform: [{ scale: pressed ? 0.96 : 1 }],
-            },
-          ]}
-        >
-          <IconPlus size={20} color="#fff" />
-        </Pressable>
+    <View>
+      <Fab
+        icon={<IconPlus size={22} />}
+        label={i18n.quick_add}
+        onPress={onPlus}
+        style={styles.fab}
+      />
+      <View
+        accessibilityRole="tablist"
+        style={[styles.bar, { backgroundColor: t.surfaceContainer, paddingBottom: insets.bottom }]}
+      >
+        {TABS.map((tab) => (
+          <TabItem
+            key={tab.name}
+            tab={tab}
+            active={screensByName[tab.name]?.index === props.state.index}
+            label={i18n[tab.labelKey]}
+            onPress={() => onPress(tab)}
+          />
+        ))}
       </View>
-
-      {right.map((tab) => (
-        <TabItem
-          key={tab.name}
-          tab={tab}
-          active={screensByName[tab.name]?.index === props.state.index}
-          onPress={() => onPress(tab)}
-        />
-      ))}
     </View>
   );
 }
@@ -124,35 +102,52 @@ export function BottomTabBar(props: BottomTabBarProps) {
 interface TabItemProps {
   tab: TabDef;
   active: boolean;
+  label: string;
   onPress: () => void;
 }
 
-function TabItem({ tab, active, onPress }: TabItemProps) {
+function TabItem({ tab, active, label, onPress }: TabItemProps) {
   const t = useFMTheme();
-  const color = active ? t.ink : t.inkMuted;
+  const iconColor = active ? t.onSecondaryContainer : t.onSurfaceVariant;
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.tab, { opacity: pressed ? 0.7 : 1 }]}
-      accessibilityRole="button"
-      accessibilityLabel={tab.label}
+      style={styles.tab}
+      accessibilityRole="tab"
+      accessibilityLabel={label}
       accessibilityState={{ selected: active }}
     >
-      <View style={styles.indicatorWrap}>
-        {active ? <View style={[styles.indicator, { backgroundColor: t.ink }]} /> : null}
-      </View>
-      {tab.icon(color)}
-      <Text
-        style={{
-          fontFamily: active ? FMFonts.sansSemibold : FMFonts.sansMedium,
-          fontSize: 9.5,
-          color,
-          marginTop: 3,
-          letterSpacing: -0.1,
-        }}
-      >
-        {tab.label}
-      </Text>
+      {(s) => (
+        <>
+          <View
+            style={[
+              styles.indicator,
+              {
+                backgroundColor: stateColor(
+                  active ? t.secondaryContainer : "transparent",
+                  t.onSurface,
+                  s as PressState,
+                ),
+              },
+            ]}
+          >
+            {tab.icon(iconColor, active)}
+          </View>
+          <Text
+            style={{
+              fontFamily: active ? FMFonts.sansSemibold : FMFonts.sansMedium,
+              fontSize: 12,
+              lineHeight: 16,
+              color: active ? t.ink : t.onSurfaceVariant,
+              marginTop: 4,
+              letterSpacing: 0.4,
+            }}
+            numberOfLines={1}
+          >
+            {label}
+          </Text>
+        </>
+      )}
     </Pressable>
   );
 }
@@ -161,44 +156,26 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: "row",
     alignItems: "flex-start",
-    justifyContent: "space-around",
-    borderTopWidth: 1,
-    paddingTop: 9,
-    paddingHorizontal: 4,
+    paddingTop: 12,
+    paddingHorizontal: 8,
+    minHeight: 80,
   },
   tab: {
     flex: 1,
     alignItems: "center",
-    paddingHorizontal: 4,
-    paddingTop: 0,
-  },
-  indicatorWrap: {
-    height: 9,
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    marginTop: -9,
-    marginBottom: 0,
+    minHeight: 56,
   },
   indicator: {
-    width: 24,
-    height: 2,
-    borderRadius: 1,
-  },
-  plusWrap: {
     width: 64,
-    alignItems: "center",
-  },
-  plus: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    height: 32,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    elevation: 6,
-    marginTop: -2,
+  },
+  fab: {
+    position: "absolute",
+    right: 16,
+    top: -72,
+    zIndex: 5,
   },
 });

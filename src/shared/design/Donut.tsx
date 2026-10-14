@@ -72,7 +72,7 @@ export function Donut({ slices, size = 180, thick = 22, masked = false }: DonutP
   return (
     <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       {arcs.map((a, i) => (
-        <Path key={i} d={a.d} fill={a.fill} opacity={masked ? 0.35 : 1} />
+        <Path key={i} d={a.d} fill={a.fill} stroke={t.surface} strokeWidth={2} opacity={masked ? 0.35 : 1} />
       ))}
       <Circle cx={cx} cy={cy} r={r - thick / 2} fill={t.surface} />
     </Svg>

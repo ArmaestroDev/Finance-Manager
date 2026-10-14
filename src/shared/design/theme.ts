@@ -10,8 +10,3 @@ export function useFMTheme(): FMTheme {
   const mode: ThemeMode = scheme === "dark" ? "dark" : "light";
   return FMColors[palette][mode];
 }
-
-export function useThemeMode(): ThemeMode {
-  const scheme = useColorScheme();
-  return scheme === "dark" ? "dark" : "light";
-}

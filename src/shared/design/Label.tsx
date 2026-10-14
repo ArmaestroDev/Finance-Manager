@@ -10,21 +10,45 @@ interface LabelProps {
   color?: string;
 }
 
-// Tiny uppercase header used everywhere above lists/sections.
+// Small sentence-case label (M3 labelMedium) for column headers, stat labels
+// and form groups. No uppercase eyebrows — M3 keeps labels in sentence case.
 export function Label({ children, style, color }: LabelProps) {
   const t = useFMTheme();
   return (
     <Text
       style={[
         {
-          fontSize: 10,
-          fontFamily: FMFonts.sansSemibold,
-          letterSpacing: 1.2,
-          textTransform: "uppercase",
-          color: color ?? t.inkMuted,
+          fontSize: 12,
+          lineHeight: 16,
+          fontFamily: FMFonts.sansMedium,
+          letterSpacing: 0.3,
+          color: color ?? t.inkSoft,
         },
         style,
       ]}
+    >
+      {children}
+    </Text>
+  );
+}
+
+// Section heading inside a page or card (M3 titleMedium).
+export function SectionTitle({ children, style, color }: LabelProps) {
+  const t = useFMTheme();
+  return (
+    <Text
+      accessibilityRole="header"
+      style={[
+        {
+          fontSize: 16,
+          lineHeight: 24,
+          fontFamily: FMFonts.sansMedium,
+          letterSpacing: 0.15,
+          color: color ?? t.ink,
+        },
+        style,
+      ]}
+      numberOfLines={1}
     >
       {children}
     </Text>

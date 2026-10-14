@@ -1,7 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, TextStyle, View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMType } from "@/src/constants/theme";
 import { Money } from "./Money";
 import { useFMTheme } from "./theme";
 
@@ -16,7 +16,7 @@ interface BalanceProps {
 
 // Privacy-aware balance — when masked, draws a textured bar instead of
 // digits so it's instantly recognizable as "hidden by you", not "we don't know".
-export function Balance({ value, masked = false, size = 14, total = false, align, style }: BalanceProps) {
+export function Balance({ value, masked = false, size = FMType.body, total = false, align, style }: BalanceProps) {
   const t = useFMTheme();
   if (!masked) {
     return <Money value={value} masked={false} size={size} total={total} align={align} style={style} />;
@@ -36,11 +36,9 @@ export function Balance({ value, masked = false, size = 14, total = false, align
           style={{
             width: size * 4.2,
             height: Math.max(size * 0.65, 8),
-            borderRadius: 2,
+            borderRadius: 4,
             overflow: "hidden",
-            backgroundColor: t.surfaceAlt,
-            borderWidth: 1,
-            borderColor: t.lineStrong,
+            backgroundColor: t.surfaceContainerHigh,
           }}
         >
           <MaskedFill color={t.lineStrong} />

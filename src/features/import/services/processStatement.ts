@@ -1,12 +1,7 @@
 import { Platform } from "react-native";
-import type { Transaction } from "../../../services/enableBanking";
+import { API_BASE, type Transaction } from "../../../services/enableBanking";
 import type { QueueItem } from "../context/ImportQueueContext";
 import { cleanImportDescription } from "./cleanDescription";
-
-const API_BASE =
-  typeof window !== "undefined" && window.location.hostname !== "localhost"
-    ? "/api"
-    : "http://localhost:3001/api";
 
 export interface StatementParseResult {
   transactions: Transaction[];
@@ -86,11 +81,11 @@ export async function parseStatementWithBackend(
     oldBalance: number | null;
     newBalance: number | null;
     parseWarning: string | null;
-    transactions: Array<{
+    transactions: {
       date: string;
       description: string;
       amount: number;
-    }>;
+    }[];
   };
 
   if (!Array.isArray(data.transactions)) {

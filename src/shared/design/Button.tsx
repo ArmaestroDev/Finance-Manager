@@ -2,16 +2,38 @@ import React from "react";
 import {
   ActivityIndicator,
   Pressable,
+  StyleProp,
   StyleSheet,
   Text,
   View,
   ViewStyle,
 } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { FMFonts, FMHit, FMRadius, FMState } from "@/src/constants/theme";
+import { PressState, alpha, stateColor } from "./state";
 import { useFMTheme } from "./theme";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "accent" | "danger";
+/**
+ * M3 button variants:
+ *  - filled   — the one main action of a view
+ *  - tonal    — important but secondary (secondaryContainer)
+ *  - outlined — secondary actions next to a filled one
+ *  - text     — low emphasis (dialog actions, inline links)
+ *  - danger / dangerFilled — destructive actions
+ * Legacy names are kept as aliases: primary/accent → filled,
+ * secondary → outlined, ghost → text.
+ */
+export type ButtonVariant =
+  | "filled"
+  | "tonal"
+  | "outlined"
+  | "text"
+  | "danger"
+  | "dangerFilled"
+  | "primary"
+  | "accent"
+  | "secondary"
+  | "ghost";
 export type ButtonSize = "sm" | "md" | "lg";
 
 interface ButtonProps {
@@ -24,12 +46,13 @@ interface ButtonProps {
   loading?: boolean;
   disabled?: boolean;
   onPress?: () => void;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
 }
 
 export function Button({
   children,
-  variant = "primary",
+  variant = "filled",
   size = "md",
   icon,
   iconRight,
@@ -38,69 +61,93 @@ export function Button({
   disabled,
   onPress,
   style,
+  accessibilityLabel,
 }: ButtonProps) {
   const t = useFMTheme();
   const isDisabled = disabled || loading;
 
-  const h = size === "sm" ? 28 : size === "lg" ? 44 : 36;
-  const px = size === "sm" ? 10 : size === "lg" ? 18 : 14;
-  const fs = size === "sm" ? 12 : 13;
+  const h = size === "sm" ? 32 : size === "lg" ? 48 : 40;
+  const px = size === "sm" ? 12 : size === "lg" ? 24 : 20;
+  const fs = size === "lg" ? 15 : 14;
+  // Grow the touch area (not the visual) to the 44pt minimum.
+  const slop = Math.max(0, Math.ceil((FMHit.touch - h) / 2));
 
-  const variants: Record<ButtonVariant, { bg: string; fg: string; border: string }> = {
-    primary: { bg: t.ink, fg: t.bg, border: t.ink },
-    secondary: { bg: t.surface, fg: t.ink, border: t.lineStrong },
-    ghost: { bg: "transparent", fg: t.ink, border: "transparent" },
-    accent: { bg: t.accent, fg: "#ffffff", border: t.accent },
-    danger: { bg: t.surface, fg: t.neg, border: t.lineStrong },
+  const kind =
+    variant === "primary" || variant === "accent"
+      ? "filled"
+      : variant === "secondary"
+        ? "outlined"
+        : variant === "ghost"
+          ? "text"
+          : variant;
+
+  const spec: Record<string, { bg: string; fg: string; border: string }> = {
+    filled: { bg: t.primary, fg: t.onPrimary, border: "transparent" },
+    tonal: { bg: t.secondaryContainer, fg: t.onSecondaryContainer, border: "transparent" },
+    outlined: { bg: "transparent", fg: t.primary, border: t.outline },
+    text: { bg: "transparent", fg: t.primary, border: "transparent" },
+    danger: { bg: "transparent", fg: t.error, border: t.outline },
+    dangerFilled: { bg: t.error, fg: t.onError, border: "transparent" },
   };
-  const v = variants[variant];
+  const v = spec[kind];
+  const fg = isDisabled ? alpha(t.onSurface, FMState.disabledContent) : v.fg;
+  const hasIcon = !!icon;
 
   return (
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
-      style={({ pressed }) => [
+      hitSlop={slop ? { top: slop, bottom: slop } : undefined}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
+      style={(s) => [
+        styles.row,
         {
           height: h,
-          paddingHorizontal: px,
-          backgroundColor: v.bg,
-          borderColor: v.border,
-          borderWidth: 1,
-          borderRadius: 6,
-          opacity: isDisabled ? 0.55 : pressed ? 0.85 : 1,
+          paddingLeft: kind === "text" ? 12 : hasIcon ? px - 4 : px,
+          paddingRight: kind === "text" ? 12 : iconRight ? px - 4 : px,
+          backgroundColor: isDisabled
+            ? v.bg === "transparent"
+              ? "transparent"
+              : alpha(t.onSurface, FMState.disabledContainer)
+            : stateColor(v.bg, v.fg, s as PressState),
+          borderColor: isDisabled && v.border !== "transparent" ? alpha(t.onSurface, FMState.disabledContainer) : v.border,
+          borderWidth: v.border === "transparent" ? 0 : 1,
           width: full ? "100%" : undefined,
         },
-        styles.row,
         style,
       ]}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={v.fg} />
+        <ActivityIndicator size="small" color={fg} />
       ) : (
         <>
-          {icon ? <View style={{ marginRight: 6, opacity: 0.95 }}>{withColor(icon, v.fg)}</View> : null}
+          {icon ? <View style={{ marginRight: 8 }}>{withColor(icon, fg)}</View> : null}
           <Text
             style={{
               fontFamily: FMFonts.sansMedium,
               fontSize: fs,
-              color: v.fg,
-              letterSpacing: -0.1,
-              lineHeight: fs * 1.15,
+              color: fg,
+              letterSpacing: 0.1,
+              lineHeight: 20,
             }}
+            numberOfLines={1}
           >
             {children}
           </Text>
-          {iconRight ? <View style={{ marginLeft: 6, opacity: 0.95 }}>{withColor(iconRight, v.fg)}</View> : null}
+          {iconRight ? <View style={{ marginLeft: 8 }}>{withColor(iconRight, fg)}</View> : null}
         </>
       )}
     </Pressable>
   );
 }
 
-// Re-color icon children that accept a `color` prop.
-function withColor(node: React.ReactNode, color: string): React.ReactNode {
-  if (React.isValidElement(node) && node.props && (node.props as any).color === undefined) {
-    return React.cloneElement(node as React.ReactElement<any>, { color });
+// Re-color icon children: icons inherit the button's content colour (M3 —
+// icon and label always share a colour), overriding any colour the caller set.
+export function withColor(node: React.ReactNode, color: string): React.ReactNode {
+  if (React.isValidElement<{ color?: string }>(node)) {
+    return React.cloneElement(node, { color });
   }
   return node;
 }
@@ -110,5 +157,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    borderRadius: FMRadius.full,
   },
 });

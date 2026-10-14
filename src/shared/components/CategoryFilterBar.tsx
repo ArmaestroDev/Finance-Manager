@@ -4,20 +4,15 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
-import { IconChevR, useFMTheme } from "@/src/shared/design";
-import {
-  getStableTxId,
-  getTransactionAmount,
-} from "@/src/features/transactions/utils/transactions";
+import { Chip, IconButton, IconChevR } from "@/src/shared/design";
+import { getStableTxId } from "@/src/features/transactions/utils/transactions";
 import type { Transaction } from "@/src/services/enableBanking";
+import type { Strings } from "@/src/constants/Strings";
 
 interface TransactionCategory {
   id: string;
@@ -31,13 +26,7 @@ interface CategoryFilterBarProps {
   getCategoryForTransaction: (txId: string) => TransactionCategory | null;
   selectedFilter: string | null;
   onSelectFilter: (filterId: string | null) => void;
-  accountIncome: number;
-  accountExpenses: number;
-  isBalanceHidden: boolean;
-  textColor?: string;
-  tintColor?: string;
-  i18n: Record<string, string>;
-  showStats?: boolean;
+  i18n: typeof Strings.de;
 }
 
 export function CategoryFilterBar({
@@ -48,8 +37,6 @@ export function CategoryFilterBar({
   onSelectFilter,
   i18n,
 }: CategoryFilterBarProps) {
-  const t = useFMTheme();
-
   // Compute which categories actually have transactions in the active set —
   // hide empty pills so the strip stays compact.
   const usedCategoryIds = React.useMemo(() => {
@@ -105,91 +92,48 @@ export function CategoryFilterBar({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[
           styles.row,
-          canScrollRight && { paddingRight: 28 },
+          canScrollRight && { paddingRight: 40 },
         ]}
         onContentSizeChange={(w) => setContentWidth(w)}
         onLayout={(e) => setContainerWidth(e.nativeEvent.layout.width)}
         onScroll={onScroll}
         scrollEventThrottle={16}
       >
-        <Pill
-          active={!selectedFilter}
-          onPress={() => handleSelect(null)}
-        >
-          {i18n.filter_all ?? "All"}
-        </Pill>
+        <Chip filter active={!selectedFilter} onPress={() => handleSelect(null)}>
+          {i18n.filter_all}
+        </Chip>
         {categories
           .filter((c) => usedCategoryIds.has(c.id))
           .map((cat) => {
             const isSelected = selectedFilter === cat.id;
             return (
-              <Pill
+              <Chip
                 key={cat.id}
                 active={isSelected}
-                color={cat.color}
+                icon={<Dot color={cat.color} />}
                 onPress={() => handleSelect(isSelected ? null : cat.id)}
               >
                 {cat.name}
-              </Pill>
+              </Chip>
             );
           })}
       </ScrollView>
       {canScrollRight ? (
-        <Pressable
+        <IconButton
+          icon={<IconChevR size={16} />}
+          label={i18n.scroll_more}
           onPress={handleScrollRight}
-          style={({ pressed }) => [
-            styles.scrollArrow,
-            {
-              backgroundColor: t.surface,
-              borderColor: t.lineStrong,
-              opacity: pressed ? 0.7 : 1,
-            },
-          ]}
-          hitSlop={6}
-        >
-          <IconChevR size={11} color={t.inkSoft} />
-        </Pressable>
+          variant="tonal"
+          size={32}
+          style={styles.scrollArrow}
+        />
       ) : null}
     </View>
   );
 }
 
-interface PillProps {
-  children: React.ReactNode;
-  color?: string;
-  active?: boolean;
-  onPress: () => void;
-}
-
-function Pill({ children, color, active, onPress }: PillProps) {
-  const t = useFMTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.pill,
-        {
-          backgroundColor: active ? t.ink : t.surface,
-          borderColor: active ? t.ink : t.lineStrong,
-          opacity: pressed ? 0.85 : 1,
-        },
-      ]}
-    >
-      {color ? (
-        <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: color, marginRight: 6 }} />
-      ) : null}
-      <Text
-        style={{
-          fontFamily: FMFonts.sansMedium,
-          fontSize: 11,
-          color: active ? t.bg : t.inkSoft,
-          letterSpacing: -0.1,
-        }}
-      >
-        {children}
-      </Text>
-    </Pressable>
-  );
+function Dot({ color }: { color: string }) {
+  return <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: color }} />;
 }
 
 const styles = StyleSheet.create({
@@ -200,27 +144,13 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: "row",
-    gap: 5,
+    gap: 8,
     paddingVertical: 4,
-  },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
   },
   scrollArrow: {
     position: "absolute",
     right: 0,
     top: "50%",
-    width: 22,
-    height: 22,
-    marginTop: -11,
-    borderRadius: 11,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
+    marginTop: -16,
   },
 });

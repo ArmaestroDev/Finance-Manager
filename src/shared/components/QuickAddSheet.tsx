@@ -6,27 +6,20 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import {
-  Modal,
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { View } from "react-native";
 
-import { FMFonts } from "@/src/constants/theme";
+import { CASH_ACCOUNT_ID, useAccounts } from "@/src/features/accounts/context/AccountsContext";
+import { useSettings } from "@/src/shared/context/SettingsContext";
 import {
-  Button,
+  Avatar,
   IconBank,
-  IconChevR,
-  IconCoins,
+  IconCash,
   IconLink,
   IconPlus,
   IconUpload,
-  useFMTheme,
+  ListItem,
 } from "@/src/shared/design";
+import { Sheet } from "./Sheet";
 
 interface QuickAddContext {
   open: () => void;
@@ -62,163 +55,78 @@ interface QuickAddSheetProps {
 }
 
 function QuickAddSheet({ visible, onClose }: QuickAddSheetProps) {
-  const t = useFMTheme();
-  const insets = useSafeAreaInsets();
+  const { i18n, mainAccountId } = useSettings();
+  const { accounts } = useAccounts();
+
+  // Manual transactions / imports need a target account: the dashboard's main
+  // account when it's a manual one, else Cash at Hand (always present).
+  const manualTargetId = useMemo(() => {
+    const main = accounts.find((a) => a.id === mainAccountId);
+    return main && main.type === "manual" ? main.id : CASH_ACCOUNT_ID;
+  }, [accounts, mainAccountId]);
+  const importTargetId = mainAccountId ?? CASH_ACCOUNT_ID;
+
+  // Close first, then navigate once the modal has started to dismiss.
+  const navigateTo = useCallback(
+    (href: string | { pathname: string; params: Record<string, string> }) => {
+      onClose();
+      setTimeout(() => router.push(href as never), 80);
+    },
+    [onClose],
+  );
 
   const items = useMemo(
     () => [
       {
         id: "tx",
-        label: "Add transaction",
-        icon: <IconPlus size={15} color={t.accent} />,
-        action: () => navigateTo("/(tabs)/accounts"),
-      },
-      {
-        id: "manual",
-        label: "Add manual account",
-        icon: <IconBank size={15} color={t.accent} />,
-        action: () => navigateTo("/(tabs)/accounts"),
-      },
-      {
-        id: "cash",
-        label: "Edit cash at hand",
-        icon: <IconCoins size={15} color={t.accent} />,
-        action: () => navigateTo("/(tabs)/accounts"),
+        label: i18n.quickadd_add_transaction,
+        icon: <IconPlus size={18} />,
+        action: () =>
+          navigateTo({ pathname: "/account/[id]", params: { id: manualTargetId, qa: "tx" } }),
       },
       {
         id: "import",
-        label: "Import statement",
-        icon: <IconUpload size={15} color={t.accent} />,
-        action: () => navigateTo("/(tabs)/accounts"),
+        label: i18n.quickadd_import_statement,
+        icon: <IconUpload size={18} />,
+        action: () =>
+          navigateTo({ pathname: "/account/[id]", params: { id: importTargetId, qa: "import" } }),
+      },
+      {
+        id: "cash",
+        label: i18n.quickadd_edit_cash,
+        icon: <IconCash size={18} />,
+        action: () => navigateTo({ pathname: "/(tabs)/accounts", params: { qa: "cash" } }),
+      },
+      {
+        id: "manual",
+        label: i18n.quickadd_add_manual_account,
+        icon: <IconBank size={18} />,
+        action: () => navigateTo({ pathname: "/(tabs)/accounts", params: { qa: "manual" } }),
       },
       {
         id: "connect",
-        label: "Connect a bank",
-        icon: <IconLink size={15} color={t.accent} />,
+        label: i18n.connect_bank,
+        icon: <IconLink size={18} />,
         action: () => navigateTo("/connections"),
       },
     ],
-    [t.accent],
+    [i18n, manualTargetId, importTargetId, navigateTo],
   );
-
-  function navigateTo(path: string) {
-    onClose();
-    setTimeout(() => router.push(path as never), 80);
-  }
-
-  const isWeb = Platform.OS === "web";
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType={isWeb ? "fade" : "slide"}
-      onRequestClose={onClose}
-    >
-      <Pressable style={styles.scrim} onPress={onClose}>
-        <Pressable
-          style={[
-            isWeb ? styles.dialog : styles.sheet,
-            {
-              backgroundColor: t.surface,
-              borderColor: t.lineStrong,
-              paddingBottom: 16 + (isWeb ? 0 : insets.bottom),
-            },
-          ]}
-          onPress={(e) => e.stopPropagation()}
-        >
-          {!isWeb ? (
-            <View style={[styles.handle, { backgroundColor: t.lineStrong }]} />
-          ) : null}
-
-          <Text
-            style={{
-              fontFamily: FMFonts.display,
-              fontSize: 22,
-              color: t.ink,
-              marginBottom: 14,
-              letterSpacing: -0.3,
-            }}
-          >
-            Quick add
-          </Text>
-
-          {items.map((it, i) => (
-            <Pressable
-              key={it.id}
-              onPress={it.action}
-              style={({ pressed }) => [
-                styles.row,
-                {
-                  borderTopColor: i === 0 ? "transparent" : t.line,
-                  borderTopWidth: i === 0 ? 0 : 1,
-                  opacity: pressed ? 0.7 : 1,
-                },
-              ]}
-            >
-              <View style={{ width: 18, alignItems: "center" }}>{it.icon}</View>
-              <Text
-                style={{
-                  flex: 1,
-                  fontFamily: FMFonts.sans,
-                  fontSize: 14,
-                  color: t.ink,
-                  marginLeft: 12,
-                }}
-              >
-                {it.label}
-              </Text>
-              <IconChevR size={12} color={t.inkMuted} />
-            </Pressable>
-          ))}
-
-          <View style={{ marginTop: 12 }}>
-            <Button variant="ghost" full onPress={onClose}>
-              Cancel
-            </Button>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+    <Sheet visible={visible} onClose={onClose} title={i18n.quick_add} width={400}>
+      <View style={{ marginHorizontal: -24, marginBottom: 8 }}>
+        {items.map((it) => (
+          <ListItem
+            key={it.id}
+            leading={<Avatar icon={it.icon} />}
+            title={it.label}
+            onPress={it.action}
+            accessibilityLabel={it.label}
+            style={{ paddingHorizontal: 24 }}
+          />
+        ))}
+      </View>
+    </Sheet>
   );
 }
-
-const styles = StyleSheet.create({
-  scrim: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "flex-end",
-  },
-  sheet: {
-    width: "100%",
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    borderTopWidth: 1,
-    paddingHorizontal: 20,
-    paddingTop: 14,
-  },
-  dialog: {
-    alignSelf: "center",
-    marginBottom: "auto",
-    marginTop: "auto",
-    width: 380,
-    maxWidth: "92%" as unknown as number,
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: 16,
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-  },
-});

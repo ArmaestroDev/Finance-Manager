@@ -1,11 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { Strings } from "../../constants/Strings";
 import type { ThemePalette } from "../../constants/theme";
+import {
+  OLLAMA_DEFAULT_MODEL,
+  OLLAMA_DEFAULT_URL,
+  type AiConfig,
+  type AiProvider,
+} from "../../features/transactions/utils/aiProviders";
+
+export type { AiProvider };
 
 type Language = "en" | "de";
 export type ThemeAppearance = "system" | "light" | "dark";
-export type AiProvider = "gemini" | "claude";
 
 const VALID_PALETTES: readonly ThemePalette[] = [
   "mulberry",
@@ -21,16 +28,25 @@ interface SettingsContextType {
   geminiApiKey: string | null;
   claudeApiKey: string | null;
   aiProvider: AiProvider;
+  /** Base URL of the local Ollama server. */
+  ollamaUrl: string;
+  ollamaModel: string;
+  /** Provider + keys + Ollama target, for callAiProvider. */
+  aiConfig: AiConfig;
   language: Language;
   mainAccountId: string | null;
   theme: ThemeAppearance;
   palette: ThemePalette;
+  /** False until the persisted settings have been read from storage. */
+  isLoaded: boolean;
   toggleBalanceHidden: (pin?: string) => Promise<boolean>;
   setPin: (newPin: string) => Promise<void>;
   verifyPin: (pin: string) => boolean;
   setGeminiApiKey: (key: string) => Promise<void>;
   setClaudeApiKey: (key: string) => Promise<void>;
   setAiProvider: (provider: AiProvider) => Promise<void>;
+  setOllamaUrl: (url: string) => Promise<void>;
+  setOllamaModel: (model: string) => Promise<void>;
   setLanguage: (lang: Language) => Promise<void>;
   setMainAccountId: (id: string) => Promise<void>;
   setTheme: (newTheme: ThemeAppearance) => Promise<void>;
@@ -48,6 +64,8 @@ const STORAGE_KEYS = {
   GEMINI_API_KEY: "settings_gemini_api_key",
   CLAUDE_API_KEY: "settings_claude_api_key",
   AI_PROVIDER: "settings_ai_provider",
+  OLLAMA_URL: "settings_ollama_url",
+  OLLAMA_MODEL: "settings_ollama_model",
   LANGUAGE: "settings_language",
   MAIN_ACCOUNT_ID: "settings_main_account_id",
   THEME: "settings_theme",
@@ -60,11 +78,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [geminiApiKey, setGeminiApiKeyState] = useState<string | null>(null);
   const [claudeApiKey, setClaudeApiKeyState] = useState<string | null>(null);
   const [aiProvider, setAiProviderState] = useState<AiProvider>("gemini");
+  const [ollamaUrl, setOllamaUrlState] = useState(OLLAMA_DEFAULT_URL);
+  const [ollamaModel, setOllamaModelState] = useState(OLLAMA_DEFAULT_MODEL);
   const [language, setLanguageState] = useState<Language>("de");
   const [mainAccountId, setMainAccountIdState] = useState<string | null>(null);
   const [theme, setThemeState] = useState<ThemeAppearance>("system");
   const [palette, setPaletteState] = useState<ThemePalette>("mulberry");
-  const [loading, setLoading] = useState(true);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -82,6 +102,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         mainAcc,
         storedTheme,
         storedPalette,
+        storedOllamaUrl,
+        storedOllamaModel,
       ] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.BALANCE_HIDDEN),
         AsyncStorage.getItem(STORAGE_KEYS.USER_PIN),
@@ -92,14 +114,18 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         AsyncStorage.getItem(STORAGE_KEYS.MAIN_ACCOUNT_ID),
         AsyncStorage.getItem(STORAGE_KEYS.THEME),
         AsyncStorage.getItem(STORAGE_KEYS.PALETTE),
+        AsyncStorage.getItem(STORAGE_KEYS.OLLAMA_URL),
+        AsyncStorage.getItem(STORAGE_KEYS.OLLAMA_MODEL),
       ]);
       setIsBalanceHidden(hidden === "true");
       setUserPin(pin);
       setGeminiApiKeyState(apiKey);
       setClaudeApiKeyState(claudeKey);
-      if (provider === "gemini" || provider === "claude") {
+      if (provider === "gemini" || provider === "claude" || provider === "ollama" || provider === "browser") {
         setAiProviderState(provider);
       }
+      if (storedOllamaUrl) setOllamaUrlState(storedOllamaUrl);
+      if (storedOllamaModel) setOllamaModelState(storedOllamaModel);
       if (lang === "en" || lang === "de") {
         setLanguageState(lang);
       }
@@ -113,12 +139,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error("Failed to load settings", e);
     } finally {
-      setLoading(false);
+      setIsLoaded(true);
     }
   };
 
   const setPin = async (newPin: string) => {
-    if (newPin.length !== 5 || isNaN(Number(newPin))) {
+    // Number() accepted "1e3 ", " 1234", "-1234", "1.234" as "digits".
+    if (!/^\d{5}$/.test(newPin)) {
       throw new Error("PIN must be 5 digits");
     }
     await AsyncStorage.setItem(STORAGE_KEYS.USER_PIN, newPin);
@@ -139,6 +166,23 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEYS.AI_PROVIDER, provider);
     setAiProviderState(provider);
   };
+
+  const setOllamaUrl = async (url: string) => {
+    const value = url.trim() || OLLAMA_DEFAULT_URL;
+    await AsyncStorage.setItem(STORAGE_KEYS.OLLAMA_URL, value);
+    setOllamaUrlState(value);
+  };
+
+  const setOllamaModel = async (model: string) => {
+    const value = model.trim() || OLLAMA_DEFAULT_MODEL;
+    await AsyncStorage.setItem(STORAGE_KEYS.OLLAMA_MODEL, value);
+    setOllamaModelState(value);
+  };
+
+  const aiConfig = useMemo<AiConfig>(
+    () => ({ provider: aiProvider, geminiApiKey, claudeApiKey, ollamaUrl, ollamaModel }),
+    [aiProvider, geminiApiKey, claudeApiKey, ollamaUrl, ollamaModel],
+  );
 
   const setLanguage = async (lang: Language) => {
     await AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE, lang);
@@ -192,16 +236,22 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         geminiApiKey,
         claudeApiKey,
         aiProvider,
+        ollamaUrl,
+        ollamaModel,
+        aiConfig,
         language,
         mainAccountId,
         theme,
         palette,
+        isLoaded,
         toggleBalanceHidden,
         setPin,
         verifyPin,
         setGeminiApiKey,
         setClaudeApiKey,
         setAiProvider,
+        setOllamaUrl,
+        setOllamaModel,
         setLanguage,
         setMainAccountId,
         setTheme,
